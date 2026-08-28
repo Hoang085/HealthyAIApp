@@ -1,0 +1,4 @@
+<resources>
+    <!-- Base theme dùng Material3 NoActionBar (Compose tự quản lý AppBar) -->
+    <style name="Theme.HealthyAIApp" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>

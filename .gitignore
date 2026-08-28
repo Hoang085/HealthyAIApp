@@ -1,0 +1,51 @@
+
+# ==== Android ====
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# ==== Keystore / Secrets ====
+*.jks
+*.keystore
+google-services.json
+*.p12
+
+# ==== Kotlin ====
+*.class
+*.kotlin_module
+
+# ==== Room Schemas (optional: commit or ignore) ====
+# /app/schemas
+
+# ==== Gradle ====
+gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# ==== IDE ====
+*.iws
+out/
+*.hprof
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ==== OS ====
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
