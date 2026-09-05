@@ -14,8 +14,8 @@ sealed class Screen(
 ) {
     object Home     : Screen("home",     "Trang chủ",  Icons.Filled.Home)
     object Habits   : Screen("habits",   "Thói quen",  Icons.Filled.CheckCircle)
-    object Camera   : Screen("camera",   "Món ăn",     Icons.Filled.CameraAlt)
-    object Insights : Screen("insights", "Gợi ý AI",   Icons.Filled.AutoAwesome)
+    object Camera   : Screen("camera",   "Ghi chép",   Icons.Filled.CameraAlt)
+    object Insights : Screen("insights", "Phân tích",  Icons.Filled.AutoAwesome)
 }
 
 val bottomNavItems = listOf(

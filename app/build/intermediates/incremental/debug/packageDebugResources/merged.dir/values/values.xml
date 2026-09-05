@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HealthyAI</string>
+    <string name="health_permissions_rationale">HealthyAI cần quyền truy cập dữ liệu sức khỏe của bạn để cung cấp gợi ý cá nhân hóa. Dữ liệu được lưu trữ cục bộ và mã hóa trên thiết bị của bạn.</string>
+    <string name="health_privacy_policy_url">https://your-privacy-policy.com</string>
+    <style name="Theme.HealthyAIApp" parent="Theme.Material3.DayNight.NoActionBar"/>
+</resources>

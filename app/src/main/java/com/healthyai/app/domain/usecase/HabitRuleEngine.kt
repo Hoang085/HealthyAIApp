@@ -32,6 +32,35 @@ class HabitRuleEngine @Inject constructor() {
         return suggestions.sortedByDescending { it.priority.ordinal }
     }
 
+    /**
+     * Tính toán "Chỉ số sinh lực" (Vitality Score) dựa trên mức độ hoàn thiện thói quen.
+     * Trả về giá trị từ 0-100.
+     */
+    fun calculateVitalityScore(recentLogs: List<HabitLog>): Int {
+        if (recentLogs.isEmpty()) return 50 // Điểm trung bình nếu chưa có dữ liệu
+
+        val sleepScore = calculateCategoryScore(recentLogs, HabitCategory.SLEEP)
+        val waterScore = calculateCategoryScore(recentLogs, HabitCategory.WATER)
+        val exerciseScore = calculateCategoryScore(recentLogs, HabitCategory.EXERCISE)
+        
+        // Trọng số: Ngủ (40%), Nước (30%), Vận động (30%)
+        val totalScore = (sleepScore * 0.4) + (waterScore * 0.3) + (exerciseScore * 0.3)
+        return totalScore.toInt().coerceIn(0, 100)
+    }
+
+    private fun calculateCategoryScore(logs: List<HabitLog>, category: HabitCategory): Double {
+        val categoryLogs = logs.filter { it.category == category }
+        if (categoryLogs.isEmpty()) return 70.0 // Mặc định 70 nếu không có data cho category này
+
+        // Tính tỉ lệ phần trăm hoàn thành trung bình
+        val completionRatios = categoryLogs.map { log ->
+            if (log.targetValueAtTime > 0) (log.value / log.targetValueAtTime).toDouble() else 0.0
+        }
+        
+        val avgCompletion = completionRatios.average().coerceIn(0.0, 1.0)
+        return avgCompletion * 100
+    }
+
     // ── Rule 1: Thiếu ngủ ─────────────────────────────────────
     // Trigger: ngủ dưới 6 tiếng trong 3 ngày liên tiếp → HIGH priority
     // Trigger: ngủ trung bình dưới 7 tiếng → MEDIUM priority

@@ -10,8 +10,11 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+import com.healthyai.app.domain.usecase.HabitRuleEngine
+
 data class InsightsUiState(
     val suggestions: List<Suggestion> = emptyList(),
+    val vitalityScore: Int = 0,
     val isLoading: Boolean = true,
     val lastAnalyzedDays: Int = 7
 )
@@ -19,7 +22,8 @@ data class InsightsUiState(
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
     private val habitRepository: HabitRepository,
-    private val generateSuggestionsUseCase: GenerateSuggestionsUseCase
+    private val generateSuggestionsUseCase: GenerateSuggestionsUseCase,
+    private val ruleEngine: HabitRuleEngine
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InsightsUiState())
@@ -33,7 +37,12 @@ class InsightsViewModel @Inject constructor(
                 .catch { _uiState.update { it.copy(isLoading = false) } }
                 .collect { logs ->
                     val suggestions = generateSuggestionsUseCase(logs)
-                    _uiState.update { it.copy(suggestions = suggestions, isLoading = false) }
+                    val score = ruleEngine.calculateVitalityScore(logs)
+                    _uiState.update { it.copy(
+                        suggestions = suggestions,
+                        vitalityScore = score,
+                        isLoading = false
+                    ) }
                 }
         }
     }

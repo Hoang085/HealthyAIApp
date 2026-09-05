@@ -1,77 +1,241 @@
 package com.healthyai.app.presentation.screen.habits
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
+import com.healthyai.app.presentation.ui.theme.HealthyAITheme
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HabitsScreen(viewModel: HabitsViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    HabitsScreenContent(
+        uiState = uiState,
+        onFilterSelected = viewModel::setFilter
+    )
+}
+
+@Composable
+fun HabitsScreenContent(
+    uiState: HabitsUiState,
+    onFilterSelected: (String) -> Unit
+) {
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Thói quen của tôi", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = { /* TODO: Filter/Sort */ }) {
-                        Icon(Icons.Filled.FilterList, contentDescription = "Lọc")
-                    }
-                }
-            )
-        },
+        containerColor = Color(0xFFF8F9FA),
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { /* TODO: Mở dialog thêm thói quen */ },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Thêm thói quen") }
-            )
+            FloatingActionButton(
+                onClick = { /* TODO */ },
+                containerColor = Color(0xFF2E7D32),
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier.size(64.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Thêm thói quen", modifier = Modifier.size(32.dp))
+            }
         }
     ) { paddingValues ->
-        when {
-            uiState.isLoading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            item {
+                HabitHeader()
             }
-            uiState.habits.isEmpty() -> {
-                Box(
-                    Modifier.padding(paddingValues).fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Filled.PlaylistAdd, null, modifier = Modifier.size(72.dp), tint = MaterialTheme.colorScheme.outline)
-                        Text("Chưa có thói quen nào", style = MaterialTheme.typography.titleMedium)
-                        Text("Nhấn nút + để thêm thói quen đầu tiên", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            item {
+                FilterChipsSection(
+                    selectedFilter = uiState.selectedFilter,
+                    onFilterSelected = onFilterSelected
+                )
+            }
+
+            if (uiState.isLoading) {
+                item {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.padding(24.dp))
                     }
                 }
+            } else if (uiState.filteredHabits.isEmpty()) {
+                item { EmptyHabitsView() }
+            } else {
+                items(uiState.filteredHabits) { habit ->
+                    // Set progress to 0 for now as we transition from demo to real data
+                    val currentProgress = 0f
+                    val isCompleted = false
+                    
+                    HabitCard(
+                        habit = habit,
+                        currentProgress = currentProgress,
+                        isCompleted = isCompleted
+                    )
+                }
             }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.padding(paddingValues).fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.habits, key = { it.id }) { habit ->
-                        HabitItemCard(
-                            habit = habit,
-                            isJustLogged = uiState.showLogSuccessFor == habit.id,
-                            onLogClick = { viewModel.logHabit(habit, habit.targetValue) }
+            
+            item { Spacer(modifier = Modifier.height(80.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun HabitHeader() {
+    val date = LocalDate.now().format(DateTimeFormatter.ofPattern("'Hôm nay,' EEEE, dd 'tháng' MM", Locale("vi")))
+    Column {
+        Text(
+            "Theo dõi thói quen",
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 32.sp
+            )
+        )
+        Text(
+            date,
+            style = MaterialTheme.typography.bodyLarge.copy(color = Color.Gray)
+        )
+    }
+}
+
+@Composable
+private fun FilterChipsSection(
+    selectedFilter: String,
+    onFilterSelected: (String) -> Unit
+) {
+    val filters = listOf("Tất cả", "Sáng", "Chiều", "Tối")
+
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(filters) { filter ->
+            FilterChip(
+                selected = selectedFilter == filter,
+                onClick = { onFilterSelected(filter) },
+                label = { Text(filter) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Color(0xFF1B5E20),
+                    selectedLabelColor = Color.White,
+                    containerColor = Color(0xFFE8F5E9),
+                    labelColor = Color(0xFF1B5E20)
+                ),
+                border = null,
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HabitCard(
+    habit: Habit,
+    currentProgress: Float,
+    isCompleted: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(32.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon Circle
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isCompleted) Color(0xFFC8E6C9) else Color(0xFFEDF2F7)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isCompleted) {
+                    Icon(Icons.Default.Check, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(32.dp))
+                } else {
+                    // Use simple icons or emojis as in the image
+                    val emoji = habit.category.emoji
+                    Text(emoji, fontSize = 28.sp)
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    habit.name,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+                if (isCompleted) {
+                    Text(
+                        "Hoàn thành",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color(0xFF4CAF50),
+                            fontWeight = FontWeight.SemiBold
                         )
+                    )
+                } else {
+                    val progressText = formatProgress(habit, currentProgress)
+                    Text(
+                        progressText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color(0xFF2E7D32),
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            }
+            
+            if (isCompleted) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFFEEEEEE),
+                    modifier = Modifier.height(48.dp).width(80.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("Xong", color = Color.Gray, fontWeight = FontWeight.Bold)
                     }
-                    item { Spacer(Modifier.height(80.dp)) } // FAB clearance
+                }
+            } else {
+                Button(
+                    onClick = { /* TODO */ },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.height(48.dp).width(100.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Ghi", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -79,42 +243,44 @@ fun HabitsScreen(viewModel: HabitsViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun HabitItemCard(
-    habit: Habit,
-    isJustLogged: Boolean,
-    onLogClick: () -> Unit
-) {
-    val containerColor = if (isJustLogged)
-        MaterialTheme.colorScheme.primaryContainer
-    else
-        MaterialTheme.colorScheme.surface
+private fun EmptyHabitsView() {
+    Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+        Text("Chưa có thói quen nào", color = Color.Gray)
+    }
+}
 
-    val categoryEmoji = habit.category.emoji
+private fun formatProgress(habit: Habit, current: Float): String {
+    return when (habit.category) {
+        HabitCategory.WATER -> "${"%.1f".format(current)}L / ${"%.1f".format(habit.targetValue / 1000f)}L"
+        HabitCategory.EXERCISE -> "${current.toInt()} / ${habit.targetValue.toInt()} phút"
+        HabitCategory.SLEEP -> "${"%.1f".format(current)} / ${"%.1f".format(habit.targetValue)} giờ"
+        else -> "${current.toInt()} / ${habit.targetValue.toInt()} ${habit.unit}"
+    }
+}
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
-    ) {
-        ListItem(
-            headlineContent = {
-                Text("$categoryEmoji ${habit.name}", fontWeight = FontWeight.SemiBold)
-            },
-            supportingContent = {
-                Text(
-                    "Mục tiêu: ${habit.targetValue} ${habit.unit}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            trailingContent = {
-                if (isJustLogged) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = "Đã ghi nhận", tint = MaterialTheme.colorScheme.primary)
-                } else {
-                    FilledTonalButton(onClick = onLogClick) {
-                        Text("Ghi nhận")
-                    }
-                }
-            },
-            colors = ListItemDefaults.colors(containerColor = containerColor)
+private val habitVisuals = mapOf(
+    HabitCategory.WATER to (Icons.Default.WaterDrop to Color(0xFF2196F3)),
+    HabitCategory.MINDFULNESS to (Icons.Default.SelfImprovement to Color(0xFFFF9800)),
+    HabitCategory.EXERCISE to (Icons.AutoMirrored.Filled.DirectionsRun to Color(0xFFE91E63)),
+    HabitCategory.SLEEP to (Icons.Default.Bedtime to Color(0xFF673AB7)),
+    HabitCategory.NUTRITION to (Icons.Default.Restaurant to Color(0xFF4CAF50))
+)
+
+@Preview(showBackground = true)
+@Composable
+fun HabitsScreenPreview() {
+    HealthyAITheme {
+        HabitsScreenContent(
+            uiState = HabitsUiState(
+                habits = listOf(
+                    Habit(id = 1, name = "Uống nước", category = HabitCategory.WATER, targetValue = 2000f, unit = "ml"),
+                    Habit(id = 2, name = "Vận động", category = HabitCategory.EXERCISE, targetValue = 45f, unit = "phút"),
+                    Habit(id = 3, name = "Giấc ngủ", category = HabitCategory.SLEEP, targetValue = 8f, unit = "giờ"),
+                    Habit(id = 4, name = "Thiền định", category = HabitCategory.MINDFULNESS, targetValue = 15f, unit = "phút")
+                ),
+                isLoading = false
+            ),
+            onFilterSelected = {}
         )
     }
 }

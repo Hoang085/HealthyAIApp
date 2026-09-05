@@ -6,7 +6,7 @@
 
 [versions]
 # Build Tools
-agp             = "8.7.3"
+agp             = "8.13.2"
 kotlin          = "2.0.21"
 ksp             = "2.0.21-1.0.28"
 
@@ -27,11 +27,11 @@ hiltExt         = "1.2.0"
 
 # Database
 room            = "2.6.1"
-sqlcipher       = "4.6.1"
+sqlcipher       = "4.5.4"
 sqliteKtx       = "2.4.0"
 
 # Health Connect
-healthConnect   = "1.1.0-rc01"
+healthConnect = "1.1.0-alpha10"
 
 # Camera & ML
 cameraX         = "1.4.1"
@@ -88,7 +88,7 @@ androidx-room-runtime               = { group = "androidx.room",         name = 
 androidx-room-compiler              = { group = "androidx.room",         name = "room-compiler",               version.ref = "room" }
 androidx-room-ktx                   = { group = "androidx.room",         name = "room-ktx",                    version.ref = "room" }
 androidx-room-testing               = { group = "androidx.room",         name = "room-testing",                version.ref = "room" }
-sqlcipher-android                   = { group = "net.zetetic",           name = "sqlcipher-android",           version.ref = "sqlcipher" }
+sqlcipher-android                   = { group = "net.zetetic",           name = "android-database-sqlcipher",  version.ref = "sqlcipher" }
 sqlite-ktx                          = { group = "androidx.sqlite",       name = "sqlite-ktx",                  version.ref = "sqliteKtx" }
 
 # Health Connect

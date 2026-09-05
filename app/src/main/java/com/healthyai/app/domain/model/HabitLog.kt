@@ -11,6 +11,7 @@ data class HabitLog(
     val category: HabitCategory,
     val value: Float,
     val unit: String,
+    val targetValueAtTime: Float, // Lưu mục tiêu tại thời điểm log để phân tích lịch sử
     val loggedAt: Long = System.currentTimeMillis(),
     val note: String = "",
     val isDirty: Boolean = true // Flag cho offline-first sync strategy

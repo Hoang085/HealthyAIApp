@@ -12,8 +12,12 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+import com.healthyai.app.domain.model.HabitTimeOfDay
+
 data class HabitsUiState(
     val habits: List<Habit> = emptyList(),
+    val filteredHabits: List<Habit> = emptyList(),
+    val selectedFilter: String = "Tất cả",
     val isLoading: Boolean = true,
     val showLogSuccessFor: Long? = null, // habitId vừa log thành công
     val error: String? = null
@@ -32,7 +36,41 @@ class HabitsViewModel @Inject constructor(
         viewModelScope.launch {
             getTodayHabitsUseCase()
                 .catch { e -> _uiState.update { it.copy(error = e.message, isLoading = false) } }
-                .collect { habits -> _uiState.update { it.copy(habits = habits, isLoading = false) } }
+                .collect { habits -> 
+                    _uiState.update { state -> 
+                        state.copy(
+                            habits = habits, 
+                            filteredHabits = applyFilter(habits, state.selectedFilter),
+                            isLoading = false
+                        ) 
+                    } 
+                }
+        }
+    }
+
+    fun setFilter(filter: String) {
+        _uiState.update { state ->
+            state.copy(
+                selectedFilter = filter,
+                filteredHabits = applyFilter(state.habits, filter)
+            )
+        }
+    }
+
+    private fun applyFilter(habits: List<Habit>, filter: String): List<Habit> {
+        if (filter == "Tất cả") return habits
+        
+        val timeOfDay = when (filter) {
+            "Sáng" -> HabitTimeOfDay.MORNING
+            "Chiều" -> HabitTimeOfDay.AFTERNOON
+            "Tối" -> HabitTimeOfDay.EVENING
+            else -> null
+        }
+        
+        return if (timeOfDay != null) {
+            habits.filter { it.timeOfDay == timeOfDay || it.timeOfDay == HabitTimeOfDay.ALL_DAY }
+        } else {
+            habits
         }
     }
 
@@ -45,7 +83,8 @@ class HabitsViewModel @Inject constructor(
                         habitName = habit.name,
                         category = habit.category,
                         value = value,
-                        unit = habit.unit
+                        unit = habit.unit,
+                        targetValueAtTime = habit.targetValue
                     )
                 )
             }.onSuccess {

@@ -6,22 +6,18 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * HealthConnectManager — Wrapper cho Health Connect API.
- *
- * Lưu ý quan trọng cho báo cáo:
- * Health Connect là API cục bộ (Android IPC), giao tiếp với OS,
- * KHÔNG phải server — không gửi dữ liệu qua mạng.
- * Dữ liệu chảy: Samsung Health/Google Fit → Health Connect (OS) → App của bạn
  */
 @Singleton
 class HealthConnectManager @Inject constructor(
@@ -49,60 +45,67 @@ class HealthConnectManager @Inject constructor(
         }
     }
 
-    /** Đọc tổng số bước chân từ đầu ngày hôm nay */
+    /** 
+     * Đọc tổng số bước chân từ đầu ngày hôm nay.
+     * Sử dụng aggregate API để đảm bảo không bị trùng lặp dữ liệu từ nhiều nguồn.
+     */
     suspend fun getTodaySteps(): Long {
         val startOfDay = LocalDate.now()
             .atStartOfDay(ZoneId.systemDefault()).toInstant()
         val now = Instant.now()
 
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = StepsRecord::class,
+            val response = client.aggregate(
+                AggregateRequest(
+                    metrics = setOf(StepsRecord.COUNT_TOTAL),
                     timeRangeFilter = TimeRangeFilter.between(startOfDay, now)
                 )
             )
-            response.records.sumOf { it.count }
+            response[StepsRecord.COUNT_TOTAL] ?: 0L
         } catch (e: Exception) {
             0L
         }
     }
 
-    /** Đọc tổng thời gian ngủ đêm qua (tính bằng giờ) */
+    /** 
+     * Đọc tổng thời gian ngủ từ chiều tối qua đến hiện tại.
+     * Thường tính từ 6h tối hôm qua đến hiện tại để bao quát giấc ngủ đêm.
+     */
     suspend fun getLastNightSleepHours(): Double {
         val now = Instant.now()
-        val yesterday = now.minusSeconds(86_400)
+        val startOfYesterday = LocalDate.now().minusDays(1)
+            .atTime(LocalTime.of(18, 0)) // 18:00 hôm qua
+            .atZone(ZoneId.systemDefault()).toInstant()
 
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = SleepSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(yesterday, now)
+            val response = client.aggregate(
+                AggregateRequest(
+                    metrics = setOf(SleepSessionRecord.SLEEP_DURATION_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.between(startOfYesterday, now)
                 )
             )
-            response.records.sumOf { record ->
-                (record.endTime.toEpochMilli() - record.startTime.toEpochMilli()) / 3_600_000.0
-            }
+            val duration = response[SleepSessionRecord.SLEEP_DURATION_TOTAL]
+            duration?.toMinutes()?.toDouble()?.div(60.0) ?: 0.0
         } catch (e: Exception) {
             0.0
         }
     }
 
-    /** Đọc nhịp tim trung bình trong 1 giờ gần nhất */
+    /** 
+     * Đọc nhịp tim trung bình trong 1 giờ gần nhất.
+     */
     suspend fun getRecentHeartRate(): Double {
         val now = Instant.now()
         val oneHourAgo = now.minusSeconds(3_600)
 
         return try {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = HeartRateRecord::class,
+            val response = client.aggregate(
+                AggregateRequest(
+                    metrics = setOf(HeartRateRecord.BPM_AVG),
                     timeRangeFilter = TimeRangeFilter.between(oneHourAgo, now)
                 )
             )
-            val samples = response.records.flatMap { it.samples }
-            if (samples.isEmpty()) 0.0
-            else samples.map { it.beatsPerMinute.toDouble() }.average()
+            response[HeartRateRecord.BPM_AVG]?.toDouble() ?: 0.0
         } catch (e: Exception) {
             0.0
         }

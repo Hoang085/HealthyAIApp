@@ -5,6 +5,8 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+import com.healthyai.app.domain.model.HabitCategory
+
 /**
  * Room Entity — bảng "habit_logs".
  * isDirty = true: chưa đồng bộ lên cloud (Last Write Wins strategy cho conflict resolution).
@@ -25,9 +27,10 @@ data class HabitLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val habitId: Long,
     val habitName: String,
-    val category: String,
+    val category: HabitCategory,
     val value: Float,
     val unit: String,
+    val targetValueAtTime: Float, // Lưu mục tiêu tại thời điểm log để phân tích lịch sử
     val loggedAt: Long = System.currentTimeMillis(),
     val note: String = "",
     val isDirty: Boolean = true  // Offline-first: true = chưa sync lên Firebase

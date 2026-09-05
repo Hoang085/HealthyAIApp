@@ -44,6 +44,7 @@ class SyncWorker @AssistedInject constructor(
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)
+                .setRequiresDeviceIdle(true) // Sync when user is not actively using device
                 .build()
 
             workManager.enqueueUniquePeriodicWork(

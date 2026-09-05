@@ -5,7 +5,6 @@ import com.healthyai.app.data.local.dao.HabitLogDao
 import com.healthyai.app.data.local.entity.HabitEntity
 import com.healthyai.app.data.local.entity.HabitLogEntity
 import com.healthyai.app.domain.model.Habit
-import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitLog
 import com.healthyai.app.domain.repository.HabitRepository
 import kotlinx.coroutines.flow.Flow
@@ -40,29 +39,52 @@ class HabitRepositoryImpl @Inject constructor(
 
     // ── Mappers (Entity ↔ Domain) ───────────────────────────
     private fun HabitEntity.toDomain() = Habit(
-        id = id, name = name,
-        category = HabitCategory.valueOf(category),
-        targetValue = targetValue, unit = unit,
-        isActive = isActive, createdAt = createdAt
+        id = id,
+        name = name,
+        category = category,
+        targetValue = targetValue,
+        unit = unit,
+        timeOfDay = timeOfDay,
+        frequency = frequency,
+        isActive = isActive,
+        createdAt = createdAt
     )
 
     private fun Habit.toEntity() = HabitEntity(
-        id = id, name = name, category = category.name,
-        targetValue = targetValue, unit = unit,
-        isActive = isActive, createdAt = createdAt
+        id = id,
+        name = name,
+        category = category,
+        targetValue = targetValue,
+        unit = unit,
+        timeOfDay = timeOfDay,
+        frequency = frequency,
+        isActive = isActive,
+        createdAt = createdAt
     )
 
     private fun HabitLogEntity.toDomain() = HabitLog(
-        id = id, habitId = habitId, habitName = habitName,
-        category = HabitCategory.valueOf(category),
-        value = value, unit = unit,
-        loggedAt = loggedAt, note = note, isDirty = isDirty
+        id = id,
+        habitId = habitId,
+        habitName = habitName,
+        category = category,
+        value = value,
+        unit = unit,
+        targetValueAtTime = targetValueAtTime,
+        loggedAt = loggedAt,
+        note = note,
+        isDirty = isDirty
     )
 
     private fun HabitLog.toEntity() = HabitLogEntity(
-        id = id, habitId = habitId, habitName = habitName,
-        category = category.name,
-        value = value, unit = unit,
-        loggedAt = loggedAt, note = note, isDirty = isDirty
+        id = id,
+        habitId = habitId,
+        habitName = habitName,
+        category = category,
+        value = value,
+        unit = unit,
+        targetValueAtTime = targetValueAtTime,
+        loggedAt = loggedAt,
+        note = note,
+        isDirty = isDirty
     )
 }

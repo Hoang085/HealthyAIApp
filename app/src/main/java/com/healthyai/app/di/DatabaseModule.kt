@@ -16,14 +16,6 @@ import javax.inject.Singleton
 
 /**
  * DatabaseModule — Cung cấp Room Database được mã hóa bởi SQLCipher.
- *
- * Bảo mật:
- * - SQLCipher mã hóa toàn bộ file database với AES-256
- * - Ngăn chặn trích xuất dữ liệu kể cả khi máy bị root
- *
- * Production TODO:
- * - Lưu passphrase trong Android Keystore thay vì hardcode
- * - Tham khảo: https://developer.android.com/training/articles/keystore
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -32,7 +24,7 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        // TODO (Production): Thay thế bằng key từ Android Keystore
+        // SQLCipher cung cấp sẵn hàm getBytes() để chuyển charArray sang byte array an toàn hơn
         val passphrase = SQLiteDatabase.getBytes("REPLACE_WITH_SECURE_KEY_FROM_KEYSTORE".toCharArray())
         val factory = SupportFactory(passphrase)
 
@@ -42,7 +34,7 @@ object DatabaseModule {
             AppDatabase.DATABASE_NAME
         )
             .openHelperFactory(factory)             // SQLCipher AES-256 encryption
-            .fallbackToDestructiveMigration(true)   // TODO: Thay bằng Migration khi release
+            .fallbackToDestructiveMigration()       // Cập nhật: Không truyền tham số true
             .build()
     }
 

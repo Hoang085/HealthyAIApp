@@ -35,12 +35,11 @@ class CameraViewModel @Inject constructor() : ViewModel() {
     fun analyzeImage(image: InputImage) {
         viewModelScope.launch {
             _uiState.update { it.copy(isAnalyzing = true, detectedLabels = emptyList(), error = null) }
-            runCatching {
-                labeler.process(image).await()
-            }.onSuccess { labels ->
+            try {
+                val labels = labeler.process(image).await()
                 val foodLabels = labels.map { FoodLabel(it.text, it.confidence) }
                 _uiState.update { it.copy(detectedLabels = foodLabels, isAnalyzing = false) }
-            }.onFailure { e ->
+            } catch (e: Exception) {
                 _uiState.update { it.copy(error = "Lỗi phân tích: ${e.message}", isAnalyzing = false) }
             }
         }

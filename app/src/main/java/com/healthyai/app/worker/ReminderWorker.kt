@@ -28,10 +28,15 @@ class ReminderWorker @AssistedInject constructor(
         private const val NOTIF_ID = 1001
 
         fun schedule(workManager: WorkManager) {
+            val constraints = Constraints.Builder()
+                .setRequiresBatteryNotLow(true)
+                .build()
+
             workManager.enqueueUniquePeriodicWork(
                 WORK_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,
                 PeriodicWorkRequestBuilder<ReminderWorker>(24, TimeUnit.HOURS)
+                    .setConstraints(constraints)
                     .build()
             )
         }
