@@ -1,10 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose) // Dùng cho Kotlin 2.0+
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.hilt.android)
-    // alias(libs.plugins.google.services)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -31,7 +31,9 @@ android {
         }
         debug {
             isDebuggable = true
-            applicationIdSuffix = ".debug"
+            // Lưu ý: Nếu google-services.json chưa add package "com.healthyai.app.debug"
+            // trên Firebase Console, hãy tạm thời comment dòng dưới để tránh lỗi build:
+            // applicationIdSuffix = ".debug"
         }
     }
 
@@ -39,7 +41,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    
+
     kotlin {
         jvmToolchain(21)
     }
@@ -50,7 +52,7 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
         }
         resources {
             excludes += setOf(
@@ -72,6 +74,11 @@ ksp {
 dependencies {
     // Themes
     implementation("com.google.android.material:material:1.12.0")
+
+    // ── Firebase (Thêm mới) ─────────────────────────────────────
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.auth)
 
     // ── AndroidX Core ──────────────────────────────────────────
     implementation(libs.androidx.core.ktx)

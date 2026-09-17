@@ -15,6 +15,8 @@ import com.healthyai.app.data.local.dao.HabitDao;
 import com.healthyai.app.data.local.dao.HabitDao_Impl;
 import com.healthyai.app.data.local.dao.HabitLogDao;
 import com.healthyai.app.data.local.dao.HabitLogDao_Impl;
+import com.healthyai.app.data.local.dao.health.HealthDataDao;
+import com.healthyai.app.data.local.dao.health.HealthDataDao_Impl;
 import java.lang.Class;
 import java.lang.Override;
 import java.lang.String;
@@ -35,24 +37,28 @@ public final class AppDatabase_Impl extends AppDatabase {
 
   private volatile HabitLogDao _habitLogDao;
 
+  private volatile HealthDataDao _healthDataDao;
+
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(2) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(3) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS `habits` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `category` TEXT NOT NULL, `targetValue` REAL NOT NULL, `unit` TEXT NOT NULL, `timeOfDay` TEXT NOT NULL, `frequency` TEXT NOT NULL, `isActive` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `habit_logs` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `habitId` INTEGER NOT NULL, `habitName` TEXT NOT NULL, `category` TEXT NOT NULL, `value` REAL NOT NULL, `unit` TEXT NOT NULL, `targetValueAtTime` REAL NOT NULL, `loggedAt` INTEGER NOT NULL, `note` TEXT NOT NULL, `isDirty` INTEGER NOT NULL, FOREIGN KEY(`habitId`) REFERENCES `habits`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_logs_habitId` ON `habit_logs` (`habitId`)");
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_logs_loggedAt` ON `habit_logs` (`loggedAt`)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `health_data_history` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `steps` INTEGER NOT NULL, `sleepHours` REAL NOT NULL, `heartRate` REAL NOT NULL, `activeCalories` REAL NOT NULL, `recordedAt` INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '03c765d0aff0870e905fe5b2b8aa2b06')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b88155cf5a149e88c8a385eb25779844')");
       }
 
       @Override
       public void dropAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("DROP TABLE IF EXISTS `habits`");
         db.execSQL("DROP TABLE IF EXISTS `habit_logs`");
+        db.execSQL("DROP TABLE IF EXISTS `health_data_history`");
         final List<? extends RoomDatabase.Callback> _callbacks = mCallbacks;
         if (_callbacks != null) {
           for (RoomDatabase.Callback _callback : _callbacks) {
@@ -139,9 +145,25 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoHabitLogs + "\n"
                   + " Found:\n" + _existingHabitLogs);
         }
+        final HashMap<String, TableInfo.Column> _columnsHealthDataHistory = new HashMap<String, TableInfo.Column>(6);
+        _columnsHealthDataHistory.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsHealthDataHistory.put("steps", new TableInfo.Column("steps", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsHealthDataHistory.put("sleepHours", new TableInfo.Column("sleepHours", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsHealthDataHistory.put("heartRate", new TableInfo.Column("heartRate", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsHealthDataHistory.put("activeCalories", new TableInfo.Column("activeCalories", "REAL", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsHealthDataHistory.put("recordedAt", new TableInfo.Column("recordedAt", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        final HashSet<TableInfo.ForeignKey> _foreignKeysHealthDataHistory = new HashSet<TableInfo.ForeignKey>(0);
+        final HashSet<TableInfo.Index> _indicesHealthDataHistory = new HashSet<TableInfo.Index>(0);
+        final TableInfo _infoHealthDataHistory = new TableInfo("health_data_history", _columnsHealthDataHistory, _foreignKeysHealthDataHistory, _indicesHealthDataHistory);
+        final TableInfo _existingHealthDataHistory = TableInfo.read(db, "health_data_history");
+        if (!_infoHealthDataHistory.equals(_existingHealthDataHistory)) {
+          return new RoomOpenHelper.ValidationResult(false, "health_data_history(com.healthyai.app.data.local.entity.health.HealthDataEntity).\n"
+                  + " Expected:\n" + _infoHealthDataHistory + "\n"
+                  + " Found:\n" + _existingHealthDataHistory);
+        }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "03c765d0aff0870e905fe5b2b8aa2b06", "75c6940ed85e807dada1ef533b184160");
+    }, "b88155cf5a149e88c8a385eb25779844", "1bf3ac0f9f5b6848a11e0b25a6cb4631");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;
@@ -152,7 +174,7 @@ public final class AppDatabase_Impl extends AppDatabase {
   protected InvalidationTracker createInvalidationTracker() {
     final HashMap<String, String> _shadowTablesMap = new HashMap<String, String>(0);
     final HashMap<String, Set<String>> _viewTables = new HashMap<String, Set<String>>(0);
-    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "habits","habit_logs");
+    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "habits","habit_logs","health_data_history");
   }
 
   @Override
@@ -170,6 +192,7 @@ public final class AppDatabase_Impl extends AppDatabase {
       }
       _db.execSQL("DELETE FROM `habits`");
       _db.execSQL("DELETE FROM `habit_logs`");
+      _db.execSQL("DELETE FROM `health_data_history`");
       super.setTransactionSuccessful();
     } finally {
       super.endTransaction();
@@ -189,6 +212,7 @@ public final class AppDatabase_Impl extends AppDatabase {
     final HashMap<Class<?>, List<Class<?>>> _typeConvertersMap = new HashMap<Class<?>, List<Class<?>>>();
     _typeConvertersMap.put(HabitDao.class, HabitDao_Impl.getRequiredConverters());
     _typeConvertersMap.put(HabitLogDao.class, HabitLogDao_Impl.getRequiredConverters());
+    _typeConvertersMap.put(HealthDataDao.class, HealthDataDao_Impl.getRequiredConverters());
     return _typeConvertersMap;
   }
 
@@ -231,6 +255,20 @@ public final class AppDatabase_Impl extends AppDatabase {
           _habitLogDao = new HabitLogDao_Impl(this);
         }
         return _habitLogDao;
+      }
+    }
+  }
+
+  @Override
+  public HealthDataDao healthDataDao() {
+    if (_healthDataDao != null) {
+      return _healthDataDao;
+    } else {
+      synchronized(this) {
+        if(_healthDataDao == null) {
+          _healthDataDao = new HealthDataDao_Impl(this);
+        }
+        return _healthDataDao;
       }
     }
   }

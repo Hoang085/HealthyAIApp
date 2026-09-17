@@ -27,7 +27,7 @@ hiltExt         = "1.2.0"
 
 # Database
 room            = "2.6.1"
-sqlcipher       = "4.5.4"
+sqlcipher       = "4.6.1"
 sqliteKtx       = "2.4.0"
 
 # Health Connect
@@ -88,7 +88,7 @@ androidx-room-runtime               = { group = "androidx.room",         name = 
 androidx-room-compiler              = { group = "androidx.room",         name = "room-compiler",               version.ref = "room" }
 androidx-room-ktx                   = { group = "androidx.room",         name = "room-ktx",                    version.ref = "room" }
 androidx-room-testing               = { group = "androidx.room",         name = "room-testing",                version.ref = "room" }
-sqlcipher-android                   = { group = "net.zetetic",           name = "android-database-sqlcipher",  version.ref = "sqlcipher" }
+sqlcipher-android                   = { group = "net.zetetic",           name = "sqlcipher-android",           version.ref = "sqlcipher" }
 sqlite-ktx                          = { group = "androidx.sqlite",       name = "sqlite-ktx",                  version.ref = "sqliteKtx" }
 
 # Health Connect
@@ -118,9 +118,9 @@ androidx-glance-appwidget           = { group = "androidx.glance",       name = 
 androidx-glance-material3           = { group = "androidx.glance",       name = "glance-material3",            version.ref = "glance" }
 
 # Firebase (Optional — bỏ comment khi đã có google-services.json)
-# firebase-bom                      = { group = "com.google.firebase",   name = "firebase-bom",                version.ref = "firebaseBom" }
-# firebase-firestore                = { group = "com.google.firebase",   name = "firebase-firestore-ktx" }
-# firebase-auth                     = { group = "com.google.firebase",   name = "firebase-auth-ktx" }
+firebase-bom                      = { group = "com.google.firebase",   name = "firebase-bom",                version.ref = "firebaseBom" }
+firebase-firestore                = { group = "com.google.firebase",   name = "firebase-firestore-ktx" }
+firebase-auth                     = { group = "com.google.firebase",   name = "firebase-auth-ktx" }
 
 # Testing
 junit                               = { group = "junit",                 name = "junit",                       version.ref = "junit" }
@@ -137,4 +137,4 @@ kotlin-android      = { id = "org.jetbrains.kotlin.android",      version.ref = 
 kotlin-compose      = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-ksp          = { id = "com.google.devtools.ksp",           version.ref = "ksp" }
 hilt-android        = { id = "com.google.dagger.hilt.android",    version.ref = "hilt" }
-# google-services   = { id = "com.google.gms.google-services",    version = "4.4.2" }
+google-services   = { id = "com.google.gms.google-services",    version = "4.4.2" }

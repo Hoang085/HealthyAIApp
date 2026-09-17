@@ -1,5 +1,7 @@
 package com.healthyai.app.di
 
+import com.healthyai.app.data.healthconnect.HealthConnectDataSource
+import com.healthyai.app.data.healthconnect.HealthConnectDataSourceImpl
 import com.healthyai.app.data.repository.HabitRepositoryImpl
 import com.healthyai.app.data.repository.HealthDataRepositoryImpl
 import com.healthyai.app.domain.repository.HabitRepository
@@ -25,4 +27,8 @@ abstract class AppModule {
     @Binds
     @Singleton
     abstract fun bindHealthDataRepository(impl: HealthDataRepositoryImpl): HealthDataRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindHealthConnectDataSource(impl: HealthConnectDataSourceImpl): HealthConnectDataSource
 }

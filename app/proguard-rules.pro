@@ -21,6 +21,5 @@
 # ── ML Kit ────────────────────────────────────────────────────
 -keep class com.google.mlkit.** { *; }
 
-# ── SQLCipher ─────────────────────────────────────────────────
--keep class net.sqlcipher.** { *; }
--keep class net.sqlcipher.database.** { *; }
+# ── SQLCipher (net.zetetic:sqlcipher-android 4.x) ─────────────
+-keep class net.zetetic.database.** { *; }

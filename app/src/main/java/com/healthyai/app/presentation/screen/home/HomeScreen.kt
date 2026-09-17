@@ -36,17 +36,17 @@ import java.util.Locale
 fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    uiState.error?.let { error ->
-        LaunchedEffect(error) {
-            viewModel.dismissError()
-        }
-    }
-
-    HomeScreenContent(uiState = uiState)
+    HomeScreenContent(
+        uiState = uiState,
+        onDismissError = viewModel::dismissError
+    )
 }
 
 @Composable
-fun HomeScreenContent(uiState: HomeUiState) {
+fun HomeScreenContent(
+    uiState: HomeUiState,
+    onDismissError: () -> Unit
+) {
     Scaffold(
         containerColor = Color(0xFFF8F9FA) // Restore Light gray background
     ) { paddingValues ->
@@ -79,10 +79,36 @@ fun HomeScreenContent(uiState: HomeUiState) {
                 item { EmptyHabitsCard() }
             } else {
                 items(uiState.habits) { habit ->
-                    // Mocking completion for the sake of UI design (as in the image)
-                    val isCompleted = habit.name.contains("Thiền", ignoreCase = true)
-                    HabitItem(habit, isCompleted = isCompleted)
+                    // Set completed if progress >= target (though HomeUiState doesn't have progress yet)
+                    // Let's assume for now, and handle error state if it exists
+                    HabitItem(habit, isCompleted = false)
                 }
+            }
+            
+            if (uiState.error != null) {
+                item {
+                    ErrorStateView(message = uiState.error, onDismiss = onDismissError)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ErrorStateView(message: String, onDismiss: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Error, null, tint = Color.Red)
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(message, modifier = Modifier.weight(1f), color = Color.Red)
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, null, tint = Color.Red)
             }
         }
     }
@@ -311,7 +337,8 @@ fun HomeScreenPreview() {
                     Habit(id = 3, name = "Đi bộ buổi tối", category = HabitCategory.EXERCISE, targetValue = 30f, unit = "phút")
                 ),
                 isLoading = false
-            )
+            ),
+            onDismissError = {}
         )
     }
 }

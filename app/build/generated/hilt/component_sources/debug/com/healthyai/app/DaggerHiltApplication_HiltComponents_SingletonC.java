@@ -15,27 +15,46 @@ import androidx.work.WorkerParameters;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-import com.healthyai.app.data.healthconnect.HealthConnectManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.healthyai.app.data.firebase.FirestoreSyncDataSource;
+import com.healthyai.app.data.healthconnect.HealthConnectDataSourceImpl;
 import com.healthyai.app.data.local.AppDatabase;
 import com.healthyai.app.data.local.dao.HabitDao;
 import com.healthyai.app.data.local.dao.HabitLogDao;
+import com.healthyai.app.data.local.dao.health.HealthDataDao;
 import com.healthyai.app.data.repository.HabitRepositoryImpl;
 import com.healthyai.app.data.repository.HealthDataRepositoryImpl;
 import com.healthyai.app.di.DatabaseModule_ProvideAppDatabaseFactory;
 import com.healthyai.app.di.DatabaseModule_ProvideHabitDaoFactory;
 import com.healthyai.app.di.DatabaseModule_ProvideHabitLogDaoFactory;
-import com.healthyai.app.domain.usecase.GenerateSuggestionsUseCase;
+import com.healthyai.app.di.DatabaseModule_ProvideHealthDataDaoFactory;
+import com.healthyai.app.di.FirebaseModule_ProvideFirebaseAuthFactory;
+import com.healthyai.app.di.FirebaseModule_ProvideFirebaseFirestoreFactory;
+import com.healthyai.app.domain.repository.HabitRepository;
 import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase;
 import com.healthyai.app.domain.usecase.HabitRuleEngine;
 import com.healthyai.app.domain.usecase.LogHabitUseCase;
+import com.healthyai.app.domain.usecase.habit.AddHabitUseCase;
+import com.healthyai.app.domain.usecase.habit.DeleteHabitUseCase;
+import com.healthyai.app.domain.usecase.habit.UpdateHabitUseCase;
+import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase;
+import com.healthyai.app.domain.usecase.health.GetHealthInsightsUseCase;
+import com.healthyai.app.domain.usecase.health.GetVitalityScoreUseCase;
 import com.healthyai.app.presentation.screen.camera.CameraViewModel;
 import com.healthyai.app.presentation.screen.camera.CameraViewModel_HiltModules;
 import com.healthyai.app.presentation.screen.habits.HabitsViewModel;
 import com.healthyai.app.presentation.screen.habits.HabitsViewModel_HiltModules;
+import com.healthyai.app.presentation.screen.habits.addedit.AddEditHabitViewModel;
+import com.healthyai.app.presentation.screen.habits.addedit.AddEditHabitViewModel_HiltModules;
 import com.healthyai.app.presentation.screen.home.HomeViewModel;
 import com.healthyai.app.presentation.screen.home.HomeViewModel_HiltModules;
 import com.healthyai.app.presentation.screen.insights.InsightsViewModel;
 import com.healthyai.app.presentation.screen.insights.InsightsViewModel_HiltModules;
+import com.healthyai.app.presentation.screen.tracking.CoreTrackingViewModel;
+import com.healthyai.app.presentation.screen.tracking.CoreTrackingViewModel_HiltModules;
+import com.healthyai.app.worker.HealthSyncWorker;
+import com.healthyai.app.worker.HealthSyncWorker_AssistedFactory;
 import com.healthyai.app.worker.ReminderWorker;
 import com.healthyai.app.worker.ReminderWorker_AssistedFactory;
 import com.healthyai.app.worker.SyncWorker;
@@ -400,7 +419,7 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
 
     @Override
     public Map<Class<?>, Boolean> getViewModelKeys() {
-      return LazyClassKeyMap.<Boolean>of(ImmutableMap.<String, Boolean>of(LazyClassKeyProvider.com_healthyai_app_presentation_screen_camera_CameraViewModel, CameraViewModel_HiltModules.KeyModule.provide(), LazyClassKeyProvider.com_healthyai_app_presentation_screen_habits_HabitsViewModel, HabitsViewModel_HiltModules.KeyModule.provide(), LazyClassKeyProvider.com_healthyai_app_presentation_screen_home_HomeViewModel, HomeViewModel_HiltModules.KeyModule.provide(), LazyClassKeyProvider.com_healthyai_app_presentation_screen_insights_InsightsViewModel, InsightsViewModel_HiltModules.KeyModule.provide()));
+      return LazyClassKeyMap.<Boolean>of(ImmutableMap.<String, Boolean>builderWithExpectedSize(6).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_habits_addedit_AddEditHabitViewModel, AddEditHabitViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_camera_CameraViewModel, CameraViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_tracking_CoreTrackingViewModel, CoreTrackingViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_habits_HabitsViewModel, HabitsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_home_HomeViewModel, HomeViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_insights_InsightsViewModel, InsightsViewModel_HiltModules.KeyModule.provide()).build());
     }
 
     @Override
@@ -420,36 +439,52 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_healthyai_app_presentation_screen_home_HomeViewModel = "com.healthyai.app.presentation.screen.home.HomeViewModel";
-
-      static String com_healthyai_app_presentation_screen_insights_InsightsViewModel = "com.healthyai.app.presentation.screen.insights.InsightsViewModel";
-
-      static String com_healthyai_app_presentation_screen_camera_CameraViewModel = "com.healthyai.app.presentation.screen.camera.CameraViewModel";
+      static String com_healthyai_app_presentation_screen_tracking_CoreTrackingViewModel = "com.healthyai.app.presentation.screen.tracking.CoreTrackingViewModel";
 
       static String com_healthyai_app_presentation_screen_habits_HabitsViewModel = "com.healthyai.app.presentation.screen.habits.HabitsViewModel";
 
+      static String com_healthyai_app_presentation_screen_habits_addedit_AddEditHabitViewModel = "com.healthyai.app.presentation.screen.habits.addedit.AddEditHabitViewModel";
+
+      static String com_healthyai_app_presentation_screen_insights_InsightsViewModel = "com.healthyai.app.presentation.screen.insights.InsightsViewModel";
+
+      static String com_healthyai_app_presentation_screen_home_HomeViewModel = "com.healthyai.app.presentation.screen.home.HomeViewModel";
+
+      static String com_healthyai_app_presentation_screen_camera_CameraViewModel = "com.healthyai.app.presentation.screen.camera.CameraViewModel";
+
       @KeepFieldType
-      HomeViewModel com_healthyai_app_presentation_screen_home_HomeViewModel2;
+      CoreTrackingViewModel com_healthyai_app_presentation_screen_tracking_CoreTrackingViewModel2;
+
+      @KeepFieldType
+      HabitsViewModel com_healthyai_app_presentation_screen_habits_HabitsViewModel2;
+
+      @KeepFieldType
+      AddEditHabitViewModel com_healthyai_app_presentation_screen_habits_addedit_AddEditHabitViewModel2;
 
       @KeepFieldType
       InsightsViewModel com_healthyai_app_presentation_screen_insights_InsightsViewModel2;
 
       @KeepFieldType
-      CameraViewModel com_healthyai_app_presentation_screen_camera_CameraViewModel2;
+      HomeViewModel com_healthyai_app_presentation_screen_home_HomeViewModel2;
 
       @KeepFieldType
-      HabitsViewModel com_healthyai_app_presentation_screen_habits_HabitsViewModel2;
+      CameraViewModel com_healthyai_app_presentation_screen_camera_CameraViewModel2;
     }
   }
 
   private static final class ViewModelCImpl extends HiltApplication_HiltComponents.ViewModelC {
+    private final SavedStateHandle savedStateHandle;
+
     private final SingletonCImpl singletonCImpl;
 
     private final ActivityRetainedCImpl activityRetainedCImpl;
 
     private final ViewModelCImpl viewModelCImpl = this;
 
+    private Provider<AddEditHabitViewModel> addEditHabitViewModelProvider;
+
     private Provider<CameraViewModel> cameraViewModelProvider;
+
+    private Provider<CoreTrackingViewModel> coreTrackingViewModelProvider;
 
     private Provider<HabitsViewModel> habitsViewModelProvider;
 
@@ -462,9 +497,25 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
         ViewModelLifecycle viewModelLifecycleParam) {
       this.singletonCImpl = singletonCImpl;
       this.activityRetainedCImpl = activityRetainedCImpl;
-
+      this.savedStateHandle = savedStateHandleParam;
       initialize(savedStateHandleParam, viewModelLifecycleParam);
 
+    }
+
+    private AddHabitUseCase addHabitUseCase() {
+      return new AddHabitUseCase(singletonCImpl.habitRepositoryImplProvider.get());
+    }
+
+    private UpdateHabitUseCase updateHabitUseCase() {
+      return new UpdateHabitUseCase(singletonCImpl.habitRepositoryImplProvider.get());
+    }
+
+    private DeleteHabitUseCase deleteHabitUseCase() {
+      return new DeleteHabitUseCase(singletonCImpl.habitRepositoryImplProvider.get());
+    }
+
+    private GetHealthDataUseCase getHealthDataUseCase() {
+      return new GetHealthDataUseCase(singletonCImpl.healthDataRepositoryImplProvider.get());
     }
 
     private GetTodayHabitsUseCase getTodayHabitsUseCase() {
@@ -475,22 +526,28 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
       return new LogHabitUseCase(singletonCImpl.habitRepositoryImplProvider.get());
     }
 
-    private GenerateSuggestionsUseCase generateSuggestionsUseCase() {
-      return new GenerateSuggestionsUseCase(singletonCImpl.habitRuleEngineProvider.get());
+    private GetHealthInsightsUseCase getHealthInsightsUseCase() {
+      return new GetHealthInsightsUseCase(singletonCImpl.habitRepositoryImplProvider.get(), singletonCImpl.healthDataRepositoryImplProvider.get(), singletonCImpl.habitRuleEngineProvider.get());
+    }
+
+    private GetVitalityScoreUseCase getVitalityScoreUseCase() {
+      return new GetVitalityScoreUseCase(singletonCImpl.habitRepositoryImplProvider.get(), singletonCImpl.habitRuleEngineProvider.get());
     }
 
     @SuppressWarnings("unchecked")
     private void initialize(final SavedStateHandle savedStateHandleParam,
         final ViewModelLifecycle viewModelLifecycleParam) {
-      this.cameraViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 0);
-      this.habitsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
-      this.homeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
-      this.insightsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.addEditHabitViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 0);
+      this.cameraViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
+      this.coreTrackingViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
+      this.habitsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.homeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 4);
+      this.insightsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 5);
     }
 
     @Override
     public Map<Class<?>, javax.inject.Provider<ViewModel>> getHiltViewModelMap() {
-      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(ImmutableMap.<String, javax.inject.Provider<ViewModel>>of(LazyClassKeyProvider.com_healthyai_app_presentation_screen_camera_CameraViewModel, ((Provider) cameraViewModelProvider), LazyClassKeyProvider.com_healthyai_app_presentation_screen_habits_HabitsViewModel, ((Provider) habitsViewModelProvider), LazyClassKeyProvider.com_healthyai_app_presentation_screen_home_HomeViewModel, ((Provider) homeViewModelProvider), LazyClassKeyProvider.com_healthyai_app_presentation_screen_insights_InsightsViewModel, ((Provider) insightsViewModelProvider)));
+      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(ImmutableMap.<String, javax.inject.Provider<ViewModel>>builderWithExpectedSize(6).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_habits_addedit_AddEditHabitViewModel, ((Provider) addEditHabitViewModelProvider)).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_camera_CameraViewModel, ((Provider) cameraViewModelProvider)).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_tracking_CoreTrackingViewModel, ((Provider) coreTrackingViewModelProvider)).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_habits_HabitsViewModel, ((Provider) habitsViewModelProvider)).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_home_HomeViewModel, ((Provider) homeViewModelProvider)).put(LazyClassKeyProvider.com_healthyai_app_presentation_screen_insights_InsightsViewModel, ((Provider) insightsViewModelProvider)).build());
     }
 
     @Override
@@ -504,9 +561,13 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
 
       static String com_healthyai_app_presentation_screen_habits_HabitsViewModel = "com.healthyai.app.presentation.screen.habits.HabitsViewModel";
 
+      static String com_healthyai_app_presentation_screen_insights_InsightsViewModel = "com.healthyai.app.presentation.screen.insights.InsightsViewModel";
+
+      static String com_healthyai_app_presentation_screen_habits_addedit_AddEditHabitViewModel = "com.healthyai.app.presentation.screen.habits.addedit.AddEditHabitViewModel";
+
       static String com_healthyai_app_presentation_screen_home_HomeViewModel = "com.healthyai.app.presentation.screen.home.HomeViewModel";
 
-      static String com_healthyai_app_presentation_screen_insights_InsightsViewModel = "com.healthyai.app.presentation.screen.insights.InsightsViewModel";
+      static String com_healthyai_app_presentation_screen_tracking_CoreTrackingViewModel = "com.healthyai.app.presentation.screen.tracking.CoreTrackingViewModel";
 
       @KeepFieldType
       CameraViewModel com_healthyai_app_presentation_screen_camera_CameraViewModel2;
@@ -515,10 +576,16 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
       HabitsViewModel com_healthyai_app_presentation_screen_habits_HabitsViewModel2;
 
       @KeepFieldType
+      InsightsViewModel com_healthyai_app_presentation_screen_insights_InsightsViewModel2;
+
+      @KeepFieldType
+      AddEditHabitViewModel com_healthyai_app_presentation_screen_habits_addedit_AddEditHabitViewModel2;
+
+      @KeepFieldType
       HomeViewModel com_healthyai_app_presentation_screen_home_HomeViewModel2;
 
       @KeepFieldType
-      InsightsViewModel com_healthyai_app_presentation_screen_insights_InsightsViewModel2;
+      CoreTrackingViewModel com_healthyai_app_presentation_screen_tracking_CoreTrackingViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
@@ -542,17 +609,23 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
       @Override
       public T get() {
         switch (id) {
-          case 0: // com.healthyai.app.presentation.screen.camera.CameraViewModel 
+          case 0: // com.healthyai.app.presentation.screen.habits.addedit.AddEditHabitViewModel 
+          return (T) new AddEditHabitViewModel(viewModelCImpl.addHabitUseCase(), viewModelCImpl.updateHabitUseCase(), viewModelCImpl.deleteHabitUseCase(), singletonCImpl.habitRepositoryImplProvider.get(), viewModelCImpl.savedStateHandle);
+
+          case 1: // com.healthyai.app.presentation.screen.camera.CameraViewModel 
           return (T) new CameraViewModel();
 
-          case 1: // com.healthyai.app.presentation.screen.habits.HabitsViewModel 
-          return (T) new HabitsViewModel(viewModelCImpl.getTodayHabitsUseCase(), viewModelCImpl.logHabitUseCase());
+          case 2: // com.healthyai.app.presentation.screen.tracking.CoreTrackingViewModel 
+          return (T) new CoreTrackingViewModel(viewModelCImpl.getHealthDataUseCase());
 
-          case 2: // com.healthyai.app.presentation.screen.home.HomeViewModel 
-          return (T) new HomeViewModel(viewModelCImpl.getTodayHabitsUseCase(), singletonCImpl.healthDataRepositoryImplProvider.get());
+          case 3: // com.healthyai.app.presentation.screen.habits.HabitsViewModel 
+          return (T) new HabitsViewModel(viewModelCImpl.getTodayHabitsUseCase(), viewModelCImpl.logHabitUseCase(), singletonCImpl.habitRepositoryImplProvider.get());
 
-          case 3: // com.healthyai.app.presentation.screen.insights.InsightsViewModel 
-          return (T) new InsightsViewModel(singletonCImpl.habitRepositoryImplProvider.get(), viewModelCImpl.generateSuggestionsUseCase(), singletonCImpl.habitRuleEngineProvider.get());
+          case 4: // com.healthyai.app.presentation.screen.home.HomeViewModel 
+          return (T) new HomeViewModel(viewModelCImpl.getTodayHabitsUseCase(), viewModelCImpl.getHealthDataUseCase());
+
+          case 5: // com.healthyai.app.presentation.screen.insights.InsightsViewModel 
+          return (T) new InsightsViewModel(viewModelCImpl.getHealthInsightsUseCase(), viewModelCImpl.getVitalityScoreUseCase());
 
           default: throw new AssertionError(id);
         }
@@ -634,17 +707,25 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
 
     private final SingletonCImpl singletonCImpl = this;
 
-    private Provider<ReminderWorker_AssistedFactory> reminderWorker_AssistedFactoryProvider;
-
-    private Provider<SyncWorker_AssistedFactory> syncWorker_AssistedFactoryProvider;
+    private Provider<HealthConnectDataSourceImpl> healthConnectDataSourceImplProvider;
 
     private Provider<AppDatabase> provideAppDatabaseProvider;
 
+    private Provider<HealthDataRepositoryImpl> healthDataRepositoryImplProvider;
+
+    private Provider<HealthSyncWorker_AssistedFactory> healthSyncWorker_AssistedFactoryProvider;
+
+    private Provider<ReminderWorker_AssistedFactory> reminderWorker_AssistedFactoryProvider;
+
     private Provider<HabitRepositoryImpl> habitRepositoryImplProvider;
 
-    private Provider<HealthConnectManager> healthConnectManagerProvider;
+    private Provider<FirebaseFirestore> provideFirebaseFirestoreProvider;
 
-    private Provider<HealthDataRepositoryImpl> healthDataRepositoryImplProvider;
+    private Provider<FirestoreSyncDataSource> firestoreSyncDataSourceProvider;
+
+    private Provider<FirebaseAuth> provideFirebaseAuthProvider;
+
+    private Provider<SyncWorker_AssistedFactory> syncWorker_AssistedFactoryProvider;
 
     private Provider<HabitRuleEngine> habitRuleEngineProvider;
 
@@ -654,13 +735,8 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
 
     }
 
-    private Map<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>> mapOfStringAndProviderOfWorkerAssistedFactoryOf(
-        ) {
-      return ImmutableMap.<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>>of("com.healthyai.app.worker.ReminderWorker", ((Provider) reminderWorker_AssistedFactoryProvider), "com.healthyai.app.worker.SyncWorker", ((Provider) syncWorker_AssistedFactoryProvider));
-    }
-
-    private HiltWorkerFactory hiltWorkerFactory() {
-      return WorkerFactoryModule_ProvideFactoryFactory.provideFactory(mapOfStringAndProviderOfWorkerAssistedFactoryOf());
+    private HealthDataDao healthDataDao() {
+      return DatabaseModule_ProvideHealthDataDaoFactory.provideHealthDataDao(provideAppDatabaseProvider.get());
     }
 
     private HabitDao habitDao() {
@@ -671,20 +747,38 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
       return DatabaseModule_ProvideHabitLogDaoFactory.provideHabitLogDao(provideAppDatabaseProvider.get());
     }
 
+    private Map<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>> mapOfStringAndProviderOfWorkerAssistedFactoryOf(
+        ) {
+      return ImmutableMap.<String, javax.inject.Provider<WorkerAssistedFactory<? extends ListenableWorker>>>of("com.healthyai.app.worker.HealthSyncWorker", ((Provider) healthSyncWorker_AssistedFactoryProvider), "com.healthyai.app.worker.ReminderWorker", ((Provider) reminderWorker_AssistedFactoryProvider), "com.healthyai.app.worker.SyncWorker", ((Provider) syncWorker_AssistedFactoryProvider));
+    }
+
+    private HiltWorkerFactory hiltWorkerFactory() {
+      return WorkerFactoryModule_ProvideFactoryFactory.provideFactory(mapOfStringAndProviderOfWorkerAssistedFactoryOf());
+    }
+
     @SuppressWarnings("unchecked")
     private void initialize(final ApplicationContextModule applicationContextModuleParam) {
-      this.reminderWorker_AssistedFactoryProvider = SingleCheck.provider(new SwitchingProvider<ReminderWorker_AssistedFactory>(singletonCImpl, 0));
-      this.syncWorker_AssistedFactoryProvider = SingleCheck.provider(new SwitchingProvider<SyncWorker_AssistedFactory>(singletonCImpl, 1));
+      this.healthConnectDataSourceImplProvider = DoubleCheck.provider(new SwitchingProvider<HealthConnectDataSourceImpl>(singletonCImpl, 2));
       this.provideAppDatabaseProvider = DoubleCheck.provider(new SwitchingProvider<AppDatabase>(singletonCImpl, 3));
-      this.habitRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<HabitRepositoryImpl>(singletonCImpl, 2));
-      this.healthConnectManagerProvider = DoubleCheck.provider(new SwitchingProvider<HealthConnectManager>(singletonCImpl, 5));
-      this.healthDataRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<HealthDataRepositoryImpl>(singletonCImpl, 4));
-      this.habitRuleEngineProvider = DoubleCheck.provider(new SwitchingProvider<HabitRuleEngine>(singletonCImpl, 6));
+      this.healthDataRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<HealthDataRepositoryImpl>(singletonCImpl, 1));
+      this.healthSyncWorker_AssistedFactoryProvider = SingleCheck.provider(new SwitchingProvider<HealthSyncWorker_AssistedFactory>(singletonCImpl, 0));
+      this.reminderWorker_AssistedFactoryProvider = SingleCheck.provider(new SwitchingProvider<ReminderWorker_AssistedFactory>(singletonCImpl, 4));
+      this.habitRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<HabitRepositoryImpl>(singletonCImpl, 6));
+      this.provideFirebaseFirestoreProvider = DoubleCheck.provider(new SwitchingProvider<FirebaseFirestore>(singletonCImpl, 8));
+      this.firestoreSyncDataSourceProvider = DoubleCheck.provider(new SwitchingProvider<FirestoreSyncDataSource>(singletonCImpl, 7));
+      this.provideFirebaseAuthProvider = DoubleCheck.provider(new SwitchingProvider<FirebaseAuth>(singletonCImpl, 9));
+      this.syncWorker_AssistedFactoryProvider = SingleCheck.provider(new SwitchingProvider<SyncWorker_AssistedFactory>(singletonCImpl, 5));
+      this.habitRuleEngineProvider = DoubleCheck.provider(new SwitchingProvider<HabitRuleEngine>(singletonCImpl, 10));
     }
 
     @Override
     public void injectHiltApplication(HiltApplication hiltApplication) {
       injectHiltApplication2(hiltApplication);
+    }
+
+    @Override
+    public HabitRepository habitRepository() {
+      return habitRepositoryImplProvider.get();
     }
 
     @Override
@@ -722,35 +816,52 @@ public final class DaggerHiltApplication_HiltComponents_SingletonC {
       @Override
       public T get() {
         switch (id) {
-          case 0: // com.healthyai.app.worker.ReminderWorker_AssistedFactory 
-          return (T) new ReminderWorker_AssistedFactory() {
+          case 0: // com.healthyai.app.worker.HealthSyncWorker_AssistedFactory 
+          return (T) new HealthSyncWorker_AssistedFactory() {
             @Override
-            public ReminderWorker create(Context context, WorkerParameters workerParams) {
-              return new ReminderWorker(context, workerParams);
+            public HealthSyncWorker create(Context context, WorkerParameters workerParams) {
+              return new HealthSyncWorker(context, workerParams, singletonCImpl.healthDataRepositoryImplProvider.get());
             }
           };
 
-          case 1: // com.healthyai.app.worker.SyncWorker_AssistedFactory 
-          return (T) new SyncWorker_AssistedFactory() {
-            @Override
-            public SyncWorker create(Context context2, WorkerParameters workerParams2) {
-              return new SyncWorker(context2, workerParams2);
-            }
-          };
+          case 1: // com.healthyai.app.data.repository.HealthDataRepositoryImpl 
+          return (T) new HealthDataRepositoryImpl(singletonCImpl.healthConnectDataSourceImplProvider.get(), singletonCImpl.healthDataDao());
 
-          case 2: // com.healthyai.app.data.repository.HabitRepositoryImpl 
-          return (T) new HabitRepositoryImpl(singletonCImpl.habitDao(), singletonCImpl.habitLogDao());
+          case 2: // com.healthyai.app.data.healthconnect.HealthConnectDataSourceImpl 
+          return (T) new HealthConnectDataSourceImpl(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
           case 3: // com.healthyai.app.data.local.AppDatabase 
           return (T) DatabaseModule_ProvideAppDatabaseFactory.provideAppDatabase(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
 
-          case 4: // com.healthyai.app.data.repository.HealthDataRepositoryImpl 
-          return (T) new HealthDataRepositoryImpl(singletonCImpl.healthConnectManagerProvider.get());
+          case 4: // com.healthyai.app.worker.ReminderWorker_AssistedFactory 
+          return (T) new ReminderWorker_AssistedFactory() {
+            @Override
+            public ReminderWorker create(Context context2, WorkerParameters workerParams2) {
+              return new ReminderWorker(context2, workerParams2);
+            }
+          };
 
-          case 5: // com.healthyai.app.data.healthconnect.HealthConnectManager 
-          return (T) new HealthConnectManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+          case 5: // com.healthyai.app.worker.SyncWorker_AssistedFactory 
+          return (T) new SyncWorker_AssistedFactory() {
+            @Override
+            public SyncWorker create(Context context3, WorkerParameters workerParams3) {
+              return new SyncWorker(context3, workerParams3, singletonCImpl.habitRepositoryImplProvider.get(), singletonCImpl.firestoreSyncDataSourceProvider.get(), singletonCImpl.provideFirebaseAuthProvider.get());
+            }
+          };
 
-          case 6: // com.healthyai.app.domain.usecase.HabitRuleEngine 
+          case 6: // com.healthyai.app.data.repository.HabitRepositoryImpl 
+          return (T) new HabitRepositoryImpl(singletonCImpl.habitDao(), singletonCImpl.habitLogDao());
+
+          case 7: // com.healthyai.app.data.firebase.FirestoreSyncDataSource 
+          return (T) new FirestoreSyncDataSource(singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 8: // com.google.firebase.firestore.FirebaseFirestore 
+          return (T) FirebaseModule_ProvideFirebaseFirestoreFactory.provideFirebaseFirestore();
+
+          case 9: // com.google.firebase.auth.FirebaseAuth 
+          return (T) FirebaseModule_ProvideFirebaseAuthFactory.provideFirebaseAuth();
+
+          case 10: // com.healthyai.app.domain.usecase.HabitRuleEngine 
           return (T) new HabitRuleEngine();
 
           default: throw new AssertionError(id);

@@ -19,4 +19,10 @@ interface HabitRepository {
     suspend fun insertHabit(habit: Habit): Long
     suspend fun logHabit(log: HabitLog)
     suspend fun deleteHabit(habitId: Long)
+    
+    /** Lấy danh sách thói quen chưa đồng bộ */
+    suspend fun getUnsyncedHabitLogs(): List<HabitLog>
+    
+    /** Đánh dấu một log đã đồng bộ thành công */
+    suspend fun markHabitLogSynced(id: Long)
 }

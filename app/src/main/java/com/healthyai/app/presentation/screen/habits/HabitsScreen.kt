@@ -2,6 +2,7 @@ package com.healthyai.app.presentation.screen.habits
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -32,25 +33,37 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun HabitsScreen(viewModel: HabitsViewModel = hiltViewModel()) {
+fun HabitsScreen(
+    onNavigateToAddHabit: () -> Unit,
+    onNavigateToEditHabit: (Long) -> Unit,
+    viewModel: HabitsViewModel = hiltViewModel()
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     HabitsScreenContent(
         uiState = uiState,
-        onFilterSelected = viewModel::setFilter
+        onFilterSelected = viewModel::setFilter,
+        onAddHabitClick = onNavigateToAddHabit,
+        onHabitClick = onNavigateToEditHabit,
+        onLogHabit = viewModel::logHabit
     )
 }
 
 @Composable
 fun HabitsScreenContent(
     uiState: HabitsUiState,
-    onFilterSelected: (String) -> Unit
+    onFilterSelected: (String) -> Unit,
+    onAddHabitClick: () -> Unit,
+    onHabitClick: (Long) -> Unit,
+    onLogHabit: (Habit, Float) -> Unit
 ) {
+    var showLogDialogFor by remember { mutableStateOf<Habit?>(null) }
+
     Scaffold(
         containerColor = Color(0xFFF8F9FA),
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { /* TODO */ },
+                onClick = onAddHabitClick,
                 containerColor = Color(0xFF2E7D32),
                 contentColor = Color.White,
                 shape = CircleShape,
@@ -87,20 +100,54 @@ fun HabitsScreenContent(
             } else if (uiState.filteredHabits.isEmpty()) {
                 item { EmptyHabitsView() }
             } else {
-                items(uiState.filteredHabits) { habit ->
-                    // Set progress to 0 for now as we transition from demo to real data
-                    val currentProgress = 0f
-                    val isCompleted = false
-                    
+                items(
+                    items = uiState.filteredHabits,
+                    key = { it.habit.id }
+                ) { habitWithProgress ->
                     HabitCard(
-                        habit = habit,
-                        currentProgress = currentProgress,
-                        isCompleted = isCompleted
+                        habit = habitWithProgress.habit,
+                        currentProgress = habitWithProgress.progress,
+                        isCompleted = habitWithProgress.isCompleted,
+                        onClick = { onHabitClick(habitWithProgress.habit.id) },
+                        onLogClick = { showLogDialogFor = habitWithProgress.habit }
                     )
                 }
             }
             
             item { Spacer(modifier = Modifier.height(80.dp)) }
+        }
+
+        // Dialog ghi nhận thói quen
+        showLogDialogFor?.let { habit ->
+            var logValue by remember { mutableStateOf(habit.targetValue.toString()) }
+            
+            AlertDialog(
+                onDismissRequest = { showLogDialogFor = null },
+                title = { Text("Ghi nhận ${habit.name}") },
+                text = {
+                    OutlinedTextField(
+                        value = logValue,
+                        onValueChange = { logValue = it },
+                        label = { Text("Số lượng (${habit.unit})") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        logValue.toFloatOrNull()?.let { onLogHabit(habit, it) }
+                        showLogDialogFor = null
+                    }) {
+                        Text("Lưu")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLogDialogFor = null }) {
+                        Text("Hủy")
+                    }
+                }
+            )
         }
     }
 }
@@ -155,10 +202,14 @@ private fun FilterChipsSection(
 private fun HabitCard(
     habit: Habit,
     currentProgress: Float,
-    isCompleted: Boolean
+    isCompleted: Boolean,
+    onClick: () -> Unit,
+    onLogClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -227,7 +278,7 @@ private fun HabitCard(
                 }
             } else {
                 Button(
-                    onClick = { /* TODO */ },
+                    onClick = onLogClick,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.height(48.dp).width(100.dp),
@@ -273,14 +324,17 @@ fun HabitsScreenPreview() {
         HabitsScreenContent(
             uiState = HabitsUiState(
                 habits = listOf(
-                    Habit(id = 1, name = "Uống nước", category = HabitCategory.WATER, targetValue = 2000f, unit = "ml"),
-                    Habit(id = 2, name = "Vận động", category = HabitCategory.EXERCISE, targetValue = 45f, unit = "phút"),
-                    Habit(id = 3, name = "Giấc ngủ", category = HabitCategory.SLEEP, targetValue = 8f, unit = "giờ"),
-                    Habit(id = 4, name = "Thiền định", category = HabitCategory.MINDFULNESS, targetValue = 15f, unit = "phút")
+                    HabitWithProgress(
+                        Habit(id = 1, name = "Uống nước", category = HabitCategory.WATER, targetValue = 2000f, unit = "ml"),
+                        progress = 500f, isCompleted = false
+                    )
                 ),
                 isLoading = false
             ),
-            onFilterSelected = {}
+            onFilterSelected = {},
+            onAddHabitClick = {},
+            onHabitClick = {},
+            onLogHabit = { _, _ -> }
         )
     }
 }

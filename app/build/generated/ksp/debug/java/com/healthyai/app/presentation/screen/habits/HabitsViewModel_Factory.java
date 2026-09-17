@@ -1,5 +1,6 @@
 package com.healthyai.app.presentation.screen.habits;
 
+import com.healthyai.app.domain.repository.HabitRepository;
 import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase;
 import com.healthyai.app.domain.usecase.LogHabitUseCase;
 import dagger.internal.DaggerGenerated;
@@ -29,25 +30,30 @@ public final class HabitsViewModel_Factory implements Factory<HabitsViewModel> {
 
   private final Provider<LogHabitUseCase> logHabitUseCaseProvider;
 
+  private final Provider<HabitRepository> habitRepositoryProvider;
+
   public HabitsViewModel_Factory(Provider<GetTodayHabitsUseCase> getTodayHabitsUseCaseProvider,
-      Provider<LogHabitUseCase> logHabitUseCaseProvider) {
+      Provider<LogHabitUseCase> logHabitUseCaseProvider,
+      Provider<HabitRepository> habitRepositoryProvider) {
     this.getTodayHabitsUseCaseProvider = getTodayHabitsUseCaseProvider;
     this.logHabitUseCaseProvider = logHabitUseCaseProvider;
+    this.habitRepositoryProvider = habitRepositoryProvider;
   }
 
   @Override
   public HabitsViewModel get() {
-    return newInstance(getTodayHabitsUseCaseProvider.get(), logHabitUseCaseProvider.get());
+    return newInstance(getTodayHabitsUseCaseProvider.get(), logHabitUseCaseProvider.get(), habitRepositoryProvider.get());
   }
 
   public static HabitsViewModel_Factory create(
       Provider<GetTodayHabitsUseCase> getTodayHabitsUseCaseProvider,
-      Provider<LogHabitUseCase> logHabitUseCaseProvider) {
-    return new HabitsViewModel_Factory(getTodayHabitsUseCaseProvider, logHabitUseCaseProvider);
+      Provider<LogHabitUseCase> logHabitUseCaseProvider,
+      Provider<HabitRepository> habitRepositoryProvider) {
+    return new HabitsViewModel_Factory(getTodayHabitsUseCaseProvider, logHabitUseCaseProvider, habitRepositoryProvider);
   }
 
   public static HabitsViewModel newInstance(GetTodayHabitsUseCase getTodayHabitsUseCase,
-      LogHabitUseCase logHabitUseCase) {
-    return new HabitsViewModel(getTodayHabitsUseCase, logHabitUseCase);
+      LogHabitUseCase logHabitUseCase, HabitRepository habitRepository) {
+    return new HabitsViewModel(getTodayHabitsUseCase, logHabitUseCase, habitRepository);
   }
 }

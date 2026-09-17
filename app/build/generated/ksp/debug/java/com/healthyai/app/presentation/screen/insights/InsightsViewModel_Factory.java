@@ -1,8 +1,7 @@
 package com.healthyai.app.presentation.screen.insights;
 
-import com.healthyai.app.domain.repository.HabitRepository;
-import com.healthyai.app.domain.usecase.GenerateSuggestionsUseCase;
-import com.healthyai.app.domain.usecase.HabitRuleEngine;
+import com.healthyai.app.domain.usecase.health.GetHealthInsightsUseCase;
+import com.healthyai.app.domain.usecase.health.GetVitalityScoreUseCase;
 import dagger.internal.DaggerGenerated;
 import dagger.internal.Factory;
 import dagger.internal.QualifierMetadata;
@@ -26,33 +25,30 @@ import javax.inject.Provider;
     "deprecation"
 })
 public final class InsightsViewModel_Factory implements Factory<InsightsViewModel> {
-  private final Provider<HabitRepository> habitRepositoryProvider;
+  private final Provider<GetHealthInsightsUseCase> getHealthInsightsUseCaseProvider;
 
-  private final Provider<GenerateSuggestionsUseCase> generateSuggestionsUseCaseProvider;
+  private final Provider<GetVitalityScoreUseCase> getVitalityScoreUseCaseProvider;
 
-  private final Provider<HabitRuleEngine> ruleEngineProvider;
-
-  public InsightsViewModel_Factory(Provider<HabitRepository> habitRepositoryProvider,
-      Provider<GenerateSuggestionsUseCase> generateSuggestionsUseCaseProvider,
-      Provider<HabitRuleEngine> ruleEngineProvider) {
-    this.habitRepositoryProvider = habitRepositoryProvider;
-    this.generateSuggestionsUseCaseProvider = generateSuggestionsUseCaseProvider;
-    this.ruleEngineProvider = ruleEngineProvider;
+  public InsightsViewModel_Factory(
+      Provider<GetHealthInsightsUseCase> getHealthInsightsUseCaseProvider,
+      Provider<GetVitalityScoreUseCase> getVitalityScoreUseCaseProvider) {
+    this.getHealthInsightsUseCaseProvider = getHealthInsightsUseCaseProvider;
+    this.getVitalityScoreUseCaseProvider = getVitalityScoreUseCaseProvider;
   }
 
   @Override
   public InsightsViewModel get() {
-    return newInstance(habitRepositoryProvider.get(), generateSuggestionsUseCaseProvider.get(), ruleEngineProvider.get());
+    return newInstance(getHealthInsightsUseCaseProvider.get(), getVitalityScoreUseCaseProvider.get());
   }
 
-  public static InsightsViewModel_Factory create(Provider<HabitRepository> habitRepositoryProvider,
-      Provider<GenerateSuggestionsUseCase> generateSuggestionsUseCaseProvider,
-      Provider<HabitRuleEngine> ruleEngineProvider) {
-    return new InsightsViewModel_Factory(habitRepositoryProvider, generateSuggestionsUseCaseProvider, ruleEngineProvider);
+  public static InsightsViewModel_Factory create(
+      Provider<GetHealthInsightsUseCase> getHealthInsightsUseCaseProvider,
+      Provider<GetVitalityScoreUseCase> getVitalityScoreUseCaseProvider) {
+    return new InsightsViewModel_Factory(getHealthInsightsUseCaseProvider, getVitalityScoreUseCaseProvider);
   }
 
-  public static InsightsViewModel newInstance(HabitRepository habitRepository,
-      GenerateSuggestionsUseCase generateSuggestionsUseCase, HabitRuleEngine ruleEngine) {
-    return new InsightsViewModel(habitRepository, generateSuggestionsUseCase, ruleEngine);
+  public static InsightsViewModel newInstance(GetHealthInsightsUseCase getHealthInsightsUseCase,
+      GetVitalityScoreUseCase getVitalityScoreUseCase) {
+    return new InsightsViewModel(getHealthInsightsUseCase, getVitalityScoreUseCase);
   }
 }

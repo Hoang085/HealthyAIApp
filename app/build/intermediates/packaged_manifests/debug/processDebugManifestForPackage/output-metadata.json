@@ -4,7 +4,7 @@
     "type": "PACKAGED_MANIFESTS",
     "kind": "Directory"
   },
-  "applicationId": "com.healthyai.app.debug",
+  "applicationId": "com.healthyai.app",
   "variantName": "debug",
   "elements": [
     {

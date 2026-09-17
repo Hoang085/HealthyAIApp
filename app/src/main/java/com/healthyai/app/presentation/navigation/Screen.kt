@@ -16,6 +16,11 @@ sealed class Screen(
     object Habits   : Screen("habits",   "Thói quen",  Icons.Filled.CheckCircle)
     object Camera   : Screen("camera",   "Ghi chép",   Icons.Filled.CameraAlt)
     object Insights : Screen("insights", "Phân tích",  Icons.Filled.AutoAwesome)
+    
+    // Màn hình không nằm trong Bottom Nav
+    object AddEditHabit : Screen("add_edit_habit?habitId={habitId}", "Thói quen", Icons.Filled.CheckCircle) {
+        fun createRoute(habitId: Long? = null) = "add_edit_habit?habitId=${habitId ?: -1L}"
+    }
 }
 
 val bottomNavItems = listOf(

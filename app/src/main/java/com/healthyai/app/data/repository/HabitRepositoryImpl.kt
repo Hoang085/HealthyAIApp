@@ -37,6 +37,12 @@ class HabitRepositoryImpl @Inject constructor(
     override suspend fun deleteHabit(habitId: Long) =
         habitDao.softDeleteHabit(habitId)
 
+    override suspend fun getUnsyncedHabitLogs(): List<HabitLog> =
+        habitLogDao.getUnsyncedLogs().map { it.toDomain() }
+
+    override suspend fun markHabitLogSynced(id: Long) =
+        habitLogDao.markAsSynced(id)
+
     // ── Mappers (Entity ↔ Domain) ───────────────────────────
     private fun HabitEntity.toDomain() = Habit(
         id = id,

@@ -2,6 +2,7 @@ package com.healthyai.app.domain.usecase
 
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitLog
+import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.Suggestion
 import com.healthyai.app.domain.model.SuggestionPriority
 import javax.inject.Inject
@@ -15,21 +16,65 @@ import javax.inject.Singleton
  * ║  - Không cần model phức tạp, hiệu quả với data ít            ║
  * ║  - Dễ viết Unit Test để chứng minh logic hoạt động chính xác ║
  * ╚══════════════════════════════════════════════════════════════╝
- *
- * Cách mở rộng:
- *  - Thêm rule mới: tạo hàm analyze[Category] rồi gọi trong generateSuggestions()
- *  - Tích hợp ML: thay các ngưỡng cố định bằng model TFLite sau khi có đủ dữ liệu
  */
 @Singleton
 class HabitRuleEngine @Inject constructor() {
 
-    fun generateSuggestions(recentLogs: List<HabitLog>): List<Suggestion> {
+    fun generateSuggestions(
+        recentLogs: List<HabitLog>,
+        healthHistory: List<HealthData> = emptyList()
+    ): List<Suggestion> {
         val suggestions = mutableListOf<Suggestion>()
-        suggestions += analyzeSleep(recentLogs.filter { it.category == HabitCategory.SLEEP })
-        suggestions += analyzeWater(recentLogs.filter { it.category == HabitCategory.WATER })
-        suggestions += analyzeExercise(recentLogs.filter { it.category == HabitCategory.EXERCISE })
-        // TODO: Thêm analyzeNutrition(), analyzeMindfulness() ở đây
+        
+        // 1. Phân tích dựa trên nhật ký thói quen (Manual Logs)
+        suggestions += analyzeSleepLogs(recentLogs.filter { it.category == HabitCategory.SLEEP })
+        suggestions += analyzeWaterLogs(recentLogs.filter { it.category == HabitCategory.WATER })
+        suggestions += analyzeExerciseLogs(recentLogs.filter { it.category == HabitCategory.EXERCISE })
+        
+        // 2. Phân tích dựa trên dữ liệu sức khỏe cứng (Health Connect History)
+        suggestions += analyzeHealthTrends(healthHistory)
+        
         return suggestions.sortedByDescending { it.priority.ordinal }
+    }
+
+    /**
+     * Phân tích xu hướng sức khỏe từ dữ liệu cứng (Steps, Sleep, Heart Rate).
+     */
+    private fun analyzeHealthTrends(history: List<HealthData>): List<Suggestion> {
+        if (history.isEmpty()) return emptyList()
+        val suggestions = mutableListOf<Suggestion>()
+        
+        // Xu hướng 3 ngày thiếu ngủ (Dữ liệu cứng)
+        val recent3Sleep = history.take(3)
+        if (recent3Sleep.size >= 3 && recent3Sleep.all { it.sleepHours < 6.0 }) {
+            suggestions.add(
+                Suggestion(
+                    title = "🚨 Phát hiện xu hướng thiếu ngủ",
+                    message = "Hệ thống ghi nhận bạn đã ngủ dưới 6 giờ trong 3 ngày liên tiếp. " +
+                              "Cơ thể bạn cần được phục hồi để tránh suy giảm hệ miễn dịch.",
+                    priority = SuggestionPriority.CRITICAL,
+                    category = HabitCategory.SLEEP,
+                    actionLabel = "Tối ưu hóa phòng ngủ"
+                )
+            )
+        }
+
+        // Xu hướng nhịp tim cao khi nghỉ ngơi
+        val avgHeartRate = history.take(7).averageOf { it.heartRate }
+        if (avgHeartRate > 85.0) {
+            suggestions.add(
+                Suggestion(
+                    title = "💓 Nhịp tim nghỉ ngơi hơi cao",
+                    message = "Nhịp tim trung bình 7 ngày qua của bạn là ${avgHeartRate.toInt()} bpm. " +
+                              "Điều này có thể do căng thẳng hoặc mệt mỏi. Thử 5 phút thiền định nhé.",
+                    priority = SuggestionPriority.MEDIUM,
+                    category = HabitCategory.MINDFULNESS,
+                    actionLabel = "Bắt đầu thiền"
+                )
+            )
+        }
+
+        return suggestions
     }
 
     /**
@@ -64,7 +109,7 @@ class HabitRuleEngine @Inject constructor() {
     // ── Rule 1: Thiếu ngủ ─────────────────────────────────────
     // Trigger: ngủ dưới 6 tiếng trong 3 ngày liên tiếp → HIGH priority
     // Trigger: ngủ trung bình dưới 7 tiếng → MEDIUM priority
-    private fun analyzeSleep(sleepLogs: List<HabitLog>): List<Suggestion> {
+    private fun analyzeSleepLogs(sleepLogs: List<HabitLog>): List<Suggestion> {
         val recent3 = sleepLogs.sortedByDescending { it.loggedAt }.take(3)
 
         if (recent3.size >= 3 && recent3.all { it.value < 6f }) {
@@ -98,7 +143,7 @@ class HabitRuleEngine @Inject constructor() {
     // ── Rule 2: Mất nước ──────────────────────────────────────
     // Trigger: trung bình < 1000ml/ngày → CRITICAL
     // Trigger: trung bình < 1500ml/ngày → MEDIUM
-    private fun analyzeWater(waterLogs: List<HabitLog>): List<Suggestion> {
+    private fun analyzeWaterLogs(waterLogs: List<HabitLog>): List<Suggestion> {
         if (waterLogs.isEmpty()) return emptyList()
         val recent = waterLogs.sortedByDescending { it.loggedAt }.take(7)
         val avgMl = recent.averageOf { it.value.toDouble() }
@@ -130,7 +175,7 @@ class HabitRuleEngine @Inject constructor() {
     // ── Rule 3: Ít vận động ───────────────────────────────────
     // Trigger: < 5000 bước/ngày trong 5 ngày liên tiếp → HIGH
     // Trigger: < 8000 bước/ngày trung bình 7 ngày → LOW
-    private fun analyzeExercise(exerciseLogs: List<HabitLog>): List<Suggestion> {
+    private fun analyzeExerciseLogs(exerciseLogs: List<HabitLog>): List<Suggestion> {
         val recent5 = exerciseLogs.sortedByDescending { it.loggedAt }.take(5)
 
         if (recent5.size >= 5 && recent5.all { it.value < 5000f }) {

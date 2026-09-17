@@ -5,8 +5,10 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.healthyai.app.data.local.dao.HabitDao
 import com.healthyai.app.data.local.dao.HabitLogDao
+import com.healthyai.app.data.local.dao.health.HealthDataDao
 import com.healthyai.app.data.local.entity.HabitEntity
 import com.healthyai.app.data.local.entity.HabitLogEntity
+import com.healthyai.app.data.local.entity.health.HealthDataEntity
 
 /**
  * Room Database — được mã hóa bởi SQLCipher (xem DatabaseModule.kt).
@@ -15,14 +17,15 @@ import com.healthyai.app.data.local.entity.HabitLogEntity
  * Khi cần nâng version: tăng version lên và implement Migration thay vì fallbackToDestructiveMigration.
  */
 @Database(
-    entities = [HabitEntity::class, HabitLogEntity::class],
-    version = 2,
+    entities = [HabitEntity::class, HabitLogEntity::class, HealthDataEntity::class],
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
     abstract fun habitLogDao(): HabitLogDao
+    abstract fun healthDataDao(): HealthDataDao
 
     companion object {
         const val DATABASE_NAME = "healthy_ai_encrypted.db"

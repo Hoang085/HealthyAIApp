@@ -3,8 +3,8 @@ package com.healthyai.app.presentation.screen.habits
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.healthyai.app.domain.model.Habit
-import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitLog
+import com.healthyai.app.domain.repository.HabitRepository
 import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase
 import com.healthyai.app.domain.usecase.LogHabitUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,38 +14,64 @@ import javax.inject.Inject
 
 import com.healthyai.app.domain.model.HabitTimeOfDay
 
+data class HabitWithProgress(
+    val habit: Habit,
+    val progress: Float,
+    val isCompleted: Boolean,
+)
+
 data class HabitsUiState(
-    val habits: List<Habit> = emptyList(),
-    val filteredHabits: List<Habit> = emptyList(),
+    val habits: List<HabitWithProgress> = emptyList(),
+    val filteredHabits: List<HabitWithProgress> = emptyList(),
     val selectedFilter: String = "Tất cả",
     val isLoading: Boolean = true,
-    val showLogSuccessFor: Long? = null, // habitId vừa log thành công
+    val showLogSuccessFor: Long? = null,
     val error: String? = null
 )
 
 @HiltViewModel
 class HabitsViewModel @Inject constructor(
     private val getTodayHabitsUseCase: GetTodayHabitsUseCase,
-    private val logHabitUseCase: LogHabitUseCase
+    private val logHabitUseCase: LogHabitUseCase,
+    private val habitRepository: HabitRepository // Cần lấy logs để tính progress
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HabitsUiState())
     val uiState: StateFlow<HabitsUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            getTodayHabitsUseCase()
-                .catch { e -> _uiState.update { it.copy(error = e.message, isLoading = false) } }
-                .collect { habits -> 
-                    _uiState.update { state -> 
-                        state.copy(
-                            habits = habits, 
-                            filteredHabits = applyFilter(habits, state.selectedFilter),
-                            isLoading = false
-                        ) 
-                    } 
-                }
-        }
+        observeHabits()
+    }
+
+    private fun observeHabits() {
+        // Tối ưu hiệu năng: Sử dụng Sequence cho các chuỗi biến đổi dữ liệu lớn
+        combine(
+            getTodayHabitsUseCase(),
+            habitRepository.getHabitLogsForPeriod(0) // 0 ngày trước = hôm nay
+        ) { habits, logs ->
+            habits.asSequence().map { habit ->
+                val totalLogged = logs.asSequence()
+                    .filter { it.habitId == habit.id }
+                    .sumOf { it.value.toDouble() }
+                    .toFloat()
+                
+                HabitWithProgress(
+                    habit = habit,
+                    progress = totalLogged,
+                    isCompleted = totalLogged >= habit.targetValue
+                )
+            }.toList()
+        }.onStart { _uiState.update { it.copy(isLoading = true) } }
+        .catch { e -> _uiState.update { it.copy(error = e.message, isLoading = false) } }
+        .onEach { habitsWithProgress ->
+            _uiState.update { state ->
+                state.copy(
+                    habits = habitsWithProgress,
+                    filteredHabits = applyFilter(habitsWithProgress, state.selectedFilter),
+                    isLoading = false
+                )
+            }
+        }.launchIn(viewModelScope)
     }
 
     fun setFilter(filter: String) {
@@ -57,7 +83,7 @@ class HabitsViewModel @Inject constructor(
         }
     }
 
-    private fun applyFilter(habits: List<Habit>, filter: String): List<Habit> {
+    private fun applyFilter(habits: List<HabitWithProgress>, filter: String): List<HabitWithProgress> {
         if (filter == "Tất cả") return habits
         
         val timeOfDay = when (filter) {
@@ -68,13 +94,14 @@ class HabitsViewModel @Inject constructor(
         }
         
         return if (timeOfDay != null) {
-            habits.filter { it.timeOfDay == timeOfDay || it.timeOfDay == HabitTimeOfDay.ALL_DAY }
+            habits.filter { 
+                (it.habit.timeOfDay == timeOfDay) || (it.habit.timeOfDay == HabitTimeOfDay.ALL_DAY) 
+            }
         } else {
             habits
         }
     }
-
-    fun logHabit(habit: Habit, value: Float) {
+  fun logHabit(habit: Habit, value: Float) {
         viewModelScope.launch {
             runCatching {
                 logHabitUseCase(

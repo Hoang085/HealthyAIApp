@@ -1329,6 +1329,10 @@ color bright_foreground_inverse_material_dark
 color bright_foreground_inverse_material_light
 color bright_foreground_material_dark
 color bright_foreground_material_light
+color browser_actions_bg_grey
+color browser_actions_divider_color
+color browser_actions_text_color
+color browser_actions_title_color
 color button_material_dark
 color button_material_light
 color call_notification_answer_color
@@ -2198,6 +2202,8 @@ dimen abc_text_size_subtitle_material_toolbar
 dimen abc_text_size_title_material
 dimen abc_text_size_title_material_toolbar
 dimen appcompat_dialog_background_inset
+dimen browser_actions_context_menu_max_width
+dimen browser_actions_context_menu_min_padding
 dimen cardview_compat_inset_shadow
 dimen cardview_default_elevation
 dimen cardview_default_radius
@@ -3083,6 +3089,9 @@ drawable ic_mtrl_checked_circle
 drawable ic_mtrl_chip_checked_black
 drawable ic_mtrl_chip_checked_circle
 drawable ic_mtrl_chip_close_circle
+drawable ic_other_sign_in
+drawable ic_passkey
+drawable ic_password
 drawable ic_search_black_24
 drawable indeterminate_static
 drawable m3_avd_hide_password
@@ -3251,6 +3260,11 @@ id beginning
 id blocking
 id bottom
 id bounce
+id browser_actions_header_text
+id browser_actions_menu_item_icon
+id browser_actions_menu_item_text
+id browser_actions_menu_items
+id browser_actions_menu_view
 id buttonPanel
 id cancel_button
 id center
@@ -4063,6 +4077,8 @@ layout box_start_top_7children
 layout box_start_top_8children
 layout box_start_top_9children
 layout box_wrapwidth_expandheight
+layout browser_actions_context_menu_page
+layout browser_actions_context_menu_row
 layout column_center_horizontal_bottom
 layout column_center_horizontal_center_vertical
 layout column_center_horizontal_null_0children
@@ -5104,6 +5120,7 @@ layout size_wrap_match
 layout size_wrap_wrap
 layout support_simple_spinner_dropdown_item
 plurals mtrl_badge_content_description
+raw firebase_common_keep
 raw glance_appwidget_keep
 string abc_action_bar_home_description
 string abc_action_bar_up_description
@@ -5132,6 +5149,8 @@ string abc_searchview_description_voice
 string abc_shareactionprovider_share_with
 string abc_shareactionprovider_share_with_application
 string abc_toolbar_collapse_description
+string android_credentials_TYPE_PASSWORD_CREDENTIAL
+string androidx_credentials_TYPE_PUBLIC_KEY_CREDENTIAL
 string androidx_startup
 string app_name
 string appbar_scrolling_view_behavior
@@ -5172,6 +5191,7 @@ string common_google_play_services_wear_update_text
 string common_open_on_phone
 string common_signin_button_text
 string common_signin_button_text_long
+string copy_toast_msg
 string default_error_message
 string default_popup_window_title
 string dropdown_menu
@@ -5180,9 +5200,17 @@ string error_icon_content_description
 string exposed_dropdown_menu_content_description
 string fab_transformation_scrim_behavior
 string fab_transformation_sheet_behavior
+string fallback_menu_item_copy_link
+string fallback_menu_item_open_in_browser
+string fallback_menu_item_share_link
+string gcm_defaultSenderId
 string glance_error_layout_text
 string glance_error_layout_text_v2
 string glance_error_layout_title
+string google_api_key
+string google_app_id
+string google_crash_reporting_api_key
+string google_storage_bucket
 string health_permissions_rationale
 string health_privacy_policy_url
 string hide_bottom_view_on_scroll_behavior
@@ -5190,15 +5218,6 @@ string icon_content_description
 string in_progress
 string indeterminate
 string item_view_role_description
-string library_android_database_sqlcipher_author
-string library_android_database_sqlcipher_authorWebsite
-string library_android_database_sqlcipher_isOpenSource
-string library_android_database_sqlcipher_libraryDescription
-string library_android_database_sqlcipher_libraryName
-string library_android_database_sqlcipher_libraryVersion
-string library_android_database_sqlcipher_libraryWebsite
-string library_android_database_sqlcipher_licenseLink
-string library_android_database_sqlcipher_repositoryLink
 string m3_exceed_max_badge_text_suffix
 string m3_ref_typeface_brand_medium
 string m3_ref_typeface_brand_regular
@@ -5363,6 +5382,7 @@ string path_password_eye
 string path_password_eye_mask_strike_through
 string path_password_eye_mask_visible
 string path_password_strike_through
+string project_id
 string range_end
 string range_start
 string search_menu_title
@@ -5970,6 +5990,7 @@ style Theme_Design_Light_BottomSheetDialog
 style Theme_Design_Light_NoActionBar
 style Theme_Design_NoActionBar
 style Theme_HealthyAIApp
+style Theme_Hidden
 style Theme_Material3_Dark
 style Theme_Material3_Dark_BottomSheetDialog
 style Theme_Material3_Dark_Dialog
@@ -6047,6 +6068,7 @@ style Theme_MaterialComponents_Light_NoActionBar
 style Theme_MaterialComponents_Light_NoActionBar_Bridge
 style Theme_MaterialComponents_NoActionBar
 style Theme_MaterialComponents_NoActionBar_Bridge
+style Theme_PlayCore_Transparent
 style ThemeOverlay_AppCompat
 style ThemeOverlay_AppCompat_ActionBar
 style ThemeOverlay_AppCompat_Dark
@@ -6704,3 +6726,5 @@ styleable View android_theme android_focusable paddingEnd paddingStart theme
 styleable ViewBackgroundHelper android_background backgroundTint backgroundTintMode
 styleable ViewPager2 android_orientation
 styleable ViewStubCompat android_id android_layout android_inflatedId
+xml habit_widget_info
+xml image_share_filepaths

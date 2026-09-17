@@ -1,6 +1,7 @@
 package com.healthyai.app.data.repository;
 
-import com.healthyai.app.data.healthconnect.HealthConnectManager;
+import com.healthyai.app.data.healthconnect.HealthConnectDataSource;
+import com.healthyai.app.data.local.dao.health.HealthDataDao;
 import dagger.internal.DaggerGenerated;
 import dagger.internal.Factory;
 import dagger.internal.QualifierMetadata;
@@ -24,23 +25,29 @@ import javax.inject.Provider;
     "deprecation"
 })
 public final class HealthDataRepositoryImpl_Factory implements Factory<HealthDataRepositoryImpl> {
-  private final Provider<HealthConnectManager> managerProvider;
+  private final Provider<HealthConnectDataSource> dataSourceProvider;
 
-  public HealthDataRepositoryImpl_Factory(Provider<HealthConnectManager> managerProvider) {
-    this.managerProvider = managerProvider;
+  private final Provider<HealthDataDao> healthDataDaoProvider;
+
+  public HealthDataRepositoryImpl_Factory(Provider<HealthConnectDataSource> dataSourceProvider,
+      Provider<HealthDataDao> healthDataDaoProvider) {
+    this.dataSourceProvider = dataSourceProvider;
+    this.healthDataDaoProvider = healthDataDaoProvider;
   }
 
   @Override
   public HealthDataRepositoryImpl get() {
-    return newInstance(managerProvider.get());
+    return newInstance(dataSourceProvider.get(), healthDataDaoProvider.get());
   }
 
   public static HealthDataRepositoryImpl_Factory create(
-      Provider<HealthConnectManager> managerProvider) {
-    return new HealthDataRepositoryImpl_Factory(managerProvider);
+      Provider<HealthConnectDataSource> dataSourceProvider,
+      Provider<HealthDataDao> healthDataDaoProvider) {
+    return new HealthDataRepositoryImpl_Factory(dataSourceProvider, healthDataDaoProvider);
   }
 
-  public static HealthDataRepositoryImpl newInstance(HealthConnectManager manager) {
-    return new HealthDataRepositoryImpl(manager);
+  public static HealthDataRepositoryImpl newInstance(HealthConnectDataSource dataSource,
+      HealthDataDao healthDataDao) {
+    return new HealthDataRepositoryImpl(dataSource, healthDataDao);
   }
 }

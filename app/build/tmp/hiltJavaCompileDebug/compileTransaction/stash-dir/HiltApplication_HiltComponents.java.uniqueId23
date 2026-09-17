@@ -3,10 +3,15 @@ package com.healthyai.app;
 import androidx.hilt.work.HiltWrapper_WorkerFactoryModule;
 import com.healthyai.app.di.AppModule;
 import com.healthyai.app.di.DatabaseModule;
+import com.healthyai.app.di.FirebaseModule;
 import com.healthyai.app.presentation.screen.camera.CameraViewModel_HiltModules;
 import com.healthyai.app.presentation.screen.habits.HabitsViewModel_HiltModules;
+import com.healthyai.app.presentation.screen.habits.addedit.AddEditHabitViewModel_HiltModules;
 import com.healthyai.app.presentation.screen.home.HomeViewModel_HiltModules;
 import com.healthyai.app.presentation.screen.insights.InsightsViewModel_HiltModules;
+import com.healthyai.app.presentation.screen.tracking.CoreTrackingViewModel_HiltModules;
+import com.healthyai.app.presentation.widget.HabitWidget;
+import com.healthyai.app.worker.HealthSyncWorker_HiltModule;
 import com.healthyai.app.worker.ReminderWorker_HiltModule;
 import com.healthyai.app.worker.SyncWorker_HiltModule;
 import dagger.Binds;
@@ -136,6 +141,8 @@ public final class HiltApplication_HiltComponents {
           AppModule.class,
           ApplicationContextModule.class,
           DatabaseModule.class,
+          FirebaseModule.class,
+          HealthSyncWorker_HiltModule.class,
           ActivityRetainedCBuilderModule.class,
           ServiceCBuilderModule.class,
           HiltWrapper_FragmentGetContextFix_FragmentGetContextFixModule.class,
@@ -146,6 +153,7 @@ public final class HiltApplication_HiltComponents {
   )
   @Singleton
   public abstract static class SingletonC implements HiltApplication_GeneratedInjector,
+      HabitWidget.HabitWidgetEntryPoint,
       FragmentGetContextFix.FragmentGetContextFixEntryPoint,
       HiltWrapper_ActivityRetainedComponentManager_ActivityRetainedComponentBuilderEntryPoint,
       ServiceComponentManager.ServiceComponentBuilderEntryPoint,
@@ -164,7 +172,9 @@ public final class HiltApplication_HiltComponents {
 
   @Subcomponent(
       modules = {
+          AddEditHabitViewModel_HiltModules.KeyModule.class,
           CameraViewModel_HiltModules.KeyModule.class,
+          CoreTrackingViewModel_HiltModules.KeyModule.class,
           HabitsViewModel_HiltModules.KeyModule.class,
           ActivityCBuilderModule.class,
           ViewModelCBuilderModule.class,
@@ -207,7 +217,9 @@ public final class HiltApplication_HiltComponents {
 
   @Subcomponent(
       modules = {
+          AddEditHabitViewModel_HiltModules.BindsModule.class,
           CameraViewModel_HiltModules.BindsModule.class,
+          CoreTrackingViewModel_HiltModules.BindsModule.class,
           HabitsViewModel_HiltModules.BindsModule.class,
           HiltWrapper_HiltViewModelFactory_ViewModelModule.class,
           HomeViewModel_HiltModules.BindsModule.class,

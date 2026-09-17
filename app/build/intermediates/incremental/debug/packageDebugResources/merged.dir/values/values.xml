@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">HealthyAI</string>
+    <string name="gcm_defaultSenderId" translatable="false">1005873468108</string>
+    <string name="google_api_key" translatable="false">AIzaSyDmHbCgHJJCP2Y9aJ5qcvMzpADeicqD4QE</string>
+    <string name="google_app_id" translatable="false">1:1005873468108:android:234b764d1be3305b716869</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyDmHbCgHJJCP2Y9aJ5qcvMzpADeicqD4QE</string>
+    <string name="google_storage_bucket" translatable="false">healthy-ai-a11cf.firebasestorage.app</string>
     <string name="health_permissions_rationale">HealthyAI cần quyền truy cập dữ liệu sức khỏe của bạn để cung cấp gợi ý cá nhân hóa. Dữ liệu được lưu trữ cục bộ và mã hóa trên thiết bị của bạn.</string>
     <string name="health_privacy_policy_url">https://your-privacy-policy.com</string>
+    <string name="project_id" translatable="false">healthy-ai-a11cf</string>
     <style name="Theme.HealthyAIApp" parent="Theme.Material3.DayNight.NoActionBar"/>
 </resources>

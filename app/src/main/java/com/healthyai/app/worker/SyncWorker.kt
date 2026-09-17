@@ -3,6 +3,9 @@ package com.healthyai.app.worker
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
+import com.google.firebase.auth.FirebaseAuth
+import com.healthyai.app.data.firebase.FirestoreSyncDataSource
+import com.healthyai.app.domain.repository.HabitRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -16,20 +19,26 @@ import java.util.concurrent.TimeUnit
 class SyncWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted workerParams: WorkerParameters,
-    // TODO: Inject HabitRepository khi bật Firebase
-    // private val habitRepository: HabitRepository,
+    private val habitRepository: HabitRepository,
+    private val firestoreSyncDataSource: FirestoreSyncDataSource,
+    private val auth: FirebaseAuth
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
+        val userId = auth.currentUser?.uid ?: return Result.failure()
+
         return try {
-            // TODO (Module 2 — Firebase):
-            //   1. val unsyncedLogs = habitRepository.getUnsyncedLogs()
-            //   2. firestore.collection("users/{uid}/habit_logs").add(log)
-            //   3. habitRepository.markAsSynced(log.id) → isDirty = false
-            //
-            // Last Write Wins conflict resolution:
-            //   Mỗi log có timestamp loggedAt → bên nào có timestamp mới hơn thắng.
-            android.util.Log.d("SyncWorker", "Sync completed successfully")
+            val unsyncedLogs = habitRepository.getUnsyncedHabitLogs()
+            
+            unsyncedLogs.forEach { log ->
+                firestoreSyncDataSource.uploadHabitLog(userId, log)
+                    .onSuccess {
+                        habitRepository.markHabitLogSynced(log.id)
+                    }
+                    .onFailure { throw it }
+            }
+
+            android.util.Log.d("SyncWorker", "Sync completed successfully: ${unsyncedLogs.size} logs")
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("SyncWorker", "Sync failed: ${e.message}")
@@ -44,7 +53,11 @@ class SyncWorker @AssistedInject constructor(
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)
-                .setRequiresDeviceIdle(true) // Sync when user is not actively using device
+                // KHÔNG dùng setRequiresDeviceIdle(true) ở đây: WorkManager ném
+                // IllegalArgumentException("Cannot set backoff criteria on an idle mode job")
+                // khi vừa requiresDeviceIdle(true) vừa setBackoffCriteria() → crash ngay khi mở app.
+                // Giữ backoff (như KDoc mô tả) và để hệ thống tự hoãn khi máy vào Doze.
+                .setRequiresDeviceIdle(false)
                 .build()
 
             workManager.enqueueUniquePeriodicWork(

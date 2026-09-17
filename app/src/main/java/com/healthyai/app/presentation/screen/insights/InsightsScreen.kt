@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +24,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.lazy.items
+import com.healthyai.app.domain.model.HabitCategory
+import com.healthyai.app.domain.model.Suggestion
+import com.healthyai.app.domain.model.SuggestionPriority
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
 @Composable
@@ -47,20 +52,35 @@ fun InsightsScreenContent(uiState: InsightsUiState) {
                 InsightsHeader()
             }
 
-            item {
-                AiTipCard()
-            }
+            if (uiState.isLoading) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF2E7D32))
+                    }
+                }
+            } else {
+                // Hiển thị danh sách gợi ý cá nhân hóa từ AI Rule Engine
+                if (uiState.suggestions.isNotEmpty()) {
+                    items(uiState.suggestions, key = { it.id }) { suggestion ->
+                        AiTipCard(suggestion)
+                    }
+                } else {
+                    item {
+                        NoSuggestionsCard()
+                    }
+                }
 
-            item {
-                WeeklyConsistencyCard()
-            }
+                item {
+                    VitalityScoreCard(uiState.vitalityScore)
+                }
 
-            item {
-                VitalityScoreCard(uiState.vitalityScore)
-            }
+                item {
+                    WeeklyConsistencyCard()
+                }
 
-            item {
-                SleepQualityTrendCard()
+                item {
+                    SleepQualityTrendCard()
+                }
             }
             
             item { Spacer(modifier = Modifier.height(24.dp)) }
@@ -86,19 +106,34 @@ private fun InsightsHeader() {
 }
 
 @Composable
-private fun AiTipCard() {
+private fun AiTipCard(suggestion: Suggestion) {
+    val priorityColor = when (suggestion.priority) {
+        SuggestionPriority.CRITICAL -> Color.Red
+        SuggestionPriority.HIGH -> Color(0xFFE65100) // Orange 900
+        SuggestionPriority.MEDIUM -> Color(0xFF2E7D32)
+        SuggestionPriority.LOW -> Color.Gray
+    }
+
+    val backgroundColor = when (suggestion.priority) {
+        SuggestionPriority.CRITICAL -> Color(0xFFFFEBEE)
+        SuggestionPriority.HIGH -> Color(0xFFFFF3E0)
+        else -> Color.White
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = if (suggestion.priority == SuggestionPriority.CRITICAL) 
+            androidx.compose.foundation.BorderStroke(1.dp, Color.Red.copy(alpha = 0.5f)) else null
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color.White, Color(0xFFE8F5E9).copy(alpha = 0.5f))
+                        colors = listOf(backgroundColor, Color(0xFFE8F5E9).copy(alpha = 0.3f))
                     )
                 )
                 .padding(24.dp)
@@ -109,39 +144,75 @@ private fun AiTipCard() {
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFC8E6C9)),
+                            .background(priorityColor.copy(alpha = 0.1f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Psychology, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                        val icon = when (suggestion.category) {
+                            HabitCategory.SLEEP -> Icons.Default.Bedtime
+                            HabitCategory.WATER -> Icons.Default.WaterDrop
+                            HabitCategory.EXERCISE -> Icons.AutoMirrored.Filled.DirectionsRun
+                            HabitCategory.MINDFULNESS -> Icons.Default.Psychology
+                            else -> Icons.Default.AutoAwesome
+                        }
+                        Icon(icon, null, tint = priorityColor, modifier = Modifier.size(20.dp))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "BLOOM AI GỢI Ý",
+                        if (suggestion.priority == SuggestionPriority.CRITICAL) "CẢNH BÁO KHẨN CẤP" else "BLOOM AI GỢI Ý",
                         style = MaterialTheme.typography.labelMedium.copy(
-                            color = Color.Gray,
+                            color = priorityColor,
                             fontWeight = FontWeight.Bold
                         )
                     )
                 }
                 
                 Text(
-                    "Sự nhất quán đang nở rộ.",
+                    suggestion.title,
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
                 
                 Text(
-                    "Bạn đã duy trì chuỗi 7 ngày Thiền định buổi sáng. Hãy cân nhắc thêm 5 phút đi bộ để tăng cường sự tập trung trước buổi trưa.",
+                    suggestion.message,
                     style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray)
                 )
                 
-                Button(
-                    onClick = { /* TODO */ },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Text("Điều chỉnh thói quen", fontWeight = FontWeight.Bold)
+                if (suggestion.actionLabel != null) {
+                    Button(
+                        onClick = { /* TODO: Điều hướng đến thói quen tương ứng */ },
+                        colors = ButtonDefaults.buttonColors(containerColor = priorityColor),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text(suggestion.actionLabel, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NoSuggestionsCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(32.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(Icons.Default.Celebration, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(48.dp))
+            Text(
+                "Mọi thứ đang rất tốt!",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+            Text(
+                "Bạn đang duy trì thói quen rất đều đặn. Hãy tiếp tục phát huy nhé!",
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray)
+            )
         }
     }
 }
