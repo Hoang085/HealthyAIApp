@@ -1,5 +1,6 @@
 package com.healthyai.app.presentation.screen.habits.addedit
 
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -37,11 +39,49 @@ fun AddEditHabitScreen(
     viewModel: AddEditHabitViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isSaved) {
         if (uiState.isSaved) {
             onNavigateBack()
         }
+    }
+
+    // Xóa mềm xong: báo cho người dùng biết dữ liệu vẫn được giữ, rồi quay lại danh sách.
+    LaunchedEffect(uiState.isDeleted) {
+        if (uiState.isDeleted) {
+            Toast.makeText(context, "Đã xóa thói quen", Toast.LENGTH_SHORT).show()
+            onNavigateBack()
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Xóa thói quen?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Thói quen sẽ bị ẩn khỏi danh sách và không còn được tính vào tiến độ hôm nay. " +
+                        "Nhật ký đã ghi vẫn được giữ lại trong máy."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteHabit()
+                    }
+                ) {
+                    Text("Xóa", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Hủy")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -60,7 +100,7 @@ fun AddEditHabitScreen(
                 },
                 actions = {
                     if (uiState.isEditMode) {
-                        IconButton(onClick = { viewModel.deleteHabit() }) {
+                        IconButton(onClick = { showDeleteConfirm = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = Color.Red)
                         }
                     }
@@ -73,21 +113,34 @@ fun AddEditHabitScreen(
         bottomBar = {
             Button(
                 onClick = { viewModel.saveHabit() },
+                enabled = !uiState.isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp)
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-            ) {
-                Text(
-                    if (uiState.isEditMode) "Cập nhật" else "Tạo thói quen",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF2E7D32),
+                    disabledContainerColor = Color(0xFF2E7D32).copy(alpha = 0.4f)
                 )
+            ) {
+                // Đang ghi DB: nút bị vô hiệu hoá + hiện vòng xoay (chống double-submit)
+                if (uiState.isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        if (uiState.isEditMode) "Cập nhật" else "Tạo thói quen",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         },
-        containerColor = Color(0xFFF8F9FA)
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
             modifier = Modifier

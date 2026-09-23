@@ -2,14 +2,20 @@ package com.healthyai.app.presentation.screen.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
+import androidx.camera.view.CameraController
+import androidx.camera.view.LifecycleCameraController
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,19 +25,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 @Composable
-fun CameraScreen(viewModel: CameraViewModel = hiltViewModel()) {
+fun CameraScreen(
+    onAddToJournal: () -> Unit,
+    viewModel: CameraViewModel = hiltViewModel()
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -47,7 +59,10 @@ fun CameraScreen(viewModel: CameraViewModel = hiltViewModel()) {
     CameraScreenContent(
         uiState = uiState,
         hasCameraPermission = hasCameraPermission,
-        onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) }
+        onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+        onAnalyzeBitmap = viewModel::analyzeBitmap,
+        onCaptureError = viewModel::onCaptureError,
+        onAddToJournal = onAddToJournal
     )
 }
 
@@ -55,10 +70,26 @@ fun CameraScreen(viewModel: CameraViewModel = hiltViewModel()) {
 fun CameraScreenContent(
     uiState: CameraUiState,
     hasCameraPermission: Boolean,
-    onRequestPermission: () -> Unit
+    onRequestPermission: () -> Unit,
+    onAnalyzeBitmap: (Bitmap) -> Unit,
+    onCaptureError: (String) -> Unit,
+    /** Bấm "Thêm vào nhật ký" ở thẻ kết quả (phụ lục C #22) — mở hộp thoại ghi nhận thói quen dinh dưỡng. */
+    onAddToJournal: () -> Unit
 ) {
+    // Executor riêng cho CameraX (chụp ảnh không được chạy trên main thread)
+    val cameraExecutor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
+    var captureController by remember { mutableStateOf<LifecycleCameraController?>(null) }
+    var cameraError by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            captureController = null
+            cameraExecutor.shutdown()
+        }
+    }
+
     Scaffold(
-        containerColor = Color(0xFFF8F9FA)
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -90,12 +121,41 @@ fun CameraScreenContent(
                 }
             } else {
                 item {
-                    CameraPreviewSection()
+                    val previewError = cameraError
+                    if (previewError != null) {
+                        CameraErrorCard(previewError)
+                    } else {
+                        CameraPreviewSection(
+                            onCameraReady = { captureController = it },
+                            onCameraError = { cameraError = it }
+                        )
+                    }
                 }
 
                 item {
+                    val controller = captureController
                     Button(
-                        onClick = { /* TODO: Trigger analysis */ },
+                        onClick = {
+                            controller?.takePicture(
+                                cameraExecutor,
+                                object : ImageCapture.OnImageCapturedCallback() {
+                                    override fun onCaptureSuccess(image: ImageProxy) {
+                                        // ImageProxy chỉ hợp lệ trong callback → chuyển sang Bitmap ngay
+                                        val bitmap = try {
+                                            image.toBitmap()
+                                        } finally {
+                                            image.close()
+                                        }
+                                        onAnalyzeBitmap(bitmap)
+                                    }
+
+                                    override fun onError(exception: ImageCaptureException) {
+                                        onCaptureError(exception.message ?: "Lỗi không xác định")
+                                    }
+                                }
+                            )
+                        },
+                        enabled = controller != null && !uiState.isAnalyzing,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
@@ -112,9 +172,16 @@ fun CameraScreenContent(
                     }
                 }
 
+                uiState.error?.let { message ->
+                    item { CameraErrorCard(message) }
+                }
+
                 if (uiState.detectedLabels.isNotEmpty()) {
                     item {
-                        DetectionResultCard(uiState.detectedLabels)
+                        DetectionResultCard(
+                            labels = uiState.detectedLabels,
+                            onAddToJournal = onAddToJournal
+                        )
                     }
                 }
             }
@@ -122,8 +189,40 @@ fun CameraScreenContent(
     }
 }
 
+/**
+ * Preview camera thật bằng CameraX (`LifecycleCameraController` tự quản lý vòng đời camera),
+ * kèm khung quét món ăn. Controller được trả ra ngoài để nút "Phân tích món ăn" chụp ảnh.
+ */
 @Composable
-private fun CameraPreviewSection() {
+private fun CameraPreviewSection(
+    onCameraReady: (LifecycleCameraController) -> Unit,
+    onCameraError: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    val cameraController = remember {
+        LifecycleCameraController(context).apply {
+            setEnabledUseCases(CameraController.IMAGE_CAPTURE)
+            imageCaptureMode = ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
+        }
+    }
+    val previewView = remember {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            controller = cameraController
+        }
+    }
+
+    LaunchedEffect(cameraController, lifecycleOwner) {
+        try {
+            cameraController.bindToLifecycle(lifecycleOwner)
+            onCameraReady(cameraController)
+        } catch (e: Exception) {
+            onCameraError("Không mở được camera: ${e.message}")
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -131,11 +230,9 @@ private fun CameraPreviewSection() {
             .clip(RoundedCornerShape(48.dp))
             .background(Color.LightGray)
     ) {
-        // Mock image background - In real app, this is the Camera Preview
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFFE0E0E0))
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier.fillMaxSize()
         )
 
         // Scan Overlay Frame
@@ -166,13 +263,38 @@ private fun CameraPreviewSection() {
     }
 }
 
+@Composable
+private fun CameraErrorCard(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.ErrorOutline, null, tint = Color(0xFFC62828), modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFFC62828)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DetectionResultCard(labels: List<FoodLabel>) {
+private fun DetectionResultCard(
+    labels: List<FoodLabel>,
+    onAddToJournal: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
@@ -217,7 +339,7 @@ private fun DetectionResultCard(labels: List<FoodLabel>) {
             Spacer(modifier = Modifier.height(24.dp))
             
             OutlinedButton(
-                onClick = { /* TODO */ },
+                onClick = onAddToJournal,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, Color.LightGray)
@@ -263,7 +385,7 @@ private fun PermissionRequestCard(onRequestPermission: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(
             modifier = Modifier.padding(24.dp).fillMaxWidth(),
@@ -295,8 +417,32 @@ fun CameraScreenPreview() {
     HealthyAITheme {
         CameraScreenContent(
             uiState = CameraUiState(),
+            // Preview của IDE không chạy được CameraX thật → hiển thị luồng xin quyền
+            hasCameraPermission = false,
+            onRequestPermission = {},
+            onAnalyzeBitmap = {},
+            onCaptureError = {},
+            onAddToJournal = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun CameraDetectionResultPreview() {
+    HealthyAITheme {
+        CameraScreenContent(
+            uiState = CameraUiState(
+                detectedLabels = listOf(
+                    FoodLabel(text = "Salad", confidence = 0.92f),
+                    FoodLabel(text = "Rau xanh", confidence = 0.78f)
+                )
+            ),
             hasCameraPermission = true,
-            onRequestPermission = {}
+            onRequestPermission = {},
+            onAnalyzeBitmap = {},
+            onCaptureError = {},
+            onAddToJournal = {}
         )
     }
 }

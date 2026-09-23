@@ -118,6 +118,54 @@ class HabitRuleEngineTest {
             suggestions.none { it.category == HabitCategory.EXERCISE && it.priority == SuggestionPriority.HIGH })
     }
 
+    // ── EXERCISE TESTS: đơn vị KHÔNG phải bước (phụ lục C #17) ──────────────────────────
+    // Trước đây rule so `value` với 5000/8000 bất kể đơn vị, nên thói quen "Chạy bộ 30 phút" ghi
+    // 10 phút bị đọc thành "10 bước" và sinh gợi ý vô nghĩa.
+
+    @Test
+    fun `should generate HIGH exercise warning when minutes are below half of the habit target`() {
+        // 10 phút / mục tiêu 30 phút = 33% → dưới 50% → HIGH
+        val logs = (0..4).map { fakeExerciseMinutesLog(value = 10f, daysAgo = it) }
+        val suggestions = ruleEngine.generateSuggestions(logs)
+
+        val exerciseSug = suggestions.firstOrNull { it.category == HabitCategory.EXERCISE }
+        assertNotNull("Should have exercise suggestion", exerciseSug)
+        assertEquals(SuggestionPriority.HIGH, exerciseSug!!.priority)
+        assertTrue("Nội dung phải nói theo đơn vị phút, không phải bước chân",
+            exerciseSug.message.contains("10 phút") && !exerciseSug.message.contains("bước"))
+    }
+
+    @Test
+    fun `should NOT generate exercise warning when minutes reach the habit target`() {
+        // Ghi đủ 30/30 phút: giá trị 30 < 5000 nên bản cũ vẫn bắn gợi ý HIGH sai
+        val logs = (0..4).map { fakeExerciseMinutesLog(value = 30f, daysAgo = it) }
+        val suggestions = ruleEngine.generateSuggestions(logs)
+
+        assertTrue("Đạt đủ mục tiêu thì không có gợi ý vận động",
+            suggestions.none { it.category == HabitCategory.EXERCISE })
+    }
+
+    @Test
+    fun `should generate LOW exercise warning when minutes are slightly below target`() {
+        // 21/30 phút = 70% → từ 50% đến dưới 80% → LOW
+        val logs = (0..4).map { fakeExerciseMinutesLog(value = 21f, daysAgo = it) }
+        val suggestions = ruleEngine.generateSuggestions(logs)
+
+        val exerciseSug = suggestions.firstOrNull { it.category == HabitCategory.EXERCISE }
+        assertNotNull("Should have exercise suggestion", exerciseSug)
+        assertEquals(SuggestionPriority.LOW, exerciseSug!!.priority)
+    }
+
+    @Test
+    fun `should NOT generate exercise warning when there are fewer than 3 logs`() {
+        // Chưa đủ dữ liệu để nói "xu hướng" khi so theo mục tiêu của thói quen
+        val logs = (0..1).map { fakeExerciseMinutesLog(value = 1f, daysAgo = it) }
+        val suggestions = ruleEngine.generateSuggestions(logs)
+
+        assertTrue("2 lần ghi chưa đủ để kết luận xu hướng",
+            suggestions.none { it.category == HabitCategory.EXERCISE })
+    }
+
     // ── PRIORITY ORDERING ──────────────────────────────────────
 
     @Test
@@ -148,18 +196,29 @@ class HabitRuleEngineTest {
     private fun fakeSleepLog(value: Float, daysAgo: Int = 0) = HabitLog(
         habitId = 1L, habitName = "Giấc ngủ",
         category = HabitCategory.SLEEP, value = value, unit = "giờ",
+        targetValueAtTime = 8f,
         loggedAt = System.currentTimeMillis() - (daysAgo * 86_400_000L)
     )
 
     private fun fakeWaterLog(value: Float, daysAgo: Int = 0) = HabitLog(
         habitId = 2L, habitName = "Uống nước",
         category = HabitCategory.WATER, value = value, unit = "ml",
+        targetValueAtTime = 2000f,
         loggedAt = System.currentTimeMillis() - (daysAgo * 86_400_000L)
     )
 
     private fun fakeExerciseLog(value: Float, daysAgo: Int = 0) = HabitLog(
         habitId = 3L, habitName = "Vận động",
         category = HabitCategory.EXERCISE, value = value, unit = "bước",
+        targetValueAtTime = 10000f,
+        loggedAt = System.currentTimeMillis() - (daysAgo * 86_400_000L)
+    )
+
+    /** Thói quen vận động đo bằng **phút** (Data set A: "Chạy bộ — 30 phút"). */
+    private fun fakeExerciseMinutesLog(value: Float, daysAgo: Int = 0) = HabitLog(
+        habitId = 4L, habitName = "Chạy bộ",
+        category = HabitCategory.EXERCISE, value = value, unit = "phút",
+        targetValueAtTime = 30f,
         loggedAt = System.currentTimeMillis() - (daysAgo * 86_400_000L)
     )
 }

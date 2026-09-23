@@ -11,6 +11,7 @@ import com.healthyai.app.domain.repository.HabitRepository
 import com.healthyai.app.domain.usecase.habit.AddHabitUseCase
 import com.healthyai.app.domain.usecase.habit.DeleteHabitUseCase
 import com.healthyai.app.domain.usecase.habit.UpdateHabitUseCase
+import com.healthyai.app.presentation.ui.format.formatTargetValue
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -26,6 +27,14 @@ data class AddEditHabitUiState(
     val frequency: HabitFrequency = HabitFrequency.DAILY,
     val isEditMode: Boolean = false,
     val isSaved: Boolean = false,
+    /**
+     * Đang ghi thói quen vào DB (tạo mới hoặc cập nhật). UI dùng cờ này để **vô hiệu hoá nút đáy**
+     * và hiện vòng xoay; ViewModel dùng nó để **chặn double-submit** (bấm "Tạo thói quen" / "Cập
+     * nhật" 2 lần thật nhanh chỉ tạo/cập nhật 1 lần).
+     */
+    val isSaving: Boolean = false,
+    /** Đã xóa mềm (ẩn) thói quen — màn hình hiện phản hồi rồi quay lại danh sách. */
+    val isDeleted: Boolean = false,
     val error: String? = null
 )
 
@@ -60,7 +69,7 @@ class AddEditHabitViewModel @Inject constructor(
                             id = h.id,
                             name = h.name,
                             category = h.category,
-                            targetValue = h.targetValue.toString(),
+                            targetValue = formatTargetValue(h.targetValue),
                             unit = h.unit,
                             timeOfDay = h.timeOfDay,
                             frequency = h.frequency,
@@ -89,8 +98,17 @@ class AddEditHabitViewModel @Inject constructor(
     fun onTimeOfDayChange(time: HabitTimeOfDay) = _uiState.update { it.copy(timeOfDay = time) }
     fun onFrequencyChange(freq: HabitFrequency) = _uiState.update { it.copy(frequency = freq) }
 
+    /**
+     * Lưu thói quen đang tạo/sửa.
+     *
+     * Kiểm tra lần lượt: đang lưu (chặn double-submit) → tên trống → mục tiêu không hợp lệ →
+     * **tên bị trùng** với một thói quen đang hoạt động khác (mục 3 #13). Chỉ khi qua hết mới ghi
+     * vào DB. Cờ [AddEditHabitUiState.isSaving] được bật **trước khi** phát coroutine ghi DB nên
+     * lần bấm thứ hai luôn nhìn thấy nó, và luôn được tắt ở `finally` (không bị kẹt "đang lưu").
+     */
     fun saveHabit() {
         val state = _uiState.value
+        if (state.isSaving) return // Đang lưu → bỏ qua lần bấm thứ hai
         if (state.name.isBlank()) {
             _uiState.update { it.copy(error = "Tên thói quen không được để trống") }
             return
@@ -111,25 +129,54 @@ class AddEditHabitViewModel @Inject constructor(
             frequency = state.frequency
         )
 
+        _uiState.update { it.copy(isSaving = true) }
         viewModelScope.launch {
-            runCatching {
-                if (state.isEditMode) updateHabitUseCase(habit)
-                else addHabitUseCase(habit)
-            }.onSuccess {
-                _uiState.update { it.copy(isSaved = true) }
-            }.onFailure { e ->
-                _uiState.update { it.copy(error = "Lỗi khi lưu: ${e.message}") }
+            try {
+                if (isNameTaken(state.name, exceptId = habit.id)) {
+                    _uiState.update { it.copy(error = "Tên thói quen đã tồn tại") }
+                    return@launch
+                }
+
+                runCatching {
+                    if (state.isEditMode) updateHabitUseCase(habit)
+                    else addHabitUseCase(habit)
+                }.onSuccess {
+                    _uiState.update { it.copy(isSaved = true) }
+                }.onFailure { e ->
+                    _uiState.update { it.copy(error = "Lỗi khi lưu: ${e.message}") }
+                }
+            } finally {
+                _uiState.update { it.copy(isSaving = false) }
             }
         }
     }
 
+    /**
+     * Đã có thói quen **đang hoạt động** khác mang tên này chưa?
+     *
+     * So sánh sau khi cắt khoảng trắng và **không phân biệt hoa/thường** ("Uống nước" ≈ "uống NƯỚC").
+     * [exceptId] là id của chính thói quen đang sửa — nhờ đó giữ nguyên tên cũ khi bấm "Cập nhật"
+     * vẫn hợp lệ. Thói quen đã xóa mềm (`isActive = 0`) không được tính, nên tên đã xóa dùng lại được.
+     */
+    private suspend fun isNameTaken(name: String, exceptId: Long): Boolean {
+        val normalized = name.trim()
+        return repository.getAllActiveHabits()
+            .first()
+            .any { it.id != exceptId && it.name.trim().equals(normalized, ignoreCase = true) }
+    }
+
+    /**
+     * Xóa **mềm** thói quen đang sửa: `HabitDao.softDeleteHabit` chỉ đặt `isActive = 0` nên hàng
+     * `habits` và toàn bộ `habit_logs` đã ghi vẫn còn trong DB (Insights vẫn đọc được log này).
+     * UI gọi hàm này sau khi người dùng xác nhận ở dialog.
+     */
     fun deleteHabit() {
-        if (habitId == -1L) return
+        if (habitId == -1L || _uiState.value.isDeleted) return // Chế độ thêm mới / đã xóa rồi
         viewModelScope.launch {
             runCatching {
                 deleteHabitUseCase(habitId)
             }.onSuccess {
-                _uiState.update { it.copy(isSaved = true) }
+                _uiState.update { it.copy(isDeleted = true) }
             }.onFailure { e ->
                 _uiState.update { it.copy(error = "Lỗi khi xóa: ${e.message}") }
             }

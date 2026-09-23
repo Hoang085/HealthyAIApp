@@ -36,6 +36,13 @@ val SurfaceDark           = Color(0xFF1A1C19)
 val OnSurfaceDark         = Color(0xFFE2E3DC)
 val SurfaceVariantDark    = Color(0xFF424940)
 
+// ── Nền thẻ / panel (Card, Surface) ────────────────────────
+// Trước đây Card hard-code `Color.White` → ở dark mode thành thẻ trắng trong khi chữ dùng
+// `onSurface` sáng ⇒ mất chữ. Hai giá trị dưới đây nổi hơn `background` một chút ở CẢ hai chế độ
+// (sáng: trắng trên nền xanh-nhạt; tối: xám-xanh nhạt trên nền #1A1C19).
+val SurfaceContainerLowLight = Color(0xFFFFFFFF)
+val SurfaceContainerLowDark  = Color(0xFF23261F)
+
 // ── Semantic Colors ────────────────────────────────────────
 val ErrorRed              = Color(0xFFB00020)
 val WarningOrange         = Color(0xFFE65100)

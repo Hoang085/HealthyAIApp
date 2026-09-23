@@ -18,6 +18,11 @@ interface HabitRepository {
 
     suspend fun insertHabit(habit: Habit): Long
     suspend fun logHabit(log: HabitLog)
+
+    /**
+     * Xóa thói quen — **xóa mềm**: chỉ đặt `isActive = 0` để thói quen biến mất khỏi danh sách,
+     * hàng dữ liệu và toàn bộ `habit_logs` của nó vẫn còn trong DB (Insights vẫn đọc được log).
+     */
     suspend fun deleteHabit(habitId: Long)
     
     /** Lấy danh sách thói quen chưa đồng bộ */

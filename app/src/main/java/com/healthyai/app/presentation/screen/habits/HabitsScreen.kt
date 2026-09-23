@@ -1,5 +1,6 @@
 package com.healthyai.app.presentation.screen.habits
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -27,6 +29,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
+import com.healthyai.app.presentation.ui.component.ErrorStateCard
+import com.healthyai.app.presentation.ui.format.formatHabitProgress
+import com.healthyai.app.presentation.ui.format.formatTargetValue
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -39,13 +44,29 @@ fun HabitsScreen(
     viewModel: HabitsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Phản hồi sau khi ghi nhận: `showLogSuccessFor` là sự kiện một lần → hiện Toast rồi xoá cờ,
+    // nhờ vậy mỗi lần ghi (kể cả ghi lại cùng một thói quen) đều có thông báo.
+    LaunchedEffect(uiState.showLogSuccessFor) {
+        val habitId = uiState.showLogSuccessFor ?: return@LaunchedEffect
+        val habitName = uiState.habits.firstOrNull { it.habit.id == habitId }?.habit?.name
+        viewModel.onLogSuccessShown()
+        Toast.makeText(
+            context,
+            if (habitName != null) "Đã ghi nhận: $habitName" else "Đã ghi nhận",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
 
     HabitsScreenContent(
         uiState = uiState,
         onFilterSelected = viewModel::setFilter,
         onAddHabitClick = onNavigateToAddHabit,
         onHabitClick = onNavigateToEditHabit,
-        onLogHabit = viewModel::logHabit
+        onLogHabit = viewModel::logHabit,
+        onLogRequestHandled = viewModel::onLogRequestHandled,
+        onDismissError = viewModel::dismissError
     )
 }
 
@@ -55,12 +76,36 @@ fun HabitsScreenContent(
     onFilterSelected: (String) -> Unit,
     onAddHabitClick: () -> Unit,
     onHabitClick: (Long) -> Unit,
-    onLogHabit: (Habit, Float) -> Unit
+    onLogHabit: (Habit, Float) -> Unit,
+    onLogRequestHandled: () -> Unit,
+    onDismissError: () -> Unit
 ) {
     var showLogDialogFor by remember { mutableStateOf<Habit?>(null) }
+    val context = LocalContext.current
+
+    // Yêu cầu ghi nhận từ màn khác (mục 3 #14 — nút trong thẻ gợi ý AI; phụ lục C #22 — nút
+    // "Thêm vào nhật ký" của màn Ghi chép): mở sẵn hộp thoại ghi nhận của thói quen đúng danh mục;
+    // nếu chưa có thói quen nào thuộc danh mục đó thì nhắc tạo mới.
+    LaunchedEffect(uiState.logRequest) {
+        when (val request = uiState.logRequest) {
+            null -> Unit
+            is LogRequest.Open -> {
+                showLogDialogFor = request.habit
+                onLogRequestHandled()
+            }
+            is LogRequest.Missing -> {
+                Toast.makeText(
+                    context,
+                    "Chưa có thói quen phù hợp — bấm nút + để tạo mới.",
+                    Toast.LENGTH_LONG
+                ).show()
+                onLogRequestHandled()
+            }
+        }
+    }
 
     Scaffold(
-        containerColor = Color(0xFFF8F9FA),
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onAddHabitClick,
@@ -82,6 +127,14 @@ fun HabitsScreenContent(
         ) {
             item {
                 HabitHeader()
+            }
+
+            // Lỗi ghi nhận / đọc dữ liệu (ví dụ ghi log thất bại) — trước đây `uiState.error`
+            // không được hiển thị ở màn này (phụ lục C #10).
+            if (uiState.error != null) {
+                item {
+                    ErrorStateCard(message = uiState.error, onDismiss = onDismissError)
+                }
             }
 
             item {
@@ -119,16 +172,26 @@ fun HabitsScreenContent(
 
         // Dialog ghi nhận thói quen
         showLogDialogFor?.let { habit ->
-            var logValue by remember { mutableStateOf(habit.targetValue.toString()) }
-            
+            // Giá trị mặc định = mục tiêu, hiển thị dạng số sạch ("2000" thay vì "2000.0")
+            var logValue by remember { mutableStateOf(formatTargetValue(habit.targetValue)) }
+            // Nhập rỗng / không phải số → giữ hộp thoại mở và hiện lỗi dưới ô nhập (thay vì im lặng)
+            var errorMessage by remember { mutableStateOf<String?>(null) }
+
             AlertDialog(
                 onDismissRequest = { showLogDialogFor = null },
                 title = { Text("Ghi nhận ${habit.name}") },
                 text = {
                     OutlinedTextField(
                         value = logValue,
-                        onValueChange = { logValue = it },
+                        onValueChange = {
+                            logValue = it
+                            errorMessage = null // người dùng sửa lại → xoá thông báo lỗi cũ
+                        },
                         label = { Text("Số lượng (${habit.unit})") },
+                        isError = errorMessage != null,
+                        supportingText = errorMessage?.let { message ->
+                            { Text(message, color = MaterialTheme.colorScheme.error) }
+                        },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                         )
@@ -136,8 +199,13 @@ fun HabitsScreenContent(
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        logValue.toFloatOrNull()?.let { onLogHabit(habit, it) }
-                        showLogDialogFor = null
+                        when (val result = parseLogValue(logValue)) {
+                            is LogValueResult.Invalid -> errorMessage = result.message
+                            is LogValueResult.Valid -> {
+                                onLogHabit(habit, result.value)
+                                showLogDialogFor = null
+                            }
+                        }
                     }) {
                         Text("Lưu")
                     }
@@ -211,7 +279,7 @@ private fun HabitCard(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -255,7 +323,7 @@ private fun HabitCard(
                         )
                     )
                 } else {
-                    val progressText = formatProgress(habit, currentProgress)
+                    val progressText = formatHabitProgress(habit, currentProgress)
                     Text(
                         progressText,
                         style = MaterialTheme.typography.bodyMedium.copy(
@@ -269,7 +337,7 @@ private fun HabitCard(
             if (isCompleted) {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFFEEEEEE),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.height(48.dp).width(80.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -300,15 +368,6 @@ private fun EmptyHabitsView() {
     }
 }
 
-private fun formatProgress(habit: Habit, current: Float): String {
-    return when (habit.category) {
-        HabitCategory.WATER -> "${"%.1f".format(current)}L / ${"%.1f".format(habit.targetValue / 1000f)}L"
-        HabitCategory.EXERCISE -> "${current.toInt()} / ${habit.targetValue.toInt()} phút"
-        HabitCategory.SLEEP -> "${"%.1f".format(current)} / ${"%.1f".format(habit.targetValue)} giờ"
-        else -> "${current.toInt()} / ${habit.targetValue.toInt()} ${habit.unit}"
-    }
-}
-
 private val habitVisuals = mapOf(
     HabitCategory.WATER to (Icons.Default.WaterDrop to Color(0xFF2196F3)),
     HabitCategory.MINDFULNESS to (Icons.Default.SelfImprovement to Color(0xFFFF9800)),
@@ -334,7 +393,9 @@ fun HabitsScreenPreview() {
             onFilterSelected = {},
             onAddHabitClick = {},
             onHabitClick = {},
-            onLogHabit = { _, _ -> }
+            onLogHabit = { _, _ -> },
+            onLogRequestHandled = {},
+            onDismissError = {}
         )
     }
 }

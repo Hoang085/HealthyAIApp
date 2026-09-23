@@ -1,5 +1,12 @@
 package com.healthyai.app.presentation.screen.home
 
+import android.content.Context
+import android.content.Intent
+import android.Manifest
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -10,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,37 +26,128 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
+import com.healthyai.app.domain.model.HealthConnectPermissionStatus
+import com.healthyai.app.domain.model.HealthConnectStatus
+import com.healthyai.app.domain.model.NotificationPermissionStatus
+import com.healthyai.app.presentation.ui.component.ErrorStateCard
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+/** Package của ứng dụng Health Connect trên Play Store. */
+private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
+
 @Composable
-fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
+fun HomeScreen(
+    onLogout: () -> Unit,
+    viewModel: HomeViewModel = hiltViewModel()
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Hộp thoại quyền của Health Connect; trả về tập quyền người dùng đã đồng ý.
+    val healthConnectLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract()
+    ) { grantedPermissions ->
+        viewModel.onHealthConnectPermissionsResult(grantedPermissions)
+    }
+
+    // Hộp thoại quyền thông báo (POST_NOTIFICATIONS, Android 13+). Trạng thái thật được đọc lại
+    // trong ViewModel nên không cần dùng tham số `granted` của launcher.
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        viewModel.onNotificationPermissionResult()
+    }
+
+    // Người dùng có thể cấp quyền trong app Health Connect hoặc bật thông báo trong Settings rồi
+    // quay lại app → kiểm tra lại mỗi khi màn Home hiện ra.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshSystemPermissions()
+    }
 
     HomeScreenContent(
         uiState = uiState,
-        onDismissError = viewModel::dismissError
+        onLogout = onLogout,
+        onDismissError = viewModel::dismissError,
+        onRequestHealthConnectPermission = {
+            healthConnectLauncher.launch(uiState.healthConnect.requiredPermissions)
+        },
+        onOpenHealthConnectStore = { openHealthConnectStore(context) },
+        onRequestNotificationPermission = {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        },
+        onOpenNotificationSettings = { openAppNotificationSettings(context) }
     )
+}
+
+/** Mở Play Store để cài / cập nhật Health Connect; nếu máy không có Play Store thì mở link web. */
+private fun openHealthConnectStore(context: Context) {
+    val marketUri = Uri.parse("market://details?id=$HEALTH_CONNECT_PACKAGE")
+    val webUri = Uri.parse("https://play.google.com/store/apps/details?id=$HEALTH_CONNECT_PACKAGE")
+
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, marketUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }.onFailure {
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, webUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+}
+
+/**
+ * Mở màn cài đặt thông báo của app (dùng khi người dùng đã tắt thông báo ở cấp app —
+ * lúc đó xin lại quyền `POST_NOTIFICATIONS` không còn hiệu lực).
+ */
+private fun openAppNotificationSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    runCatching {
+        context.startActivity(intent)
+    }.onFailure {
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.fromParts("package", context.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
 }
 
 @Composable
 fun HomeScreenContent(
     uiState: HomeUiState,
-    onDismissError: () -> Unit
+    onLogout: () -> Unit,
+    onDismissError: () -> Unit,
+    onRequestHealthConnectPermission: () -> Unit,
+    onOpenHealthConnectStore: () -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    onOpenNotificationSettings: () -> Unit
 ) {
     Scaffold(
-        containerColor = Color(0xFFF8F9FA) // Restore Light gray background
+        // Nền theo theme (sáng/tối) thay vì #F8F9FA hard-code → dark mode không còn chữ sáng trên nền sáng
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -57,8 +156,29 @@ fun HomeScreenContent(
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            item { GreetingHeader() }
+            item { GreetingHeader(onLogout = onLogout) }
             item { HealthSummaryCard(uiState = uiState) }
+
+            if (uiState.showHealthConnectCard) {
+                item {
+                    HealthConnectPermissionCard(
+                        status = uiState.healthConnect.status,
+                        onRequestPermission = onRequestHealthConnectPermission,
+                        onOpenHealthConnectStore = onOpenHealthConnectStore
+                    )
+                }
+            }
+
+            if (uiState.showReminderNotificationCard) {
+                item {
+                    ReminderNotificationCard(
+                        status = uiState.notificationPermission,
+                        onRequestNotificationPermission = onRequestNotificationPermission,
+                        onOpenNotificationSettings = onOpenNotificationSettings
+                    )
+                }
+            }
+
             item {
                 Text(
                     "Thói quen hôm nay",
@@ -78,16 +198,14 @@ fun HomeScreenContent(
             } else if (uiState.habits.isEmpty()) {
                 item { EmptyHabitsCard() }
             } else {
-                items(uiState.habits) { habit ->
-                    // Set completed if progress >= target (though HomeUiState doesn't have progress yet)
-                    // Let's assume for now, and handle error state if it exists
-                    HabitItem(habit, isCompleted = false)
+                items(uiState.habits, key = { it.habit.id }) { item ->
+                    HabitItem(habit = item.habit, isCompleted = item.isCompleted)
                 }
             }
             
             if (uiState.error != null) {
                 item {
-                    ErrorStateView(message = uiState.error, onDismiss = onDismissError)
+                    ErrorStateCard(message = uiState.error, onDismiss = onDismissError)
                 }
             }
         }
@@ -95,27 +213,7 @@ fun HomeScreenContent(
 }
 
 @Composable
-private fun ErrorStateView(message: String, onDismiss: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Error, null, tint = Color.Red)
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(message, modifier = Modifier.weight(1f), color = Color.Red)
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, null, tint = Color.Red)
-            }
-        }
-    }
-}
-
-@Composable
-private fun GreetingHeader() {
+private fun GreetingHeader(onLogout: () -> Unit) {
     val greeting = when (LocalTime.now().hour) {
         in 5..11  -> "Chào buổi sáng,"
         in 12..17 -> "Chào buổi chiều,"
@@ -123,6 +221,9 @@ private fun GreetingHeader() {
         else      -> "Chào buổi đêm,"
     }
     val date = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, dd 'tháng' MM", Locale("vi")))
+
+    // Nút Đăng xuất (mục 3 #19): hỏi lại trước khi thoát phiên để tránh bấm nhầm.
+    var showLogoutConfirm by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -150,20 +251,56 @@ private fun GreetingHeader() {
                 )
             )
         }
-        // Avatar Placeholder
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(Color.LightGray)
-        ) {
-            Icon(
-                Icons.Default.Person,
-                contentDescription = null,
-                modifier = Modifier.size(40.dp).align(Alignment.Center),
-                tint = Color.White
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconButton(onClick = { showLogoutConfirm = true }) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Đăng xuất",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            // Avatar Placeholder
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color.LightGray)
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp).align(Alignment.Center),
+                    tint = Color.White
+                )
+            }
         }
+    }
+
+    if (showLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirm = false },
+            title = { Text("Đăng xuất") },
+            text = {
+                Text(
+                    "Bạn có chắc muốn đăng xuất? Thói quen và nhật ký trên máy vẫn được giữ nguyên."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutConfirm = false
+                        onLogout()
+                    }
+                ) {
+                    Text("Đăng xuất")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirm = false }) {
+                    Text("Huỷ")
+                }
+            }
+        )
     }
 }
 
@@ -172,7 +309,7 @@ private fun HealthSummaryCard(uiState: HomeUiState) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
@@ -238,13 +375,13 @@ private fun HealthCircleStat(icon: ImageVector, label: String, value: String, co
 }
 
 @Composable
-private fun HabitItem(habit: Habit, isCompleted: Boolean = false) {
+private fun HabitItem(habit: Habit, isCompleted: Boolean) {
     val (icon, color) = habitVisuals[habit.category] ?: (Icons.Default.TaskAlt to Color.Gray)
     
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Row(
             modifier = Modifier
@@ -256,10 +393,14 @@ private fun HabitItem(habit: Habit, isCompleted: Boolean = false) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(color.copy(alpha = 0.2f)),
+                    .background(if (isCompleted) Color(0xFFC8E6C9) else color.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = color)
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (isCompleted) Color(0xFF1B5E20) else color
+                )
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -268,8 +409,11 @@ private fun HabitItem(habit: Habit, isCompleted: Boolean = false) {
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 Text(
-                    "Mục tiêu: ${habit.targetValue.toInt()} ${habit.unit}",
-                    style = MaterialTheme.typography.bodySmall.copy(color = Color.Gray)
+                    text = if (isCompleted) "Hoàn thành" else "Mục tiêu: ${habit.targetValue.toInt()} ${habit.unit}",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = if (isCompleted) Color(0xFF4CAF50) else Color.Gray,
+                        fontWeight = if (isCompleted) FontWeight.SemiBold else FontWeight.Normal
+                    )
                 )
             }
             // Checkbox Circle
@@ -280,7 +424,12 @@ private fun HabitItem(habit: Habit, isCompleted: Boolean = false) {
                         .background(Color(0xFF2E7D32), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Đã hoàn thành",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             } else {
                 Box(
@@ -298,7 +447,7 @@ private fun EmptyHabitsCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(
             modifier = Modifier.padding(24.dp).fillMaxWidth(),
@@ -332,13 +481,72 @@ fun HomeScreenPreview() {
         HomeScreenContent(
             uiState = HomeUiState(
                 habits = listOf(
-                    Habit(id = 1, name = "Uống nước", category = HabitCategory.WATER, targetValue = 2000f, unit = "ml"),
-                    Habit(id = 2, name = "Thiền buổi sáng", category = HabitCategory.MINDFULNESS, targetValue = 15f, unit = "phút"),
-                    Habit(id = 3, name = "Đi bộ buổi tối", category = HabitCategory.EXERCISE, targetValue = 30f, unit = "phút")
+                    HomeHabitItem(
+                        Habit(id = 1, name = "Uống nước", category = HabitCategory.WATER, targetValue = 2000f, unit = "ml"),
+                        isCompleted = true
+                    ),
+                    HomeHabitItem(
+                        Habit(id = 2, name = "Thiền buổi sáng", category = HabitCategory.MINDFULNESS, targetValue = 15f, unit = "phút"),
+                        isCompleted = false
+                    ),
+                    HomeHabitItem(
+                        Habit(id = 3, name = "Đi bộ buổi tối", category = HabitCategory.EXERCISE, targetValue = 30f, unit = "phút"),
+                        isCompleted = false
+                    )
                 ),
                 isLoading = false
             ),
-            onDismissError = {}
+            onDismissError = {},
+            onRequestHealthConnectPermission = {},
+            onOpenHealthConnectStore = {},
+            onRequestNotificationPermission = {},
+            onOpenNotificationSettings = {},
+            onLogout = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun HomeScreenMissingHealthConnectPermissionPreview() {
+    HealthyAITheme {
+        HomeScreenContent(
+            uiState = HomeUiState(
+                healthConnect = HealthConnectPermissionStatus(
+                    status = HealthConnectStatus.AVAILABLE,
+                    requiredPermissions = setOf("android.permission.health.READ_STEPS"),
+                    hasAllPermissions = false
+                ),
+                isLoading = false
+            ),
+            onDismissError = {},
+            onRequestHealthConnectPermission = {},
+            onOpenHealthConnectStore = {},
+            onRequestNotificationPermission = {},
+            onOpenNotificationSettings = {},
+            onLogout = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun HomeScreenNotificationsBlockedPreview() {
+    HealthyAITheme {
+        HomeScreenContent(
+            uiState = HomeUiState(
+                notificationPermission = NotificationPermissionStatus(
+                    notificationsEnabled = false,
+                    canRequestPermission = true
+                ),
+                isLoading = false
+            ),
+            onDismissError = {},
+            onRequestHealthConnectPermission = {},
+            onOpenHealthConnectStore = {},
+            onRequestNotificationPermission = {},
+            onOpenNotificationSettings = {},
+            onLogout = {}
         )
     }
 }

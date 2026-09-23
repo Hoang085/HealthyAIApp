@@ -8,8 +8,12 @@ import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.AggregateRequest
+import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import com.healthyai.app.domain.model.HealthConnectStatus
+import com.healthyai.app.domain.model.SleepStageBreakdown
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -38,6 +42,9 @@ class HealthConnectDataSourceImpl @Inject constructor(
 
     override fun isAvailable(): Boolean =
         HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+
+    override fun getStatus(): HealthConnectStatus =
+        sdkStatusToHealthConnectStatus(HealthConnectClient.getSdkStatus(context))
 
     override suspend fun hasAllPermissions(): Boolean {
         return try {
@@ -132,4 +139,57 @@ class HealthConnectDataSourceImpl @Inject constructor(
             0.0
         }
     }
+
+    /**
+     * Đọc toàn bộ phiên ngủ trong khoảng thời gian và cộng dồn thời lượng theo từng pha.
+     *
+     * Lưu ý: chỉ những phiên ngủ có dữ liệu phân chia pha (Deep/Light/REM) mới được tính;
+     * thiết bị chỉ báo `STAGE_TYPE_SLEEPING` (không chia pha) sẽ cho kết quả rỗng — UI sẽ
+     * hiển thị trạng thái "chưa có dữ liệu chi tiết" thay vì số liệu sai.
+     */
+    override suspend fun getSleepStageBreakdown(start: Instant, end: Instant): SleepStageBreakdown {
+        return try {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = SleepSessionRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(start, end)
+                )
+            )
+
+            var deepMinutes = 0L
+            var lightMinutes = 0L
+            var remMinutes = 0L
+
+            response.records.forEach { session ->
+                session.stages.forEach { stage ->
+                    val minutes = Duration.between(stage.startTime, stage.endTime).toMinutes()
+                    when (stage.stage) {
+                        SleepSessionRecord.STAGE_TYPE_DEEP -> deepMinutes += minutes
+                        SleepSessionRecord.STAGE_TYPE_LIGHT -> lightMinutes += minutes
+                        SleepSessionRecord.STAGE_TYPE_REM -> remMinutes += minutes
+                    }
+                }
+            }
+
+            SleepStageBreakdown(
+                deepMinutes = deepMinutes,
+                lightMinutes = lightMinutes,
+                remMinutes = remMinutes
+            )
+        } catch (e: Exception) {
+            SleepStageBreakdown()
+        }
+    }
+}
+
+/**
+ * Dịch mã trạng thái của `HealthConnectClient.getSdkStatus()` sang enum của domain.
+ *
+ * Tách riêng để test được trên JVM (không cần Context/thiết bị):
+ * `SDK_AVAILABLE = 3`, `SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED = 2`, `SDK_UNAVAILABLE = 1`.
+ */
+internal fun sdkStatusToHealthConnectStatus(sdkStatus: Int): HealthConnectStatus = when (sdkStatus) {
+    HealthConnectClient.SDK_AVAILABLE -> HealthConnectStatus.AVAILABLE
+    HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> HealthConnectStatus.UPDATE_REQUIRED
+    else -> HealthConnectStatus.NOT_INSTALLED
 }

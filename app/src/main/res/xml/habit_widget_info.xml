@@ -1,8 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    updatePeriodMillis = 1 800 000 ms = **30 phút** (mức nhỏ nhất mà Android chấp nhận).
+
+    Widget xếp thói quen theo **buổi hiện tại** (`TodayHabitProgress.orderForWidget()`: sáng
+    05:00–11:59, chiều 12:00–17:59, tối 18:00–04:59), nên cần được hệ thống vẽ lại **định kỳ** để
+    qua mốc buổi nội dung vẫn đúng dù người dùng không mở app.
+
+    Ngoài ra widget vẫn được vẽ lại **ngay theo sự kiện** khi dữ liệu thói quen đổi:
+    `HabitRepositoryImpl` → `HabitWidgetRefresher` → `HabitWidget().updateAll(context)`.
+
+    minWidth/minHeight: nội dung gồm tiêu đề "Tiến độ hôm nay" + dòng "x/y thói quen đạt mục tiêu"
+    + thanh tiến độ + tối đa 3 dòng "tên — đã ghi/mục tiêu" (+ dòng "+N thói quen khác"), nên khung
+    mặc định phải rộng/cao hơn widget 1 dòng trước đây (110dp) để không bị cắt. Người dùng vẫn
+    resize được (`resizeMode`).
+-->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:initialLayout="@layout/glance_default_loading_layout"
-    android:minWidth="110dp"
-    android:minHeight="110dp"
+    android:minWidth="150dp"
+    android:minHeight="140dp"
     android:resizeMode="horizontal|vertical"
-    android:updatePeriodMillis="0"
+    android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

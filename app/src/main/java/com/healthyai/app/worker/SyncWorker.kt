@@ -3,8 +3,8 @@ package com.healthyai.app.worker
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
-import com.google.firebase.auth.FirebaseAuth
 import com.healthyai.app.data.firebase.FirestoreSyncDataSource
+import com.healthyai.app.domain.repository.AuthRepository
 import com.healthyai.app.domain.repository.HabitRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -14,6 +14,9 @@ import java.util.concurrent.TimeUnit
  * SyncWorker — Đẩy dữ liệu chưa đồng bộ (isDirty = true) lên Firebase Firestore.
  * Chạy ngầm mỗi 6 giờ, chỉ khi có kết nối mạng.
  * Retry tối đa 3 lần với Exponential Backoff nếu thất bại.
+ *
+ * Nếu người dùng chưa đăng nhập (chế độ khách) thì worker **bỏ qua** và trả `success`:
+ * job chạy lại theo chu kỳ 6 giờ và sẽ đồng bộ ngay khi có phiên đăng nhập.
  */
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
@@ -21,11 +24,15 @@ class SyncWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val habitRepository: HabitRepository,
     private val firestoreSyncDataSource: FirestoreSyncDataSource,
-    private val auth: FirebaseAuth
+    private val authRepository: AuthRepository
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        val userId = auth.currentUser?.uid ?: return Result.failure()
+        val userId = authRepository.currentUserId
+        if (userId == null) {
+            android.util.Log.d("SyncWorker", "Sync skipped: chưa đăng nhập (chế độ khách)")
+            return Result.success()
+        }
 
         return try {
             val unsyncedLogs = habitRepository.getUnsyncedHabitLogs()

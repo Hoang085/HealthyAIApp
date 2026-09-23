@@ -25,21 +25,40 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.lazy.items
+import com.healthyai.app.domain.model.DailyConsistency
 import com.healthyai.app.domain.model.HabitCategory
+import com.healthyai.app.domain.model.SleepStageBreakdown
 import com.healthyai.app.domain.model.Suggestion
 import com.healthyai.app.domain.model.SuggestionPriority
+import com.healthyai.app.domain.model.VitalityScore
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
+import java.time.DayOfWeek
+import java.time.LocalDate
+import kotlin.math.roundToInt
 
+/**
+ * Màn Phân tích.
+ *
+ * [onOpenHabitLog] được gọi khi người dùng bấm nút hành động trong thẻ gợi ý AI (ví dụ
+ * **"Ghi nhận uống nước"**) — màn hình chỉ phát danh mục của gợi ý, còn việc điều hướng sang tab
+ * Thói quen do [com.healthyai.app.presentation.navigation.AppNavigation] lo (xem mục 3 #14).
+ */
 @Composable
-fun InsightsScreen(viewModel: InsightsViewModel = hiltViewModel()) {
+fun InsightsScreen(
+    onOpenHabitLog: (HabitCategory) -> Unit,
+    viewModel: InsightsViewModel = hiltViewModel()
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    InsightsScreenContent(uiState = uiState)
+    InsightsScreenContent(uiState = uiState, onOpenHabitLog = onOpenHabitLog)
 }
 
 @Composable
-fun InsightsScreenContent(uiState: InsightsUiState) {
+fun InsightsScreenContent(
+    uiState: InsightsUiState,
+    onOpenHabitLog: (HabitCategory) -> Unit
+) {
     Scaffold(
-        containerColor = Color(0xFFF8F9FA)
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -62,7 +81,10 @@ fun InsightsScreenContent(uiState: InsightsUiState) {
                 // Hiển thị danh sách gợi ý cá nhân hóa từ AI Rule Engine
                 if (uiState.suggestions.isNotEmpty()) {
                     items(uiState.suggestions, key = { it.id }) { suggestion ->
-                        AiTipCard(suggestion)
+                        AiTipCard(
+                            suggestion = suggestion,
+                            onActionClick = { onOpenHabitLog(suggestion.category) }
+                        )
                     }
                 } else {
                     item {
@@ -71,15 +93,15 @@ fun InsightsScreenContent(uiState: InsightsUiState) {
                 }
 
                 item {
-                    VitalityScoreCard(uiState.vitalityScore)
+                    VitalityScoreCard(uiState.vitality)
                 }
 
                 item {
-                    WeeklyConsistencyCard()
+                    WeeklyConsistencyCard(uiState.weeklyConsistency)
                 }
 
                 item {
-                    SleepQualityTrendCard()
+                    SleepQualityTrendCard(uiState.sleepStages)
                 }
             }
             
@@ -106,7 +128,10 @@ private fun InsightsHeader() {
 }
 
 @Composable
-private fun AiTipCard(suggestion: Suggestion) {
+private fun AiTipCard(
+    suggestion: Suggestion,
+    onActionClick: () -> Unit
+) {
     val priorityColor = when (suggestion.priority) {
         SuggestionPriority.CRITICAL -> Color.Red
         SuggestionPriority.HIGH -> Color(0xFFE65100) // Orange 900
@@ -114,16 +139,15 @@ private fun AiTipCard(suggestion: Suggestion) {
         SuggestionPriority.LOW -> Color.Gray
     }
 
-    val backgroundColor = when (suggestion.priority) {
-        SuggestionPriority.CRITICAL -> Color(0xFFFFEBEE)
-        SuggestionPriority.HIGH -> Color(0xFFFFF3E0)
-        else -> Color.White
-    }
+    // Nền thẻ lấy từ theme (sáng/tối) rồi phủ một lớp màu ưu tiên mờ → giữ được tín hiệu mức độ
+    // ưu tiên mà dark mode không còn thẻ nền sáng (#FFFFFF/#FFEBEE/#FFF3E0) làm mất chữ (mục 3 #18).
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerLow
+    val priorityTint = priorityColor.copy(alpha = 0.12f)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        colors = CardDefaults.cardColors(containerColor = surfaceColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (suggestion.priority == SuggestionPriority.CRITICAL) 
             androidx.compose.foundation.BorderStroke(1.dp, Color.Red.copy(alpha = 0.5f)) else null
@@ -133,7 +157,7 @@ private fun AiTipCard(suggestion: Suggestion) {
                 .fillMaxWidth()
                 .background(
                     brush = Brush.horizontalGradient(
-                        colors = listOf(backgroundColor, Color(0xFFE8F5E9).copy(alpha = 0.3f))
+                        colors = listOf(priorityTint, surfaceColor)
                     )
                 )
                 .padding(24.dp)
@@ -178,7 +202,8 @@ private fun AiTipCard(suggestion: Suggestion) {
                 
                 if (suggestion.actionLabel != null) {
                     Button(
-                        onClick = { /* TODO: Điều hướng đến thói quen tương ứng */ },
+                        // Chuyển sang tab Thói quen và mở sẵn hộp thoại ghi nhận cho danh mục này
+                        onClick = onActionClick,
                         colors = ButtonDefaults.buttonColors(containerColor = priorityColor),
                         shape = RoundedCornerShape(24.dp)
                     ) {
@@ -195,7 +220,7 @@ private fun NoSuggestionsCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -218,11 +243,14 @@ private fun NoSuggestionsCard() {
 }
 
 @Composable
-private fun WeeklyConsistencyCard() {
+private fun WeeklyConsistencyCard(days: List<DailyConsistency>) {
+    val today = LocalDate.now()
+    val hasAnyHabit = days.any { it.totalHabits > 0 }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
@@ -242,46 +270,87 @@ private fun WeeklyConsistencyCard() {
                 }
             }
             
-            Spacer(modifier = Modifier.height(40.dp))
-            
-            // Placeholder for Chart
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    // Draw horizontal line
-                    drawLine(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        start = androidx.compose.ui.geometry.Offset(0f, size.height / 2),
-                        end = androidx.compose.ui.geometry.Offset(size.width, size.height / 2),
-                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                    )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (!hasAnyHabit || days.isEmpty()) {
+                Text(
+                    "Chưa có thói quen nào để theo dõi. Hãy tạo thói quen đầu tiên ở tab Thói quen.",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    days.forEach { day ->
+                        val isToday = day.date == today
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "${(day.ratio * 100).roundToInt()}%",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = if (isToday) Color(0xFF1B5E20) else Color.Gray,
+                                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            // Cột nền xám (mốc 100%) + phần tô xanh theo tỉ lệ đạt được
+                            Box(
+                                modifier = Modifier
+                                    .width(18.dp)
+                                    .height(BAR_TRACK_HEIGHT)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(Color(0xFFEEEEEE)),
+                                contentAlignment = Alignment.BottomCenter
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(BAR_TRACK_HEIGHT * day.ratio)
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(
+                                            if (isToday) Color(0xFF1B5E20) else Color(0xFF81C784)
+                                        )
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                dayLabel(day.date),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = if (isToday) Color(0xFF1B5E20) else Color.Gray,
+                                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
+                                )
+                            )
+                        }
+                    }
                 }
-            }
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN").forEach { day ->
-                    Text(day, style = MaterialTheme.typography.labelSmall.copy(color = Color.Gray))
-                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    "Tỉ lệ thói quen đạt mục tiêu theo từng ngày (7 ngày gần nhất)",
+                    style = MaterialTheme.typography.labelSmall.copy(color = Color.Gray)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun VitalityScoreCard(score: Int) {
+private fun VitalityScoreCard(vitality: VitalityScore) {
+    val score = vitality.score
     val progressColor = Color(0xFF1B5E20)
     val trackColor = Color(0xFFEEEEEE)
     
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
@@ -335,22 +404,29 @@ private fun VitalityScoreCard(score: Int) {
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Text(
-                "+5 so với tuần trước",
-                style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray)
-            )
+            // Chỉ so sánh khi thật sự có dữ liệu 7 ngày trước đó (delta != null)
+            vitality.delta?.let { delta ->
+                Spacer(modifier = Modifier.height(16.dp))
+                val (label, color) = when {
+                    delta > 0 -> "+$delta so với tuần trước" to Color(0xFF2E7D32)
+                    delta < 0 -> "$delta so với tuần trước" to Color(0xFFC62828)
+                    else -> "Không đổi so với tuần trước" to Color.Gray
+                }
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium.copy(color = color)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun SleepQualityTrendCard() {
+private fun SleepQualityTrendCard(breakdown: SleepStageBreakdown) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
@@ -367,13 +443,47 @@ private fun SleepQualityTrendCard() {
             }
             
             Spacer(modifier = Modifier.height(24.dp))
-            
-            SleepBar("Sâu", 0.3f, "2h 15m", Color(0xFF1B5E20))
-            SleepBar("Nông", 0.6f, "4h 30m", Color(0xFF2E7D32))
-            SleepBar("REM", 0.2f, "1h 10m", Color(0xFF81C784))
+
+            if (!breakdown.hasData) {
+                Text(
+                    "Chưa có dữ liệu chi tiết pha giấc ngủ. Cần cấp quyền Giấc ngủ cho Health Connect " +
+                        "và thiết bị phải ghi được pha Sâu/Nông/REM.",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                val total = breakdown.totalMinutes.toFloat()
+                SleepBar("Sâu", breakdown.deepMinutes / total, formatSleepMinutes(breakdown.deepMinutes), Color(0xFF1B5E20))
+                SleepBar("Nông", breakdown.lightMinutes / total, formatSleepMinutes(breakdown.lightMinutes), Color(0xFF2E7D32))
+                SleepBar("REM", breakdown.remMinutes / total, formatSleepMinutes(breakdown.remMinutes), Color(0xFF81C784))
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    "Tổng ${formatSleepMinutes(breakdown.totalMinutes)} trong 7 đêm gần nhất",
+                    style = MaterialTheme.typography.labelSmall.copy(color = Color.Gray)
+                )
+            }
         }
     }
 }
+
+/** Nhãn ngày viết tắt theo tiếng Việt: T2..T7, CN. */
+private fun dayLabel(date: LocalDate): String = when (date.dayOfWeek) {
+    DayOfWeek.MONDAY -> "T2"
+    DayOfWeek.TUESDAY -> "T3"
+    DayOfWeek.WEDNESDAY -> "T4"
+    DayOfWeek.THURSDAY -> "T5"
+    DayOfWeek.FRIDAY -> "T6"
+    DayOfWeek.SATURDAY -> "T7"
+    DayOfWeek.SUNDAY -> "CN"
+}
+
+/** "135" → "2h 15m". */
+private fun formatSleepMinutes(minutes: Long): String = "${minutes / 60}h ${minutes % 60}m"
+
+private val BAR_TRACK_HEIGHT = 92.dp
 
 @Composable
 private fun SleepBar(label: String, progress: Float, duration: String, color: Color) {
@@ -408,6 +518,6 @@ private fun SleepBar(label: String, progress: Float, duration: String, color: Co
 @Composable
 fun InsightsScreenPreview() {
     HealthyAITheme {
-        InsightsScreenContent(uiState = InsightsUiState(isLoading = false))
+        InsightsScreenContent(uiState = InsightsUiState(isLoading = false), onOpenHabitLog = {})
     }
 }

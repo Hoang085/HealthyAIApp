@@ -5,6 +5,10 @@ import com.healthyai.app.domain.model.HabitLog
 import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.Suggestion
 import com.healthyai.app.domain.model.SuggestionPriority
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -39,14 +43,27 @@ class HabitRuleEngine @Inject constructor() {
 
     /**
      * Phân tích xu hướng sức khỏe từ dữ liệu cứng (Steps, Sleep, Heart Rate).
+     *
+     * **Dữ liệu được gom theo NGÀY trước khi phân tích** (phụ lục C #16): `health_data_history`
+     * ghi 1 hàng cho **mỗi lần sync** (6 giờ/lần), nên 3 hàng gần nhất có thể chỉ cách nhau vài
+     * giờ. Trước đây `take(3)` hiểu nhầm 3 lần sync thành "3 ngày liên tiếp" ⇒ chỉ cần 1 đêm thiếu
+     * ngủ là bắn cảnh báo CRITICAL, và "nhịp tim trung bình 7 ngày" thực chất chỉ là ~1,75 ngày.
+     *
+     * Nay mỗi ngày chỉ lấy **hàng mới nhất trong ngày** (dữ liệu đầy đủ nhất), rồi:
+     * - cảnh báo thiếu ngủ cần **3 ngày gần nhất có dữ liệu và liên tiếp nhau** (cách đúng 1 ngày);
+     * - nhịp tim trung bình lấy trên tối đa **7 ngày gần nhất** — khớp nội dung gợi ý.
      */
     private fun analyzeHealthTrends(history: List<HealthData>): List<Suggestion> {
         if (history.isEmpty()) return emptyList()
+        val dailyHistory = latestRowPerDay(history)
         val suggestions = mutableListOf<Suggestion>()
-        
+
         // Xu hướng 3 ngày thiếu ngủ (Dữ liệu cứng)
-        val recent3Sleep = history.take(3)
-        if (recent3Sleep.size >= 3 && recent3Sleep.all { it.sleepHours < 6.0 }) {
+        val recent3Sleep = dailyHistory.take(3)
+        if (recent3Sleep.size >= 3 &&
+            areConsecutiveDays(recent3Sleep.map { it.localDate() }) &&
+            recent3Sleep.all { it.sleepHours < 6.0 }
+        ) {
             suggestions.add(
                 Suggestion(
                     title = "🚨 Phát hiện xu hướng thiếu ngủ",
@@ -59,8 +76,8 @@ class HabitRuleEngine @Inject constructor() {
             )
         }
 
-        // Xu hướng nhịp tim cao khi nghỉ ngơi
-        val avgHeartRate = history.take(7).averageOf { it.heartRate }
+        // Xu hướng nhịp tim cao khi nghỉ ngơi (trung bình 7 ngày gần nhất)
+        val avgHeartRate = dailyHistory.take(7).averageOf { it.heartRate }
         if (avgHeartRate > 85.0) {
             suggestions.add(
                 Suggestion(
@@ -76,6 +93,24 @@ class HabitRuleEngine @Inject constructor() {
 
         return suggestions
     }
+
+    /**
+     * Mỗi ngày chỉ giữ **hàng mới nhất** (theo `recordedAt`), sắp xếp mới nhất → cũ nhất.
+     *
+     * Hàng mới nhất trong ngày là hàng đầy đủ dữ liệu nhất (bước chân/calo tích luỹ cả ngày).
+     */
+    private fun latestRowPerDay(history: List<HealthData>): List<HealthData> =
+        history.groupBy { it.localDate() }
+            .map { (_, rowsInDay) -> rowsInDay.maxByOrNull { it.recordedAt }!! }
+            .sortedByDescending { it.recordedAt }
+
+    /** [days] phải theo thứ tự mới → cũ và cách nhau đúng 1 ngày (ba ngày liên tiếp). */
+    private fun areConsecutiveDays(days: List<LocalDate>): Boolean =
+        days.zipWithNext().all { (newer, older) -> ChronoUnit.DAYS.between(older, newer) == 1L }
+
+    /** Ngày (theo múi giờ thiết bị) mà dữ liệu sức khỏe được ghi nhận. */
+    private fun HealthData.localDate(): LocalDate =
+        Instant.ofEpochMilli(recordedAt).atZone(ZoneId.systemDefault()).toLocalDate()
 
     /**
      * Tính toán "Chỉ số sinh lực" (Vitality Score) dựa trên mức độ hoàn thiện thói quen.
@@ -173,12 +208,36 @@ class HabitRuleEngine @Inject constructor() {
     }
 
     // ── Rule 3: Ít vận động ───────────────────────────────────
-    // Trigger: < 5000 bước/ngày trong 5 ngày liên tiếp → HIGH
-    // Trigger: < 8000 bước/ngày trung bình 7 ngày → LOW
+    // Trigger (đơn vị là BƯỚC): < 5000 bước/ngày trong 5 ngày liên tiếp → HIGH
+    //                            < 8000 bước/ngày trung bình 7 ngày → LOW
+    // Trigger (đơn vị khác, ví dụ "phút"): hoàn thành < 50% mục tiêu → HIGH; < 80% → LOW
+    /**
+     * Gợi ý vận động.
+     *
+     * Phụ lục C #17: trước đây rule so `value` với **5000/8000 bước bất kể đơn vị**, nên thói quen
+     * đo bằng phút/giờ (ví dụ "Chạy bộ 30 phút") ghi 30 cũng bị coi là "30 bước" ⇒ sinh thông báo
+     * vô nghĩa *"Số bước chân trung bình của bạn là 30 bước trong 5 ngày qua"*.
+     *
+     * Nay rule chia theo **đơn vị của chính thói quen**:
+     * - log có đơn vị bước → giữ nguyên ngưỡng khuyến nghị 5000/8000 bước ([STEP_DAILY_LOW],
+     *   [STEP_DAILY_RECOMMENDED]) vì đó là ngưỡng tính bằng bước;
+     * - log đo bằng đơn vị khác (phút, km, calo…) → so theo **tỉ lệ hoàn thành mục tiêu**
+     *   (`value / targetValueAtTime` của chính thói quen), không so với con số bước chân.
+     */
     private fun analyzeExerciseLogs(exerciseLogs: List<HabitLog>): List<Suggestion> {
-        val recent5 = exerciseLogs.sortedByDescending { it.loggedAt }.take(5)
+        val byNewestFirst = exerciseLogs.sortedByDescending { it.loggedAt }
 
-        if (recent5.size >= 5 && recent5.all { it.value < 5000f }) {
+        val stepSuggestions = analyzeStepLogs(byNewestFirst.filter { it.isStepUnit() })
+        if (stepSuggestions.isNotEmpty()) return stepSuggestions
+
+        return analyzeExerciseTargetCompletion(byNewestFirst.filterNot { it.isStepUnit() })
+    }
+
+    /** Rule theo số bước — chỉ áp dụng cho log có đơn vị đo bằng bước. */
+    private fun analyzeStepLogs(stepLogs: List<HabitLog>): List<Suggestion> {
+        val recent5 = stepLogs.take(5)
+
+        if (recent5.size >= 5 && recent5.all { it.value < STEP_DAILY_LOW }) {
             val avg = recent5.averageOf { it.value.toDouble() }
             return listOf(
                 Suggestion(
@@ -192,8 +251,8 @@ class HabitRuleEngine @Inject constructor() {
             )
         }
 
-        val recent7 = exerciseLogs.sortedByDescending { it.loggedAt }.take(7)
-        if (recent7.size >= 5 && recent7.averageOf { it.value.toDouble() } < 8000) {
+        val recent7 = stepLogs.take(7)
+        if (recent7.size >= 5 && recent7.averageOf { it.value.toDouble() } < STEP_DAILY_RECOMMENDED) {
             return listOf(
                 Suggestion(
                     title = "🚶 Hướng tới 8000 bước mỗi ngày",
@@ -206,9 +265,76 @@ class HabitRuleEngine @Inject constructor() {
         return emptyList()
     }
 
+    /**
+     * Rule theo **mục tiêu của thói quen** cho các log không đo bằng bước: dùng tỉ lệ
+     * `value / targetValueAtTime` nên đúng với mọi đơn vị (phút, km, calo…).
+     *
+     * Cần tối thiểu [MIN_LOGS_FOR_TREND] lần ghi (và phải có mục tiêu tại thời điểm ghi) mới kết
+     * luận là "xu hướng"; dưới ngưỡng đó chỉ là một vài lần ghi lẻ tẻ.
+     */
+    private fun analyzeExerciseTargetCompletion(exerciseLogs: List<HabitLog>): List<Suggestion> {
+        val recent = exerciseLogs.filter { it.targetValueAtTime > 0f }.take(5)
+        if (recent.size < MIN_LOGS_FOR_TREND) return emptyList()
+
+        val avgValue = recent.averageOf { it.value.toDouble() }
+        val target = recent.first().targetValueAtTime
+        val unit = recent.first().unit
+        val avgRatio = recent.averageOf { (it.value / it.targetValueAtTime).toDouble().coerceIn(0.0, 1.0) }
+
+        return when {
+            avgRatio < TARGET_COMPLETION_LOW -> listOf(
+                Suggestion(
+                    title = "🏃 Tăng hoạt động thể chất ngay hôm nay",
+                    message = "Mức vận động trung bình của bạn là ${formatAmount(avgValue)} $unit trong " +
+                              "${recent.size} lần ghi gần nhất — mới đạt ${(avgRatio * 100).toInt()}% mục tiêu " +
+                              "${formatAmount(target.toDouble())} $unit. Hãy bắt đầu với 10 phút đi bộ sau bữa " +
+                              "tối — nhỏ nhưng tạo thói quen lớn!",
+                    priority = SuggestionPriority.HIGH,
+                    category = HabitCategory.EXERCISE,
+                    actionLabel = "Ghi nhận vận động"
+                )
+            )
+            avgRatio < TARGET_COMPLETION_MEDIUM -> listOf(
+                Suggestion(
+                    title = "🚶 Tăng dần mục tiêu vận động",
+                    message = "Mức vận động trung bình của bạn là ${formatAmount(avgValue)} $unit, đạt " +
+                              "${(avgRatio * 100).toInt()}% mục tiêu ${formatAmount(target.toDouble())} $unit. " +
+                              "Cố thêm một chút mỗi ngày để đạt mục tiêu nhé!",
+                    priority = SuggestionPriority.LOW,
+                    category = HabitCategory.EXERCISE
+                )
+            )
+            else -> emptyList()
+        }
+    }
+
+    /** Đơn vị của log có phải "bước" không (ngưỡng 5000/8000 chỉ có nghĩa với đơn vị này). */
+    private fun HabitLog.isStepUnit(): Boolean =
+        unit.trim().lowercase() in STEP_UNITS
+
+    /** Hiển thị số gọn: `12.0` → `"12"`, `7.5` → `"7.5"`. */
+    private fun formatAmount(value: Double): String =
+        if (value % 1.0 == 0.0) value.toInt().toString() else String.format("%.1f", value)
+
     // ── Extension helper ──────────────────────────────────────
     private fun <T> List<T>.averageOf(selector: (T) -> Double): Double {
         if (isEmpty()) return 0.0
         return sumOf(selector) / size
+    }
+
+    private companion object {
+        /** Ngưỡng khuyến nghị tính bằng **bước chân** cho mỗi ngày (WHO). */
+        const val STEP_DAILY_LOW = 5000f
+        const val STEP_DAILY_RECOMMENDED = 8000
+
+        /** Các cách viết đơn vị "bước" được chấp nhận (xem `AddEditHabitViewModel`/Data set A). */
+        val STEP_UNITS = setOf("bước", "bước chân", "bước/ngày", "steps", "step")
+
+        /** Số lần ghi tối thiểu để coi là "xu hướng" khi so theo mục tiêu của thói quen. */
+        const val MIN_LOGS_FOR_TREND = 3
+
+        /** Tỉ lệ hoàn thành mục tiêu: dưới 50% → HIGH, dưới 80% → LOW. */
+        const val TARGET_COMPLETION_LOW = 0.5
+        const val TARGET_COMPLETION_MEDIUM = 0.8
     }
 }

@@ -1,5 +1,6 @@
 package com.healthyai.app.presentation.screen.camera
 
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.mlkit.vision.common.InputImage
@@ -43,6 +44,14 @@ class CameraViewModel @Inject constructor() : ViewModel() {
                 _uiState.update { it.copy(error = "Lỗi phân tích: ${e.message}", isAnalyzing = false) }
             }
         }
+    }
+
+    /** Phân tích ảnh vừa chụp từ CameraX. */
+    fun analyzeBitmap(bitmap: Bitmap) = analyzeImage(InputImage.fromBitmap(bitmap, 0))
+
+    /** Lỗi xảy ra trước khi có ảnh để phân tích (khởi tạo camera, chụp ảnh thất bại). */
+    fun onCaptureError(message: String) = _uiState.update {
+        it.copy(error = "Không chụp được ảnh: $message", isAnalyzing = false)
     }
 
     fun clearResult() = _uiState.update { CameraUiState() }
