@@ -6,10 +6,14 @@ import com.healthyai.app.data.repository.AuthRepositoryImpl
 import com.healthyai.app.data.repository.HabitRepositoryImpl
 import com.healthyai.app.data.repository.HealthDataRepositoryImpl
 import com.healthyai.app.data.repository.NotificationPermissionRepositoryImpl
+import com.healthyai.app.data.repository.StepCounterRepositoryImpl
+import com.healthyai.app.data.steps.AndroidStepCounterSensor
+import com.healthyai.app.data.steps.StepCounterSensor
 import com.healthyai.app.domain.repository.AuthRepository
 import com.healthyai.app.domain.repository.HabitRepository
 import com.healthyai.app.domain.repository.HealthDataRepository
 import com.healthyai.app.domain.repository.NotificationPermissionRepository
+import com.healthyai.app.domain.repository.StepCounterRepository
 import com.healthyai.app.domain.widget.HabitWidgetRefresher
 import com.healthyai.app.presentation.widget.HabitWidgetRefresherImpl
 import dagger.Binds
@@ -47,6 +51,17 @@ abstract class AppModule {
     abstract fun bindNotificationPermissionRepository(
         impl: NotificationPermissionRepositoryImpl
     ): NotificationPermissionRepository
+
+    /**
+     * Đếm bước bằng cảm biến của máy (nguồn "tự lực" của app, không cần Health Connect).
+     */
+    @Binds
+    @Singleton
+    abstract fun bindStepCounterSensor(impl: AndroidStepCounterSensor): StepCounterSensor
+
+    @Binds
+    @Singleton
+    abstract fun bindStepCounterRepository(impl: StepCounterRepositoryImpl): StepCounterRepository
 
     /**
      * Widget màn hình chính: Domain gọi [HabitWidgetRefresher.refresh] mỗi khi dữ liệu thói quen đổi,

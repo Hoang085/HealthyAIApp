@@ -88,6 +88,7 @@ mọi dữ liệu lưu cục bộ; chỉ `SyncWorker` (đẩy log lên Firestore
 - `AuthGateViewModel` (`presentation/navigation/`) quyết định màn hình gốc: `Loading` (đang đọc phiên đã lưu) → `SignedOut` (hiện màn đăng nhập) → `SignedIn` / `Guest` (vào NavHost chính).
 - Có thể bấm **"Bỏ qua, dùng ở chế độ khách"**: dùng toàn bộ tính năng offline (thói quen, Health Connect, widget, gợi ý AI); `SyncWorker` sẽ bỏ qua (`Result.success()`) cho tới khi có phiên đăng nhập.
 - Phiên đăng nhập do FirebaseAuth tự lưu → mở lại app vào thẳng Home.
+- **Lời chào ở màn Trang chủ dùng tên thật của phiên** (`AuthRepository.currentUserName` → `HomeUiState.userName`): `displayName` của Firebase, nếu trống (tài khoản tạo trong app) thì lấy **phần trước `@` của email**; ở **chế độ khách** không hiện dòng tên nào — không còn tên hard-code.
 
 ---
 
@@ -126,7 +127,7 @@ gradle testDebugUnitTest        # chạy từ E:\HealthyAIApp (thư mục chứa
 
 Hoặc trong Android Studio: Click chuột phải vào `HabitRuleEngineTest` → **Run Tests**
 
-Bộ test hiện tại: **22 class / 138 test** (JVM, không cần emulator) — xem **TC-ENV-03** trong `TESTCASE_HealthyAI.md`.
+Bộ test hiện tại: **22 class / 143 test** (JVM, không cần emulator) — xem **TC-ENV-03** trong `TESTCASE_HealthyAI.md`.
 
 ---
 
@@ -143,6 +144,22 @@ Bộ test hiện tại: **22 class / 138 test** (JVM, không cần emulator) —
 - Cấp đủ quyền → thẻ biến mất và số liệu được nạp lại ngay (không cần mở lại app). Cấp thiếu → thẻ vẫn hiện để nhắc.
 - Nếu máy **chưa cài** hoặc cần **cập nhật** Health Connect, thẻ đổi thành nút mở Play Store tương ứng.
 - Màn Home **không** còn hiện banner lỗi đỏ cho hai trường hợp này — chỉ còn khi Health Connect sẵn sàng nhưng lời gọi đọc dữ liệu thất bại.
+
+---
+
+## Đếm bước chân bằng cảm biến của máy (nguồn "tự lực" của app)
+
+- Ngoài Health Connect, app có nguồn số bước **thứ hai**: đọc **cảm biến đếm bước phần cứng** của điện thoại (`Sensor.TYPE_STEP_COUNTER`). Nguồn này **không cần Health Connect** và không cần ứng dụng sức khỏe nào khác; cảm biến đếm ở phần cứng nên gần như không tốn pin và **vẫn đếm khi app đóng / màn hình tắt**.
+- **Quyền:** từ Android 10 (API 29) trở lên cần quyền **`ACTIVITY_RECOGNITION`**. Màn Trang chủ hiện thẻ **"Bật đếm bước chân"** khi máy **có** cảm biến mà app **chưa** được cấp quyền; cấp quyền xong thẻ biến mất và số bước được nạp ngay (không cần mở lại app). Thẻ có thêm nút phụ *"Không thấy hộp thoại? Mở cài đặt quyền"* cho trường hợp Android không hiện hộp thoại nữa.
+- **Thứ tự ưu tiên** trên thẻ "Tóm tắt sức khỏe": **Health Connect trước** (dữ liệu có thể gồm cả đồng hồ đeo tay) → Health Connect không có số thì dùng **cảm biến của điện thoại**, và khi đó thẻ ghi rõ *"Số bước đọc trực tiếp từ cảm biến của điện thoại"*.
+- **Quy đổi** con số "luỹ kế từ lúc bật máy" thành "số bước hôm nay" nằm ở `domain/usecase/steps/StepCounterMath.kt` (hàm thuần, test được trên JVM):
+  - **sang ngày mới** → **nội suy tuyến tính** giá trị luỹ kế tại 00:00 giữa mẫu cuối ngày hôm trước và mẫu đầu tiên của hôm nay;
+  - **máy khởi động lại** (bộ đếm reset về 0) → phần đã đi trong ngày được giữ trong `offset` nên số bước không bị tụt;
+  - **máy bật trong hôm nay** → baseline `0`, vì mọi bước từ lúc boot đều thuộc hôm nay;
+  - `StepCounterMathTest` chốt 10 ca: lần chạy đầu, cộng dồn trong ngày, reboot cùng ngày, sang ngày mới (có/không kèm reboot), dữ liệu bất thường, và giá trị hiển thị theo ngày.
+- **Lưu trạng thái:** `SharedPreferences` `healthy_ai_step_counter` (`data/local/steps/StepCounterStore.kt`). Mốc ngày / baseline / offset ghi bằng **`commit()`** để không mất mốc khi tiến trình bị hệ thống thu hồi; mẫu cảm biến thường ghi `apply()` và tối đa mỗi **15 giây** (cảm biến phát rất dày, không cần ghi từng mẫu). Dữ liệu này không nhạy cảm nên **không** bọc Keystore như passphrase database.
+- **Vòng đời:** listener chỉ được đăng ký khi màn Trang chủ đang hiển thị; số bước đi trong lúc app đóng **không mất** vì cảm biến đếm ở phần cứng — lần đọc sau giá trị luỹ kế đã bao gồm phần đó.
+- **Giới hạn đã biết:** emulator (và một số máy rẻ tiền) **không có** cảm biến đếm bước → app không hiện thẻ xin quyền, số bước vẫn lấy từ Health Connect (muốn test trên emulator thì phải bơm dữ liệu — xem `KICHBAN_TEST_KHACH_HANG_HealthyAI.md`). Ở **lần mở app đầu tiên**, nếu máy đã bật từ hôm trước thì app bắt đầu đếm **từ thời điểm đó** vì không biết mốc 00:00 trước khi app chạy lần đầu.
 
 ---
 
@@ -181,3 +198,4 @@ Bộ test hiện tại: **22 class / 138 test** (JVM, không cần emulator) —
 - [x] **Glance Widget — tiến độ ngày**: widget hiển thị **x/y thói quen đạt mục tiêu** + thanh tiến độ **thật** (tính từ `habit_logs` hôm nay) và danh sách tối đa 3 thói quen (dòng `✓/○ tên — đã ghi/mục tiêu`, thêm dòng "+N thói quen khác" khi nhiều hơn); xếp thói quen của **buổi hiện tại** lên đầu; tự vẽ lại khi dữ liệu thói quen đổi (`HabitWidgetRefresher`) và định kỳ 30 phút (`updatePeriodMillis`) — `TodayHabitProgress`, `HabitWidget`
 - [x] **Migration**: Room database migration khi tăng version — `MIGRATION_1_2`, `MIGRATION_2_3` trong `data/local/migration/DatabaseMigrations.kt`; đã **bỏ** `fallbackToDestructiveMigration()` nên nâng version schema **không** còn xoá thói quen/nhật ký (`DatabaseMigrationsTest` chặn việc bỏ sót bước migration)
 - [x] **Android Keystore**: passphrase SQLCipher **không còn hard-code** — sinh ngẫu nhiên 32 byte ở lần chạy đầu, bọc bằng khoá AES-256/GCM trong Android Keystore, bản mã lưu ở prefs `healthy_ai_secure_store`; máy đã cài bản cũ được **rekey một lần** sang khoá mới nên không mất dữ liệu (`data/local/security/`)
+- [x] **Đếm bước bằng cảm biến của máy**: app **tự đếm bước** bằng `Sensor.TYPE_STEP_COUNTER` (không cần Health Connect hay app sức khỏe khác) — xin quyền `ACTIVITY_RECOGNITION` bằng thẻ ở Trang chủ, tự xử lý **khởi động lại máy** (bộ đếm reset) và **sang ngày mới** (nội suy mốc 00:00); Health Connect vẫn được ưu tiên khi có số, không có thì hiển thị số từ cảm biến (`domain/usecase/steps/`, `data/steps/`, `StepCounterPermissionCard`)

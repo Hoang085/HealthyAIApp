@@ -7,11 +7,15 @@ import com.healthyai.app.domain.model.HealthConnectPermissionStatus
 import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.NotificationPermissionStatus
+import com.healthyai.app.domain.model.StepCounterStatus
+import com.healthyai.app.domain.repository.AuthRepository
 import com.healthyai.app.domain.repository.HabitRepository
+import com.healthyai.app.domain.repository.StepCounterRepository
 import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthConnectPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase
 import com.healthyai.app.domain.usecase.notification.GetNotificationPermissionStatusUseCase
+import com.healthyai.app.domain.usecase.steps.GetStepCounterStatusUseCase
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -49,7 +53,10 @@ class HomeViewModelTest {
         mockk<GetHealthConnectPermissionStatusUseCase>()
     private val getNotificationPermissionStatusUseCase =
         mockk<GetNotificationPermissionStatusUseCase>()
+    private val getStepCounterStatusUseCase = mockk<GetStepCounterStatusUseCase>()
     private val habitRepository = mockk<HabitRepository>()
+    private val authRepository = mockk<AuthRepository>(relaxed = true)
+    private val stepCounterRepository = mockk<StepCounterRepository>()
 
     private val waterHabit = Habit(
         id = 1L,
@@ -61,9 +68,10 @@ class HomeViewModelTest {
 
     @Before
     fun givenHealthConnectDefaults() {
-        // Mặc định: Health Connect sẵn sàng, đã cấp đủ quyền và thông báo đang bật.
+        // Mặc định: Health Connect sẵn sàng, đã cấp đủ quyền, thông báo đang bật, máy không có cảm biến đếm bước.
         givenHealthConnect(HealthConnectStatus.AVAILABLE, hasAllPermissions = true)
         givenNotificationsEnabled()
+        givenStepCounter(sensorAvailable = false, permissionGranted = false)
     }
 
     @After
@@ -356,6 +364,165 @@ class HomeViewModelTest {
         assertFalse(viewModel.uiState.value.showReminderNotificationCard)
     }
 
+    // ── Đếm bước bằng cảm biến của máy ─────────────────────────
+
+    @Test
+    fun `sensor steps are used when health connect has no steps`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs() // Health Connect trả về 0 bước
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 4_230L)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(4_230L, state.sensorSteps)
+        assertEquals("Số bước hiển thị lấy từ cảm biến của máy", 4_230L, state.displaySteps)
+        assertTrue(state.stepsFromSensor)
+        assertFalse(state.showStepCounterCard)
+    }
+
+    @Test
+    fun `sensor steps win over health connect because health connect is only read once`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(steps = 3_000L))
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 4_230L)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            "Cảm biến của máy là nguồn live nên được ưu tiên; Health Connect chỉ đọc 1 lần nên bị đóng băng",
+            4_230L,
+            state.displaySteps
+        )
+        assertTrue(state.stepsFromSensor)
+    }
+
+    @Test
+    fun `health connect steps are the fallback when the device has no usable step sensor`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(steps = 3_000L))
+        givenStepCounter(sensorAvailable = false, permissionGranted = false, steps = 0L)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            "Máy không có cảm biến (hoặc chưa cấp quyền) thì lấy số của Health Connect",
+            3_000L,
+            state.displaySteps
+        )
+        assertFalse(state.stepsFromSensor)
+    }
+
+    @Test
+    fun `a device with a step sensor but no permission shows the step counter card`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        givenStepCounter(sensorAvailable = true, permissionGranted = false, steps = 999L)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.showStepCounterCard)
+        assertEquals("Chưa có quyền thì không hiển thị số bước nào", 0L, state.sensorSteps)
+        coVerify(exactly = 0) { stepCounterRepository.observeTodaySteps() }
+    }
+
+    @Test
+    fun `a device without a step sensor never shows the step counter card`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        givenStepCounter(sensorAvailable = false, permissionGranted = false)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse("Máy không có cảm biến thì không có gì để người dùng bật", viewModel.uiState.value.showStepCounterCard)
+    }
+
+    @Test
+    fun `granting step permission hides the card and starts counting`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        givenStepCounter(sensorAvailable = true, permissionGranted = false)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.showStepCounterCard)
+
+        // Người dùng bấm "Cho phép" trong hộp thoại ACTIVITY_RECOGNITION
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 1_250L)
+        viewModel.onStepPermissionResult()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.showStepCounterCard)
+        assertEquals(1_250L, state.sensorSteps)
+        assertTrue(state.displaySteps == 1_250L)
+    }
+
+    @Test
+    fun `refresh re-checks the step permission granted in settings`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        givenStepCounter(sensorAvailable = true, permissionGranted = false)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.showStepCounterCard)
+
+        // Người dùng bật quyền trong Settings rồi quay lại app
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 800L)
+        viewModel.refreshSystemPermissions()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.showStepCounterCard)
+        assertEquals(800L, state.sensorSteps)
+    }
+
+    // ── Lời chào: tên thật, không hard-code (phụ lục C #30) ─────
+
+    @Test
+    fun `greeting name comes from the signed in user`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        every { authRepository.currentUserName } returns "alex.healthyai"
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("alex.healthyai", viewModel.uiState.value.userName)
+    }
+
+    @Test
+    fun `guest mode has no greeting name`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        every { authRepository.currentUserName } returns null
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertNull("Chế độ khách không hiện tên nào (không còn 'Alex' cứng)", viewModel.uiState.value.userName)
+    }
+
     // ── Helpers ────────────────────────────────────────────────
 
     private fun createViewModel() = HomeViewModel(
@@ -363,7 +530,10 @@ class HomeViewModelTest {
         getHealthDataUseCase = getHealthDataUseCase,
         getHealthConnectPermissionStatusUseCase = getHealthConnectPermissionStatusUseCase,
         getNotificationPermissionStatusUseCase = getNotificationPermissionStatusUseCase,
-        habitRepository = habitRepository
+        getStepCounterStatusUseCase = getStepCounterStatusUseCase,
+        habitRepository = habitRepository,
+        authRepository = authRepository,
+        stepCounterRepository = stepCounterRepository
     )
 
     private fun givenHabits(vararg habits: Habit) {
@@ -399,6 +569,18 @@ class HomeViewModelTest {
             notificationsEnabled = notificationsEnabled,
             canRequestPermission = canRequestPermission
         )
+    }
+
+    private fun givenStepCounter(
+        sensorAvailable: Boolean,
+        permissionGranted: Boolean,
+        steps: Long = 0L
+    ) {
+        every { getStepCounterStatusUseCase() } returns StepCounterStatus(
+            sensorAvailable = sensorAvailable,
+            permissionGranted = permissionGranted
+        )
+        every { stepCounterRepository.observeTodaySteps() } returns flowOf(steps)
     }
 
     private fun waterLog(value: Float) = HabitLog(

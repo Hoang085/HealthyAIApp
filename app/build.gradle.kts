@@ -50,6 +50,14 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests {
+            // Cho phép unit test JVM gọi API framework (ví dụ `android.util.Log` trong worker/repository):
+            // trả về giá trị mặc định thay vì ném "Method d in android.util.Log not mocked".
+            isReturnDefaultValues = true
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = false

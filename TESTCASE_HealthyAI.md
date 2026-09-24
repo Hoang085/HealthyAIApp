@@ -8,7 +8,7 @@
 |:--|:--|
 | Phiên bản tài liệu | 1.0 |
 | Ngày tạo | 2026-09-17 |
-| Ngày cập nhật gần nhất | 2026-09-23 — **(mới nhất)** đã sửa **phụ lục C #14** (thêm Room **`Migration`** 1→2 và 2→3 trong `data/local/migration/DatabaseMigrations.kt`, **bỏ** `fallbackToDestructiveMigration()` → nâng version schema không còn xoá sạch thói quen/nhật ký), **#16** (`getRecentHealthHistoryFlow(limit)` nay tôn trọng `limit`; `HabitRuleEngine` **gom dữ liệu Health Connect theo NGÀY** thay vì theo lần sync 6 giờ), **#17** (gợi ý vận động so theo **đơn vị + mục tiêu** của chính thói quen thay vì 5 000/8 000 bất kể đơn vị) và **#22** (nút **"Thêm vào nhật ký"** ở màn Ghi chép đã nối vào `habit_logs` qua hộp thoại ghi nhận thói quen Dinh dưỡng) + hàng mới **#29** (passphrase SQLCipher ghi bằng `commit()` để không mất khoá khi tiến trình bị kill). Test case mới: **TC-DB-15, TC-DB-16, TC-INS-29, TC-INS-30, TC-CAM-15**; unit test mới `DatabaseMigrationsTest` (+ 6 test mới ở `HabitRuleEngineTest`, `HabitRuleEnginePersonalizedTest`, `HealthDataRepositoryImplTest`) → **22 test class / 138 test**. Cùng ngày, trước đó: đã sửa mục 3 **#19** (thêm **nút Đăng xuất** ở màn Trang chủ: `HomeScreen`/`GreetingHeader` → `AuthGateViewModel.signOut()` xoá **cả** phiên Firebase **và** cờ chế độ khách → quay lại màn đăng nhập, **không** mất dữ liệu cục bộ) — test case mới: TC-AUTH-15, TC-AUTH-16 + 2 class test mới; phụ lục C **#28**. Cùng ngày, trước đó: đã sửa mục 3 **#18** (màu nền hard-code: nền màn hình + nền `Card`/`Surface` nay lấy từ token theme `background`/`surfaceContainerLow` thay cho `#F8F9FA`/`Color.White` → dark mode không còn thẻ trắng làm mất chữ) — test case mới: TC-EDGE-16 + unit test `ThemeSurfaceColorsTest`; phụ lục C **#18**. Cùng ngày, trước đó: **2026-09-22** — đã sửa mục 3 **#17** (passphrase SQLCipher **không còn hard-code**: sinh ngẫu nhiên 32 byte ở lần chạy đầu, bọc bằng khoá **AES-256 trong Android Keystore**, bản mã lưu ở prefs `healthy_ai_secure_store`; kèm **migration rekey** cho máy đã cài bản cũ nên **không mất dữ liệu**) — test case mới: TC-DB-11…14. Cùng ngày, rà soát lại mục 3 **#17** và chỉnh số liệu trong TC-DB-11/TC-DB-14 cho khớp code đang chạy (bản mã lưu ở prefs là **~80 ký tự** Base64 = 60 byte; `DatabasePassphraseProviderTest` có **6 test**). Cùng ngày, trước đó: mục 3 **#20** (widget vẽ thanh tiến độ **thật** + **danh sách** thói quen thay cho thanh tĩnh ~40% và 1 thói quen; quy tắc buổi chỉ còn quyết định **thứ tự**) — test case mới: TC-WG-12. Cùng ngày, trước đó: mục 3 **#16** (widget hiển thị thói quen **theo buổi hiện tại** thay vì "mới tạo nhất") + bật cập nhật định kỳ 30 phút — TC-WG-10, TC-WG-11; mục 3 **#15** (widget không tự refresh) + phụ lục C **#15** — TC-WG-09; và mục 3 **#10** (phản hồi "Đã ghi nhận"), **#11** (số mục tiêu hiển thị gọn), **#12** (validate hộp thoại ghi nhận), **#13** (chống trùng tên), **#14** (nút hành động trong thẻ gợi ý AI) + phụ lục C **#10** (hiển thị lỗi ở màn Thói quen), **#11** (chặn số âm/0 khi ghi nhận), **#12** (chống double-submit) — test case: TC-HAB-24…30, TC-ADD-23…27, TC-INS-27, TC-INS-28 |
+| Ngày cập nhật gần nhất | 2026-09-24 — **(mới nhất)** thêm **module 24 / TC-STEP**: app **tự đếm bước** bằng **cảm biến của chính điện thoại** (`Sensor.TYPE_STEP_COUNTER`) nên **không còn phụ thuộc Health Connect** để có số bước — thẻ **"Bật đếm bước chân"** ở Trang chủ xin quyền `ACTIVITY_RECOGNITION`, quy đổi "luỹ kế từ lúc bật máy" thành "số bước hôm nay" ở `domain/usecase/steps/StepCounterMath.kt` (nội suy mốc 00:00 sang ngày mới, giữ số đã đi khi **khởi động lại máy**), baseline lưu ở prefs `healthy_ai_step_counter`; Health Connect vẫn được **ưu tiên** khi có số, không có thì hiển thị số từ cảm biến + dòng chú thích nguồn. Test case mới: **TC-STEP-01…TC-STEP-10** (+ `StepCounterMathTest` 10 test, `HomeViewModelTest` +6 test → **23 class / 159 test**); TC-HOME-01, TC-ENV-03 cập nhật. Trước đó, 2026-09-23 — đã sửa **mục 3 #21 / phụ lục C #30**: lời chào màn Trang chủ **không còn hard-code `Text("Alex")`** — nay lấy **tên tài khoản thật** (`AuthRepository.currentUserName`: `displayName` Firebase → nếu trống thì phần trước `@` của email); ở **chế độ khách** không hiện dòng tên và câu chào bỏ dấu phẩy đuôi. Test case mới: **TC-HOME-12, TC-HOME-13** (+ 5 unit test mới → **22 test class / 143 test**), TC-HOME-01 cập nhật. Cùng ngày, trước đó: đã sửa **phụ lục C #14** (thêm Room **`Migration`** 1→2 và 2→3 trong `data/local/migration/DatabaseMigrations.kt`, **bỏ** `fallbackToDestructiveMigration()` → nâng version schema không còn xoá sạch thói quen/nhật ký), **#16** (`getRecentHealthHistoryFlow(limit)` nay tôn trọng `limit`; `HabitRuleEngine` **gom dữ liệu Health Connect theo NGÀY** thay vì theo lần sync 6 giờ), **#17** (gợi ý vận động so theo **đơn vị + mục tiêu** của chính thói quen thay vì 5 000/8 000 bất kể đơn vị) và **#22** (nút **"Thêm vào nhật ký"** ở màn Ghi chép đã nối vào `habit_logs` qua hộp thoại ghi nhận thói quen Dinh dưỡng) + hàng mới **#29** (passphrase SQLCipher ghi bằng `commit()` để không mất khoá khi tiến trình bị kill). Test case mới: **TC-DB-15, TC-DB-16, TC-INS-29, TC-INS-30, TC-CAM-15**; unit test mới `DatabaseMigrationsTest` (+ 6 test mới ở `HabitRuleEngineTest`, `HabitRuleEnginePersonalizedTest`, `HealthDataRepositoryImplTest`). Cùng ngày, trước đó: đã sửa mục 3 **#19** (thêm **nút Đăng xuất** ở màn Trang chủ: `HomeScreen`/`GreetingHeader` → `AuthGateViewModel.signOut()` xoá **cả** phiên Firebase **và** cờ chế độ khách → quay lại màn đăng nhập, **không** mất dữ liệu cục bộ) — test case mới: TC-AUTH-15, TC-AUTH-16 + 2 class test mới; phụ lục C **#28**. Cùng ngày, trước đó: đã sửa mục 3 **#18** (màu nền hard-code: nền màn hình + nền `Card`/`Surface` nay lấy từ token theme `background`/`surfaceContainerLow` thay cho `#F8F9FA`/`Color.White` → dark mode không còn thẻ trắng làm mất chữ) — test case mới: TC-EDGE-16 + unit test `ThemeSurfaceColorsTest`; phụ lục C **#18**. Cùng ngày, trước đó: **2026-09-22** — đã sửa mục 3 **#17** (passphrase SQLCipher **không còn hard-code**: sinh ngẫu nhiên 32 byte ở lần chạy đầu, bọc bằng khoá **AES-256 trong Android Keystore**, bản mã lưu ở prefs `healthy_ai_secure_store`; kèm **migration rekey** cho máy đã cài bản cũ nên **không mất dữ liệu**) — test case mới: TC-DB-11…14. Cùng ngày, rà soát lại mục 3 **#17** và chỉnh số liệu trong TC-DB-11/TC-DB-14 cho khớp code đang chạy (bản mã lưu ở prefs là **~80 ký tự** Base64 = 60 byte; `DatabasePassphraseProviderTest` có **6 test**). Cùng ngày, trước đó: mục 3 **#20** (widget vẽ thanh tiến độ **thật** + **danh sách** thói quen thay cho thanh tĩnh ~40% và 1 thói quen; quy tắc buổi chỉ còn quyết định **thứ tự**) — test case mới: TC-WG-12. Cùng ngày, trước đó: mục 3 **#16** (widget hiển thị thói quen **theo buổi hiện tại** thay vì "mới tạo nhất") + bật cập nhật định kỳ 30 phút — TC-WG-10, TC-WG-11; mục 3 **#15** (widget không tự refresh) + phụ lục C **#15** — TC-WG-09; và mục 3 **#10** (phản hồi "Đã ghi nhận"), **#11** (số mục tiêu hiển thị gọn), **#12** (validate hộp thoại ghi nhận), **#13** (chống trùng tên), **#14** (nút hành động trong thẻ gợi ý AI) + phụ lục C **#10** (hiển thị lỗi ở màn Thói quen), **#11** (chặn số âm/0 khi ghi nhận), **#12** (chống double-submit) — test case: TC-HAB-24…30, TC-ADD-23…27, TC-INS-27, TC-INS-28 |
 | Người thực hiện test | .......................... |
 | Build/version test | `versionCode 1`, `versionName 1.0.0` |
 | Ứng dụng (package) | `com.healthyai.app` |
@@ -33,6 +33,7 @@
 | `TC-ADD-xx` | Màn hình Thêm/Sửa/Xóa thói quen |
 | `TC-CAM-xx` | Màn hình Ghi chép (Camera + ML Kit) |
 | `TC-INS-xx` | Màn hình Phân tích (Rule Engine AI) |
+| `TC-STEP-xx` | Đếm bước bằng cảm biến của máy (quyền `ACTIVITY_RECOGNITION`) |
 | `TC-HC-xx` | Health Connect |
 | `TC-DB-xx` | Room + SQLCipher (lưu trữ, mã hóa, migration) |
 | `TC-WM-xx` | WorkManager (job nền, thông báo) |
@@ -172,6 +173,8 @@ Các điểm dưới đây là **hành vi thật của code hiện tại**. Khi 
 | 18 | ~~Màu nền hard-code~~ **→ Đã sửa** | ~~Các màn hình đặt `containerColor = Color(0xFFF8F9FA)` (sáng) trong khi theme có Dark scheme → dark mode tương phản kém~~. Lỗi thực tế **nặng hơn**: `Card` còn để `containerColor = Color.White` nên ở dark mode thành **thẻ trắng** trong khi chữ dùng `onSurface` sáng ⇒ **mất chữ**, không chỉ "kém tương phản". Nay **nền màn hình** và **nền thẻ/panel** đều lấy từ theme: `Scaffold(containerColor = MaterialTheme.colorScheme.background)` ở 7 chỗ (`HomeScreen`, `HabitsScreen`, `AddEditHabitScreen`, `InsightsScreen`, `CameraScreen`, `LoginScreen`, và `Surface` của `AuthLoadingScreen` trong `AppNavigation`), **12** chỗ `Card`/`InfoActionCard` đổi `Color.White` → `MaterialTheme.colorScheme.surfaceContainerLow`, thẻ gợi ý AI (`AiTipCard` trong `InsightsScreen`) bỏ 3 nền cứng `#FFFFFF`/`#FFEBEE`/`#FFF3E0` → dùng `surfaceContainerLow` + **lớp màu ưu tiên mờ 12%** (giữ tín hiệu CRITICAL/HIGH), badge "Xong" ở `HabitsScreen` dùng `surfaceVariant`. Thêm token `surfaceContainerLow` vào `Color.kt`/`Theme.kt` (sáng **`#FFFFFF`**, tối **`#23261F`**) để thẻ vẫn nổi hơn nền ở **cả hai** chế độ. Chữ trên nền thẻ đạt **WCAG AA** (sáng 17.2:1, tối 11.9:1). **Không** đụng màu chữ/icon, màu xanh thương hiệu, màu error và vệt nền thanh tiến độ (phụ lục C #18) | ✅ Đã sửa |
 | 19 | ~~Chưa có nút **Đăng xuất**~~ **→ Đã sửa** | ~~Có màn đăng nhập (mục #6) nhưng không có UI đăng xuất: đã đăng nhập hoặc đã bấm "Bỏ qua" thì chỉ còn cách xoá dữ liệu app để quay lại màn đăng nhập. Nằm ngoài phạm vi đã chốt của bản sửa lỗi #6~~. Nay `AuthRepository` có `signOut()` (uỷ quyền `FirebaseAuth.signOut()`), `AuthGateViewModel.signOut()` xoá phiên **và** cờ chế độ khách → `SessionState.SignedOut`. UI: `IconButton` icon **Logout** ở góc phải lời chào màn Trang chủ (`HomeScreen.GreetingHeader`) + **hộp thoại xác nhận** ("Bạn có chắc muốn đăng xuất? Thói quen và nhật ký trên máy vẫn được giữ nguyên."). Áp dụng cho **cả** người đã đăng nhập lẫn chế độ khách; dữ liệu Room/SQLCipher **không** bị xoá. Chi tiết: TC-AUTH-15, TC-AUTH-16 | ✅ Đã sửa |
 | 20 | ~~Widget vẽ thanh tiến độ **tĩnh ~40%** và chỉ hiển thị **1 thói quen**~~ **→ Đã sửa** | `TodayHabitProgress.build()` cộng `habit_logs` **hôm nay** (`getHabitLogsForPeriod(0)`) theo từng thói quen → widget hiển thị dòng **"x/y thói quen đạt mục tiêu"** + `LinearProgressIndicator` với `progress = completedCount / totalCount` (**thật**), rồi danh sách tối đa **3** dòng `✓/○ tên — đã ghi/mục tiêu` (`formatHabitProgress` dùng chung với màn Thói quen) và dòng `+N thói quen khác` khi nhiều hơn. Khung mặc định của widget nới từ `110dp` lên `minWidth 150dp`/`minHeight 140dp` cho đủ nội dung | ✅ Đã sửa |
+| 21 | ~~Lời chào trên màn Trang chủ **hard-code `Text("Alex")`** cho mọi phiên — đăng nhập khách hay đăng nhập thật cũng đều chào "Alex"~~ **→ Đã sửa** | Nay lấy tên thật: `AuthRepository.currentUserName` (`displayName` Firebase → nếu trống lấy **phần trước `@` của email**) → `HomeViewModel.loadUserName()` → `HomeUiState.userName` → `GreetingHeader(userName, …)`. Chế độ khách (`null`) **không** vẽ dòng tên và câu chào bỏ dấu phẩy đuôi ("Chào buổi sáng") | ✅ Đã sửa |
+| 22 | ~~Chuỗi tiếng Việt trong `HomeScreen.kt` bị lỗi font (double-encode)~~ **→ Đã sửa** | ~~**26** string literal / **22** chuỗi (lời chào, dòng ngày, "Tóm tắt sức khỏe", "Bước chân", "Ngủ", "Đăng xuất", "Hoàn thành", "Mục tiêu: …", cả nhãn dữ liệu mẫu trong `@Preview`) bị double-encode (byte UTF-8 bị đọc như **cp1252**) nên hiển thị `ChÃ o buá»•i Ä‘Ãªm`, `TÃ³m táº¯t sá»©c khá»e`~~. Nay đã đưa về đúng dấu tiếng Việt; giữ nguyên CRLF và số dòng của file. `strings.xml` và các màn hình khác **không** bị lỗi này. Chi tiết: TC-EDGE-17 | ✅ Đã sửa |
 
 ---
 
@@ -193,15 +196,15 @@ Các điểm dưới đây là **hành vi thật của code hiện tại**. Khi 
 ### TC-ENV-03 — Unit test JVM
 - **Ưu tiên:** P1
 - **Bước:** 1. `.\gradlew test` (hoặc `.\gradlew :app:testDebugUnitTest` nếu chỉ chạy module `app`).
-- **Kết quả mong đợi:** Toàn bộ test trong `app/src/test` pass — **22 test class / 138 test** (cập nhật 2026-09-23):
+- **Kết quả mong đợi:** Toàn bộ test trong `app/src/test` pass — **23 test class / 159 test** (cập nhật 2026-09-24):
   - **Rule engine / AI**: `HabitRuleEngineTest` (rule ngủ/nước/vận động + **thói quen vận động đo bằng phút: dưới 50% mục tiêu → HIGH, 50–80% → LOW, đạt mục tiêu → không gợi ý, < 3 log → không kết luận** — phụ lục C #17), `HabitRuleEngineExtendedTest` (vitality score, water CRITICAL), `HabitRuleEnginePersonalizedTest` (health trends gom **theo ngày**: thiếu ngủ 3 ngày liên tiếp, **3 hàng cùng ngày → không cảnh báo**, **3 ngày cách quãng → không cảnh báo**, nhịp tim cao 7 ngày — phụ lục C #16)
-  - **Domain / use case**: `GetWeeklyConsistencyUseCaseTest`, `GetVitalityScoreUseCaseTest`, `GetHealthConnectPermissionStatusUseCaseTest`, `TodayHabitProgressTest`
+  - **Domain / use case**: `GetWeeklyConsistencyUseCaseTest`, `GetVitalityScoreUseCaseTest`, `GetHealthConnectPermissionStatusUseCaseTest`, `TodayHabitProgressTest`, `StepCounterMathTest` (**đếm bước bằng cảm biến: nội suy mốc 00:00 khi sang ngày mới, giữ số đã đi khi máy khởi động lại, giá trị bất thường không sinh số âm, giá trị đã lưu chỉ hiện trong đúng ngày** — xem **TC-STEP-10**)
   - **Data**: `HabitRepositoryImplTest` (log đã đồng bộ, xóa mềm), `HealthDataRepositoryImplTest` (**truyền đúng `limit` xuống DAO** — phụ lục C #16), `HealthConnectStatusMappingTest` (map 3 → AVAILABLE, 2 → UPDATE_REQUIRED, 1/khác → NOT_INSTALLED)
   - **Bảo mật DB**: `DatabasePassphraseProviderTest` — passphrase SQLCipher sinh ngẫu nhiên 32 byte + lưu lại một lần, đọc lại đúng khoá cũ, mất khoá Keystore thì sinh khoá mới thay vì crash (mục 3 #17); `DatabaseMigrationsTest` — dãy migration phủ **liên tục** từ 1 tới `DatabaseMigrations.DATABASE_VERSION` (bỏ sót bước nào là fail) và migration 1→2 chỉ **ALTER** bảng, không drop (phụ lục C #14)
-  - **ViewModel**: `HomeViewModelTest`, `HabitsViewModelTest` (phản hồi "Đã ghi nhận", **yêu cầu ghi nhận từ màn Phân tích**, **chặn số âm/0**, đóng thẻ lỗi), `AddEditHabitViewModelTest` (xóa mềm, định dạng mục tiêu, **chống trùng tên**, **chống double-submit**), `LoginViewModelTest`, `CoreTrackingViewModelTest`
+  - **ViewModel**: `HomeViewModelTest` (**tên hiển thị trên lời chào: có tên khi đã đăng nhập, `null` ở chế độ khách** — phụ lục C #30), `HabitsViewModelTest` (phản hồi "Đã ghi nhận", **yêu cầu ghi nhận từ màn Phân tích**, **chặn số âm/0**, đóng thẻ lỗi), `AddEditHabitViewModelTest` (xóa mềm, định dạng mục tiêu, **chống trùng tên**, **chống double-submit**), `LoginViewModelTest`, `CoreTrackingViewModelTest`
   - **Hiển thị & nhập liệu**: `NumberDisplayTest` (số mục tiêu hiển thị kiểu "số sạch"), `HabitLogInputTest` (đọc/validate ô "Số lượng" của hộp thoại ghi nhận, **kể cả số âm/0**)
   - **Theme / màu nền**: `ThemeSurfaceColorsTest` (nền thẻ `surfaceContainerLow` **khác** và **sáng hơn** `background` ở cả hai chế độ, dark mode không còn thẻ trắng, chữ trên nền thẻ đạt WCAG AA — mục 3 #18, TC-EDGE-16)
-  - **Phiên đăng nhập / đăng xuất**: `AuthGateViewModelTest` (chưa có phiên → `SignedOut`, có uid → `SignedIn`, "Bỏ qua" → `Guest`, **đăng xuất ở chế độ khách và khi đã đăng nhập** → `SignedOut`, đăng nhập lại được — mục 3 #19, TC-AUTH-16), `AuthRepositoryImplTest` (`signOut()` uỷ quyền `FirebaseAuth.signOut()`)
+  - **Phiên đăng nhập / đăng xuất**: `AuthGateViewModelTest` (chưa có phiên → `SignedOut`, có uid → `SignedIn`, "Bỏ qua" → `Guest`, **đăng xuất ở chế độ khách và khi đã đăng nhập** → `SignedOut`, đăng nhập lại được — mục 3 #19, TC-AUTH-16), `AuthRepositoryImplTest` (`signOut()` uỷ quyền `FirebaseAuth.signOut()`; **`currentUserName`: `displayName` → phần trước `@` của email → `null` khi chưa đăng nhập** — phụ lục C #30)
 - **Báo cáo:** `app\build\reports\tests\testDebugUnitTest\index.html`
 - **Ghi chú:** File `gradlew`/`gradlew.bat` **không có** trong repo hiện tại → nếu chưa sinh Gradle wrapper thì chạy test bằng Gradle đã cài (hoặc qua Android Studio); xem mục 2.2.
 
@@ -303,12 +306,14 @@ Cấu hình: `startDestination = "home"`; bottom bar **chỉ hiển thị** khi 
 
 ## 7. TC-HOME — Màn hình Trang chủ
 
-Thành phần: `GreetingHeader` (ngày + lời chào + tên **Alex** + avatar xám), `HealthSummaryCard` ("Tóm tắt sức khỏe" + 3 vòng tròn: **Bước chân**, **Ngủ**, **Tim**), tiêu đề **"Thói quen hôm nay"**, danh sách thẻ thói quen, khối lỗi đỏ (nếu có).
+Thành phần: `GreetingHeader` (ngày + lời chào + **tên tài khoản đang đăng nhập** — phụ lục C #30 + avatar xám), `HealthSummaryCard` ("Tóm tắt sức khỏe" + 3 vòng tròn: **Bước chân**, **Ngủ**, **Tim**), tiêu đề **"Thói quen hôm nay"**, danh sách thẻ thói quen, khối lỗi đỏ (nếu có).
 
 ### TC-HOME-01 — Lời chào theo thời điểm
 - **Ưu tiên:** P2
+- **Tiền điều kiện:** Đã đăng nhập (xem **TC-HOME-12** để kiểm tra dòng tên).
 - **Bước:** 1. Đổi giờ hệ thống emulator vào các khoảng: 05:00–11:59, 12:00–17:59, 18:00–21:59, 22:00–04:59 (`adb shell date`) → 2. Mở tab Trang chủ.
-- **Kết quả mong đợi:** Lần lượt: **"Chào buổi sáng,"**, **"Chào buổi chiều,"**, **"Chào buổi tối,"**, **"Chào buổi đêm,"**; dòng dưới luôn là **Alex**.
+- **Kết quả mong đợi:** Lần lượt: **"Chào buổi sáng,"**, **"Chào buổi chiều,"**, **"Chào buổi tối,"**, **"Chào buổi đêm,"** (có dấu phẩy vì bên dưới là dòng tên); dòng dưới là **tên tài khoản đang đăng nhập**, **không** còn luôn là "Alex" (phụ lục C #30).
+- **Ghi chú:** Ở **chế độ khách** không có dòng tên → câu chào **không** kèm dấu phẩy ("Chào buổi sáng") — xem **TC-HOME-12**.
 
 ### TC-HOME-02 — Hiển thị ngày tháng tiếng Việt
 - **Ưu tiên:** P2
@@ -385,6 +390,27 @@ Thành phần: `GreetingHeader` (ngày + lời chào + tên **Alex** + avatar x�
 - **Tiền điều kiện:** Tạo 15 thói quen.
 - **Bước:** 1. Mở Home → 2. Cuộn xuống cuối.
 - **Kết quả mong đợi:** Cuộn mượt, không cắt nội dung, không trùng thẻ.
+
+### TC-HOME-12 — Lời chào dùng **tên tài khoản thật**, chế độ khách không hiện tên (phụ lục C #30)
+- **Ưu tiên:** P1
+- **Bước:**
+  1. `pm clear com.healthyai.app` → mở app → bấm **"Bỏ qua, dùng ở chế độ khách"** → xem dòng dưới câu chào ở tab Trang chủ.
+  2. Bấm icon **Đăng xuất** (mục 3 #19) → quay về màn đăng nhập → **đăng nhập** bằng tài khoản email/mật khẩu (TC-AUTH-03) → xem lại dòng dưới câu chào.
+- **Kết quả mong đợi:**
+  - **Chế độ khách:** **không có dòng tên nào**; câu chào gọn **"Chào buổi sáng"** / **"Chào buổi chiều"** / **"Chào buổi tối"** / **"Chào buổi đêm"** (không có dấu phẩy treo). **Không** còn hiện "Alex".
+  - **Đã đăng nhập:** dòng dưới câu chào là **tên tài khoản thật**, màu xanh brand `#2E7D32`. Cụ thể theo thứ tự ưu tiên:
+    - nếu tài khoản Firebase có `displayName` → hiện `displayName`;
+    - nếu `displayName` trống (tài khoản tạo trong app luôn như vậy) → hiện **phần trước `@` của email** (ví dụ `alex.healthyai@gmail.com` → `alex.healthyai`).
+  - Đăng xuất rồi vào lại bằng **chế độ khách** → dòng tên biến mất ngay khi màn Trang chủ được dựng lại.
+- **Ghi chú:** Bản sửa phụ lục C #30: trước đây `HomeScreen.GreetingHeader` hard-code `Text("Alex")` cho **mọi** phiên (khách lẫn đăng nhập thật). Tên nay lấy từ `AuthRepository.currentUserName` → `HomeViewModel` → `HomeUiState.userName`; `null` (khách) thì UI **không** vẽ dòng tên.
+
+### TC-HOME-13 — Unit test JVM cho tên hiển thị trên lời chào (phụ lục C #30)
+- **Ưu tiên:** P1
+- **Bước:** 1. `.\gradlew test --tests "*HomeViewModelTest" --tests "*AuthRepositoryImplTest"`.
+- **Kết quả mong đợi:** Pass cả hai class, trong đó:
+  - `HomeViewModelTest` (18 test, 2 test mới): `AuthRepository.currentUserName = "alex.healthyai"` → `uiState.userName` giữ nguyên chuỗi đó; `currentUserName = null` (chế độ khách) → `uiState.userName == null` (UI không có dòng tên).
+  - `AuthRepositoryImplTest` (4 test, 3 test mới): có `displayName` → dùng `displayName`; `displayName = null` **hoặc** chỉ khoảng trắng → lấy phần trước `@` của email; chưa đăng nhập (`currentUser == null`) → `currentUserName == null`.
+- **Ghi chú:** JVM không có Firebase nên test mock `FirebaseAuth`/`FirebaseUser` bằng MockK; kiểm tra bằng mắt (dòng chào trên màn Trang chủ) vẫn theo **TC-HOME-12**.
 
 ---
 
@@ -1766,6 +1792,15 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
   - chữ `onSurface` trên nền thẻ đạt tương phản **WCAG AA (≥ 4.5:1)** ở cả hai chế độ.
 - **Ghi chú:** Test chạy trên **JVM** (không cần emulator/thiết bị) vì chỉ đọc giá trị màu của theme (`androidx.compose.ui.graphics.Color`), không compose UI. Kiểm tra bằng mắt (đổ bóng, độ tương phản thực tế trên màn hình) vẫn cần thiết bị/emulator theo **TC-EDGE-01**.
 
+### TC-EDGE-17 — Chuỗi tiếng Việt trong code không bị lỗi font (double-encode)
+- **Ưu tiên:** P1
+- **Bước:**
+  1. `.\gradlew test --tests "*HomeViewModelTest"` (repo chưa commit wrapper — dùng Gradle đã cài, xem mục 2.2; JDK 21).
+  2. **Quét tĩnh** string literal trong `app/src/main/java/com/healthyai/app/presentation/screen/home/HomeScreen.kt`: đọc file bằng **UTF-8**, encode lại bằng **cp1252** rồi decode **UTF-8** — nếu round-trip này **thành công** thì chuỗi đó đang bị double-encode. Kết quả mong đợi: **0** literal mojibake.
+  3. Cài đè APK lên thiết bị/emulator → mở tab **Trang chủ** → kiểm tra **bằng mắt** các chuỗi từng bị lỗi: lời chào **"Chào buổi sáng / chiều / tối / đêm"**, dòng ngày **"Thứ …, dd tháng MM"**, tiêu đề thẻ **"Tóm tắt sức khỏe"**, nhãn **"Bước chân"**, **"Ngủ"**, tiêu đề **"Thói quen hôm nay"**, **"Hoàn thành"** / **"Đã hoàn thành"**, dòng **"Mục tiêu: …"**, tiêu đề thẻ khi thiếu quyền **"Bật đếm bước chân"**, nút + hộp thoại **"Đăng xuất"** / **"Huỷ"**.
+- **Kết quả mong đợi:** Tất cả chuỗi hiển thị **đúng dấu tiếng Việt** (không còn dạng `ChÃ o buá»•i Ä‘Ãªm`, `TÃ³m táº¯t sá»©c khá»e`, `Ngá»§`), không có ô vuông/ký tự lạ, bố cục và cỡ chữ không đổi.
+- **Ghi chú:** Lỗi phát sinh từ bản viết lại `HomeScreen.kt` (mục 3 #22, phụ lục C #31): **26 vị trí / 22 chuỗi** bị double-encode **một lần** (byte UTF-8 bị đọc như cp1252) — gồm cả nhãn dữ liệu mẫu trong `@Preview`. `string resource` (`strings.xml`) và các màn hình khác **không** bị, nên đây **không** phải lỗi font của thiết bị: trên cùng một màn hình vẫn có chuỗi tiếng Việt hiển thị đúng. Bản sửa chỉ đổi **string literal** (giữ nguyên CRLF và số dòng của file); phần **comment** trong file vẫn còn chữ mojibake nhưng **không** ảnh hưởng hiển thị.
+
 ---
 
 ## 18. TC-REG — Smoke / Regression checklist (chạy trước mỗi bản phát hành)
@@ -1796,6 +1831,8 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 | TC-REG-22 | Nâng cấp app từ bản cũ (schema v1/v2) → thói quen + nhật ký **giữ nguyên**, không crash (TC-DB-08, TC-DB-15) | P0 | |
 | TC-REG-23 | Màn Ghi chép: nút **"Thêm vào nhật ký"** mở hộp thoại ghi nhận thói quen Dinh dưỡng và ghi được log (TC-CAM-15) | P1 | |
 | TC-REG-24 | Gợi ý vận động đúng theo **đơn vị** thói quen: "30 phút" không bị đọc thành "30 bước" (TC-INS-29) | P1 | |
+| TC-REG-25 | Lời chào màn Trang chủ dùng **tên tài khoản thật**; chế độ khách **không** hiện tên (không còn "Alex" cứng) — TC-HOME-12 | P1 | |
+| TC-REG-26 | Màn Trang chủ hiển thị **đúng dấu tiếng Việt** (không lỗi font kiểu `ChÃ o buá»•i Ä‘Ãªm`) — TC-EDGE-17 | P1 | |
 
 ---
 
@@ -1803,8 +1840,8 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 
 | Màn hình | ViewModel | UseCase | Nguồn dữ liệu | Test case |
 |:--|:--|:--|:--|:--|
-| Home | `HomeViewModel` | `GetTodayHabitsUseCase`, `GetHealthDataUseCase`, `GetHealthConnectPermissionStatusUseCase`, `GetNotificationPermissionStatusUseCase` | Room `habits`, Health Connect, NotificationManager | TC-HOME-01…11, TC-HC-01…17, TC-WM-13…16 |
-| Đăng nhập | `AuthGateViewModel` + `LoginViewModel` | `AuthRepository` (signIn/signUp/authState) | Firebase Auth | TC-AUTH-01…14 |
+| Home | `HomeViewModel` | `GetTodayHabitsUseCase`, `GetHealthDataUseCase`, `GetHealthConnectPermissionStatusUseCase`, `GetNotificationPermissionStatusUseCase`, `AuthRepository.currentUserName` (tên trên lời chào) | Room `habits`, Health Connect, NotificationManager, Firebase Auth | TC-HOME-01…13, TC-HC-01…17, TC-WM-13…16 |
+| Đăng nhập | `AuthGateViewModel` + `LoginViewModel` | `AuthRepository` (signIn/signUp/authState/currentUserName/signOut) | Firebase Auth | TC-AUTH-01…16 |
 | Habits | `HabitsViewModel` | `GetTodayHabitsUseCase`, `LogHabitUseCase` | Room `habits` + `habit_logs` | TC-HAB-01…30 |
 | Add/Edit Habit | `AddEditHabitViewModel` | `AddHabitUseCase`, `UpdateHabitUseCase`, `DeleteHabitUseCase` | Room `habits` (soft delete: `isActive = 0`) | TC-ADD-01…27 |
 | Camera | `CameraViewModel` | ML Kit `ImageLabeling`; `CameraScreen` → `AppNavigation.openHabitLogFor(DINH DƯỠNG)` → `HabitsViewModel` | On-device ML Kit; Room `habits`/`habit_logs` | TC-CAM-01…15 |
@@ -1875,6 +1912,8 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 | TC-HOME-09 | Trạng thái rỗng | P1 | | |
 | TC-HOME-10 | Loading | P2 | | |
 | TC-HOME-11 | Cuộn danh sách dài | P2 | | |
+| TC-HOME-12 | Tên trên lời chào là tên tài khoản thật; chế độ khách không hiện tên (phụ lục C #30) | P1 | | |
+| TC-HOME-13 | Unit test JVM tên hiển thị trên lời chào | P1 | | |
 
 ### Thói quen
 
@@ -2081,6 +2120,7 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 | TC-EDGE-14 | Mục tiêu rất lớn | P2 | | |
 | TC-EDGE-15 | Thao tác nhanh liên tục | P2 | | |
 | TC-EDGE-16 | Nền/thẻ không hard-code (unit test màu, mục 3 #18) | P2 | | |
+| TC-EDGE-17 | Chuỗi tiếng Việt không bị lỗi font (double-encode) | P1 | | |
 
 ---
 
@@ -2117,6 +2157,8 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 | 27 | Biểu đồ nhất quán tuần lấy mẫu số là **số thói quen đang hoạt động hiện tại** → xoá/tạo thói quen sẽ làm thay đổi tỉ lệ của cả các ngày trong quá khứ (không phải snapshot tại thời điểm đó) | `GetWeeklyConsistencyUseCase` | Thấp | TC-INS-21 | Ghi nhận |
 | 28 | ~~Chưa có UI **Đăng xuất** → sau khi đăng nhập (hoặc bấm "Bỏ qua") không có đường quay lại màn đăng nhập nếu không xoá dữ liệu app~~ **→ Đã sửa** | `domain/repository/AuthRepository.kt`, `data/repository/AuthRepositoryImpl.kt`, `presentation/navigation/{AuthGateViewModel,AppNavigation}.kt`, `presentation/screen/home/HomeScreen.kt`, `app/src/test/.../{presentation/navigation/AuthGateViewModelTest,data/repository/AuthRepositoryImplTest}.kt` | Thấp | TC-AUTH-15, TC-AUTH-16 | ✅ Đã sửa |
 | 29 | Passphrase SQLCipher được ghi bằng `SharedPreferences.apply()` (**bất đồng bộ**) ngay trước khi Room tạo DB → nếu tiến trình bị kill trong khe thời gian đó, bản mã chưa xuống đĩa → lần sau sinh khoá khác → DB cũ không mở được nữa → `LegacyDatabaseKeyMigration` **xoá DB** ⇒ mất dữ liệu (khe rất hẹp, khó tái hiện nhưng hậu quả nặng) | `data/local/security/AndroidPassphraseStorage.kt` (`write()` nay dùng `commit()`), `data/local/security/DatabasePassphraseProvider.kt` (ghi **trước** khi trả khoá) | Thấp | TC-DB-16, TC-DB-11 | ✅ Đã sửa |
+| 30 | ~~Lời chào màn Trang chủ **hard-code `Text("Alex")`** → đăng nhập khách hay đăng nhập thật đều chào "Alex"~~ **→ Đã sửa** | `domain/repository/AuthRepository.kt` (+`currentUserName`), `data/repository/AuthRepositoryImpl.kt` (`displayName` → phần trước `@` của email → `null` khi khách), `presentation/screen/home/{HomeViewModel,HomeScreen}.kt` (`HomeUiState.userName` + `GreetingHeader(userName, …)`: khách thì **không** vẽ dòng tên, câu chào bỏ dấu phẩy), `app/src/test/.../{presentation/screen/home/HomeViewModelTest,data/repository/AuthRepositoryImplTest}.kt` | Trung bình | TC-HOME-01, TC-HOME-12, TC-HOME-13 | ✅ Đã sửa |
+| 31 | ~~String literal tiếng Việt trong `HomeScreen.kt` bị double-encode (UTF-8 bị đọc như cp1252) → màn Trang chủ hiển thị sai dấu: `ChÃ o buá»•i Ä‘Ãªm`, `TÃ³m táº¯t sá»©c khá»e`, `Ngá»§`, nút `ÄÄƒng xuáº¥t`…~~ **→ Đã sửa** (**26** vị trí / **22** chuỗi, gồm nhãn trong `@Preview`) | `presentation/screen/home/HomeScreen.kt` | Trung bình | TC-EDGE-17, TC-REG-26 | ✅ Đã sửa |
 
 ---
 
@@ -2150,7 +2192,7 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 - **Ưu tiên:** P0
 - **Tiền điều kiện:** Đã có user trong Firebase Console (Authentication → Users); Email/Password đã bật.
 - **Bước:** 1. Nhập email + mật khẩu đúng → 2. Bấm **Đăng nhập**.
-- **Kết quả mong đợi:** Nút hiện spinner khi đang gửi; khi Firebase trả về user → màn đăng nhập **tự động** thay bằng màn Home (không cần bấm thêm, nhờ `AuthGateViewModel` quan sát `AuthRepository.authState`).
+- **Kết quả mong đợi:** Nút hiện spinner khi đang gửi; khi Firebase trả về user → màn đăng nhập **tự động** thay bằng màn Home (không cần bấm thêm, nhờ `AuthGateViewModel` quan sát `AuthRepository.authState`). Lời chào ở màn Trang chủ hiện **tên tài khoản vừa đăng nhập** (`displayName`, nếu trống thì phần trước `@` của email) — **không** còn là "Alex" cứng (phụ lục C #30, TC-HOME-12).
 
 ### TC-AUTH-04 — Sai mật khẩu
 - **Ưu tiên:** P0
@@ -2243,7 +2285,7 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 
 ## 23. Hướng dẫn nhanh: 30 phút test "happy path"
 
-1. `pm clear com.healthyai.app` → mở app (**TC-INIT-01**) → ở màn đăng nhập bấm **"Bỏ qua, dùng ở chế độ khách"** (**TC-AUTH-01**, **TC-AUTH-02**).
+1. `pm clear com.healthyai.app` → mở app (**TC-INIT-01**) → ở màn đăng nhập bấm **"Bỏ qua, dùng ở chế độ khách"** (**TC-AUTH-01**, **TC-AUTH-02**) → ở Trang chủ xác nhận lời chào **không kèm tên** (không còn "Alex" cứng — **TC-HOME-12**).
 2. Bấm lần lượt 4 tab, xác nhận không crash (**TC-ENV-05**, **TC-NAV-01**). Ở Trang chủ, nếu thấy thẻ **Cấp quyền Health Connect** → bấm và bật đủ 4 quyền, xác nhận thẻ biến mất và số liệu được nạp lại (**TC-HC-13**).
 3. Tab Thói quen → FAB `+` → tạo "Uống nước / 2000 ml / Cả ngày / Hàng ngày" (**TC-ADD-03**).
 4. Tạo thêm "Ngủ đủ giấc / 8 giờ / Tối", "Chạy bộ / 30 phút / Sáng" (**TC-ADD-02**, **TC-ADD-03**).
@@ -2255,8 +2297,9 @@ Chỉ thực hiện khi đã cấu hình `google-services.json` và (nếu cần
 10. Đóng app hoàn toàn → mở lại → kiểm tra dữ liệu còn nguyên (**TC-DB-03**) và ghi nhận hành vi tiến độ (**TC-HAB-18**).
 11. Thêm widget ra màn hình chính (**TC-WG-01**) → xác nhận dòng **`x/y thói quen đạt mục tiêu`** + danh sách tối đa 3 dòng khớp dữ liệu vừa ghi, thói quen **của buổi hiện tại** nằm đầu danh sách (**TC-WG-03**, **TC-WG-12**) → tạo thêm 1 thói quen mới → quay về màn hình chính, xác nhận widget **tự cập nhật** (số `y` trong `x/y` tăng) mà **không** cần gỡ/thêm lại (**TC-WG-04**, **TC-WG-09**, **TC-WG-10**).
 12. Run `daily_reminder_worker` bằng Background Task Inspector (**TC-WM-04**) — nếu máy Android 13+ và chưa cấp quyền thông báo, bấm **"Bật thông báo"** ở thẻ trên Home trước (**TC-WM-13**).
-13. Ở **Trang chủ** bấm icon **Đăng xuất** (góc phải lời chào) → **Đăng xuất** → xác nhận app quay về màn đăng nhập (**TC-AUTH-15**) → bấm **"Bỏ qua, dùng ở chế độ khách"** → mở tab Thói quen, xác nhận dữ liệu vẫn còn nguyên.
-14. **Bước thêm cho bản này — nâng cấp không mất dữ liệu:** cài **đè** APK mới lên bản cũ (không `pm clear`) rồi mở app → thói quen/nhật ký và tiến độ hôm nay phải còn nguyên (**TC-DB-15**, **TC-REG-22**). Trước khi phát hành, chạy `.\gradlew test` và xác nhận `DatabaseMigrationsTest` + TC-ENV-03 (**22 class / 138 test**) pass.
+13. Ở **Trang chủ** bấm icon **Đăng xuất** (góc phải lời chào) → **Đăng xuất** → xác nhận app quay về màn đăng nhập (**TC-AUTH-15**) → bấm **"Bỏ qua, dùng ở chế độ khách"** → mở tab Thói quen, xác nhận dữ liệu vẫn còn nguyên, và **lời chào không kèm tên** vì đang ở chế độ khách (**TC-HOME-12**).
+14. **Bước thêm cho bản này — nâng cấp không mất dữ liệu:** cài **đè** APK mới lên bản cũ (không `pm clear`) rồi mở app → thói quen/nhật ký và tiến độ hôm nay phải còn nguyên (**TC-DB-15**, **TC-REG-22**). Trước khi phát hành, chạy `.\gradlew test` và xác nhận toàn bộ test pass (TC-ENV-03: **22 class / 143 test**), trong đó có `DatabaseMigrationsTest`.
+15. **Bước thêm cho bản này — lời chào đúng người dùng:** đăng nhập bằng 1 tài khoản thật (email/mật khẩu) → màn Trang chủ phải chào **tên tài khoản** (`displayName`, nếu trống thì phần trước `@` của email), không còn "Alex" cứng (**TC-HOME-12**).
 
 ---
 

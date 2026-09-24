@@ -22,6 +22,15 @@ interface AuthRepository {
      */
     val authState: Flow<String?>
 
+    /**
+     * Tên hiển thị của người dùng đang đăng nhập — `displayName` của Firebase, nếu trống thì lấy
+     * **phần trước `@` của email** (tài khoản tạo trong app không đặt `displayName`).
+     *
+     * `null` khi chưa đăng nhập (chế độ khách) → UI **không** hiện dòng tên thay vì một tên cứng.
+     * Đọc đồng bộ từ cache của `FirebaseAuth` (không gọi mạng).
+     */
+    val currentUserName: String?
+
     /** Đăng nhập bằng email + mật khẩu. Trả về uid khi thành công. */
     suspend fun signIn(email: String, password: String): Result<String>
 

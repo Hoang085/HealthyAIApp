@@ -27,7 +27,16 @@ interface HealthDataRepository {
     suspend fun getRecentHeartRate(): Double
     suspend fun getHealthData(start: Instant, end: Instant): HealthData
     
-    /** Đồng bộ dữ liệu từ Health Connect vào local database (nếu cần) */
+    /**
+     * Lưu một "bản chụp" dữ liệu sức khỏe vào `health_data_history` cho **hôm nay**.
+     *
+     * Nguồn dữ liệu: bước chân lấy từ Health Connect, nếu Health Connect trống thì lấy từ **cảm biến
+     * đếm bước của máy**; giấc ngủ / nhịp tim / calo chỉ có từ Health Connect.
+     *
+     * - Chưa có hàng nào của hôm nay → thêm mới.
+     * - Đã có hàng của hôm nay → **gộp** vào hàng đó (bước chân lấy số lớn hơn) thay vì thêm hàng trùng.
+     * - Không có chỉ số nào thật (khác 0) → **không ghi gì** để không tạo hàng toàn số 0 làm nhiễu AI.
+     */
     suspend fun syncHealthData(): Result<Unit>
 
     /** Lấy danh sách dữ liệu sức khỏe lịch sử */

@@ -36,4 +36,37 @@ class NumberDisplayTest {
         assertEquals(7.5f, formatted.toFloatOrNull())
         assertEquals(2000f, formatTargetValue(2000f).toFloatOrNull())
     }
+
+    // ── formatStepCount — số bước ở vòng tròn "Bước chân" (mục 3 #23, phụ lục C #32) ──
+
+    @Test
+    fun `step counts below one thousand are shown exactly`() {
+        // Đi 30–40 bước phải thấy số thật, không còn bị làm tròn thành "0,0k".
+        assertEquals("0", formatStepCount(0L))
+        assertEquals("7", formatStepCount(7L))
+        assertEquals("49", formatStepCount(49L))
+        assertEquals("312", formatStepCount(312L))
+        assertEquals("999", formatStepCount(999L))
+    }
+
+    @Test
+    fun `step counts from one thousand use the shortened k form`() {
+        assertEquals("1,0k", formatStepCount(1_000L))
+        assertEquals("1,0k", formatStepCount(1_049L))
+        assertEquals("1,2k", formatStepCount(1_249L))
+        assertEquals("2,0k", formatStepCount(1_950L))
+        assertEquals("12,3k", formatStepCount(12_345L))
+    }
+
+    @Test
+    fun `the rounded k form never produces a tenths digit of ten`() {
+        // 1 950 + (50) = 2 000 → "2,0k" chứ không phải "1,10k".
+        assertEquals("2,0k", formatStepCount(1_950L))
+        assertEquals("10,0k", formatStepCount(9_950L))
+    }
+
+    @Test
+    fun `a negative step count is displayed as zero`() {
+        assertEquals("0", formatStepCount(-5L))
+    }
 }

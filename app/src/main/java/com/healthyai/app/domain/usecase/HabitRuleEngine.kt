@@ -59,10 +59,13 @@ class HabitRuleEngine @Inject constructor() {
         val suggestions = mutableListOf<Suggestion>()
 
         // Xu hướng 3 ngày thiếu ngủ (Dữ liệu cứng)
+        // `sleepHours = 0` nghĩa là **chưa có dữ liệu giấc ngủ** (ví dụ máy chỉ có cảm biến đếm bước),
+        // không phải "ngủ 0 giờ" — nếu không loại ra thì mọi hàng 0 đều bị coi là thiếu ngủ và bắn
+        // cảnh báo CRITICAL sai.
         val recent3Sleep = dailyHistory.take(3)
         if (recent3Sleep.size >= 3 &&
             areConsecutiveDays(recent3Sleep.map { it.localDate() }) &&
-            recent3Sleep.all { it.sleepHours < 6.0 }
+            recent3Sleep.all { it.sleepHours > 0.0 && it.sleepHours < 6.0 }
         ) {
             suggestions.add(
                 Suggestion(
@@ -76,8 +79,10 @@ class HabitRuleEngine @Inject constructor() {
             )
         }
 
-        // Xu hướng nhịp tim cao khi nghỉ ngơi (trung bình 7 ngày gần nhất)
-        val avgHeartRate = dailyHistory.take(7).averageOf { it.heartRate }
+        // Xu hướng nhịp tim cao khi nghỉ ngơi (trung bình 7 ngày gần nhất) — chỉ tính những ngày **có**
+        // số nhịp tim, để hàng không có dữ liệu (0) không kéo trung bình xuống.
+        val heartRateRows = dailyHistory.take(7).filter { it.heartRate > 0.0 }
+        val avgHeartRate = if (heartRateRows.isEmpty()) 0.0 else heartRateRows.averageOf { it.heartRate }
         if (avgHeartRate > 85.0) {
             suggestions.add(
                 Suggestion(
@@ -91,7 +96,39 @@ class HabitRuleEngine @Inject constructor() {
             )
         }
 
+        // Xu hướng ít vận động theo **bước chân** trong lịch sử (nguồn: Health Connect hoặc cảm biến của máy)
+        suggestions += analyzeStepTrend(dailyHistory)
+
         return suggestions
+    }
+
+    /**
+     * Xu hướng ít vận động theo **số bước chân** ghi trong `health_data_history`.
+     *
+     * Dữ liệu này có được nhờ app tự lưu bản chụp mỗi lần đồng bộ: bước chân lấy từ Health Connect,
+     * nếu Health Connect trống thì lấy từ **cảm biến đếm bước của điện thoại** — nên rule này vẫn
+     * hoạt động trên máy không cài ứng dụng sức khỏe nào.
+     *
+     * Chỉ xét những ngày **có** dữ liệu bước chân (`steps > 0`): hàng 0 bước có thể là "chưa có nguồn
+     * dữ liệu" chứ không chắc là "hôm đó không đi bộ", nên không kết luận từ chúng.
+     */
+    private fun analyzeStepTrend(dailyHistory: List<HealthData>): List<Suggestion> {
+        val recent = dailyHistory.take(STEP_TREND_DAYS)
+        if (recent.size < STEP_TREND_DAYS) return emptyList()
+        if (!areConsecutiveDays(recent.map { it.localDate() })) return emptyList()
+        if (!recent.all { it.steps > 0L && it.steps < STEP_TREND_LOW }) return emptyList()
+
+        val avgSteps = recent.averageOf { it.steps.toDouble() }
+        return listOf(
+            Suggestion(
+                title = "🚶 Mấy ngày nay bạn đi bộ rất ít",
+                message = "Trung bình $STEP_TREND_DAYS ngày qua bạn chỉ đi ${avgSteps.toInt()} bước/ngày. " +
+                          "Hãy bắt đầu với 10 phút đi bộ sau bữa tối — nhỏ nhưng tạo thói quen lớn!",
+                priority = SuggestionPriority.MEDIUM,
+                category = HabitCategory.EXERCISE,
+                actionLabel = "Ghi nhận vận động"
+            )
+        )
     }
 
     /**
@@ -332,6 +369,12 @@ class HabitRuleEngine @Inject constructor() {
 
         /** Số lần ghi tối thiểu để coi là "xu hướng" khi so theo mục tiêu của thói quen. */
         const val MIN_LOGS_FOR_TREND = 3
+
+        /** Số ngày liên tiếp đi bộ dưới ngưỡng thì nhắc nhở (nguồn: `health_data_history`). */
+        const val STEP_TREND_DAYS = 3
+
+        /** Dưới ngưỡng bước/ngày này (và có dữ liệu) thì coi là ít vận động. */
+        const val STEP_TREND_LOW = 3_000L
 
         /** Tỉ lệ hoàn thành mục tiêu: dưới 50% → HIGH, dưới 80% → LOW. */
         const val TARGET_COMPLETION_LOW = 0.5

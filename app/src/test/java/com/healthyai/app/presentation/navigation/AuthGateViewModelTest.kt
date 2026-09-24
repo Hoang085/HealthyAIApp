@@ -117,7 +117,11 @@ class AuthGateViewModelTest {
     }
 
     /** Repository giả trong bộ nhớ: không cần Firebase/Android. */
-    private class FakeAuthRepository(userId: String? = null) : AuthRepository {
+    private class FakeAuthRepository(
+        userId: String? = null,
+        /** Tên hiển thị của phiên (phụ lục C #30) — chỉ dùng cho màn Trang chủ. */
+        private val userName: String? = null
+    ) : AuthRepository {
 
         private val state = MutableStateFlow(userId)
 
@@ -128,6 +132,9 @@ class AuthGateViewModelTest {
             get() = state.value
 
         override val authState: Flow<String?> = state
+
+        override val currentUserName: String?
+            get() = userName
 
         override suspend fun signIn(email: String, password: String): Result<String> =
             Result.success("uid-fake")

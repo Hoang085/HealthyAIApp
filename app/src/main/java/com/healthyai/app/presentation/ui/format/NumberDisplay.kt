@@ -12,3 +12,24 @@ package com.healthyai.app.presentation.ui.format
  */
 fun formatTargetValue(value: Float): String =
     if (value % 1f == 0f) value.toLong().toString() else value.toString()
+
+/**
+ * Chuỗi hiển thị **số bước** cho vòng tròn chỉ số "Bước chân" ở thẻ "Tóm tắt sức khỏe".
+ *
+ * - **Dưới 1 000 bước** → hiện **số chính xác** (`0` → `"0"`, `312` → `"312"`). Trước đây mọi giá
+ *   trị đều bị quy về dạng `"x,yk"` nên đi 30–40 bước vẫn hiện `"0,0k"` — trông như app không đếm
+ *   bước (mục 3 #23, phụ lục C #32).
+ * - **Từ 1 000 bước** → giữ dạng rút gọn `"1,2k"` cho vừa vòng tròn.
+ *
+ * Quy tắc giống `formatTargetValue`: **không** dùng `String.format` (phụ thuộc locale) mà tự dựng
+ * chuỗi, nên dấu thập phân luôn là **dấu phẩy** (giao diện tiếng Việt) và kết quả giống nhau trên
+ * mọi máy. Làm tròn **nửa lên** tới 100 bước gần nhất (`1 950` → `"2,0k"`).
+ */
+fun formatStepCount(steps: Long): String {
+    val safe = steps.coerceAtLeast(0L)
+    if (safe < 1_000L) return safe.toString()
+
+    // Tổng số "phần nghìn bước" đã làm tròn → tách thành phần nguyên/phần thập phân của "x,yk".
+    val tenths = (safe + 50L) / 100L
+    return "${tenths / 10L},${tenths % 10L}k"
+}

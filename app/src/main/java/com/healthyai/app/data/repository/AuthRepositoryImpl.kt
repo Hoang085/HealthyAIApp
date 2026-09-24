@@ -23,6 +23,17 @@ class AuthRepositoryImpl @Inject constructor(
     override val currentUserId: String?
         get() = auth.currentUser?.uid
 
+    /**
+     * `displayName` của Firebase; tài khoản tạo trong app **không** đặt trường này nên đa số trường
+     * hợp rơi xuống nhánh **phần trước `@` của email**. Trả `null` khi ở chế độ khách (chưa đăng
+     * nhập) để màn Trang chủ không hiện tên nào.
+     */
+    override val currentUserName: String?
+        get() = auth.currentUser?.let { user ->
+            user.displayName?.takeIf { it.isNotBlank() }
+                ?: user.email?.substringBefore('@')?.takeIf { it.isNotBlank() }
+        }
+
     override val authState: Flow<String?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             trySend(firebaseAuth.currentUser?.uid)
