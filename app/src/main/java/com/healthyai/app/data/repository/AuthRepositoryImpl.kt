@@ -2,6 +2,7 @@ package com.healthyai.app.data.repository
 
 import com.google.firebase.auth.FirebaseAuth
 import com.healthyai.app.domain.repository.AuthRepository
+import com.healthyai.app.util.runCatchingCancellable
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -44,12 +45,12 @@ class AuthRepositoryImpl @Inject constructor(
         awaitClose { auth.removeAuthStateListener(listener) }
     }
 
-    override suspend fun signIn(email: String, password: String): Result<String> = runCatching {
+    override suspend fun signIn(email: String, password: String): Result<String> = runCatchingCancellable {
         val result = auth.signInWithEmailAndPassword(email, password).await()
         result.user?.uid ?: error("Firebase không trả về user sau khi đăng nhập")
     }
 
-    override suspend fun signUp(email: String, password: String): Result<String> = runCatching {
+    override suspend fun signUp(email: String, password: String): Result<String> = runCatchingCancellable {
         val result = auth.createUserWithEmailAndPassword(email, password).await()
         result.user?.uid ?: error("Firebase không trả về user sau khi tạo tài khoản")
     }
@@ -58,7 +59,7 @@ class AuthRepositoryImpl @Inject constructor(
      * `signOut()` của Firebase là thao tác cục bộ (không gọi mạng): xoá phiên đã lưu và phát
      * `AuthStateListener` với `currentUser = null` → [authState] phát `null`.
      */
-    override suspend fun signOut(): Result<Unit> = runCatching {
+    override suspend fun signOut(): Result<Unit> = runCatchingCancellable {
         auth.signOut()
     }
 }

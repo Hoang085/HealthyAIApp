@@ -2,6 +2,7 @@ package com.healthyai.app.data.local.security
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 
 /**
@@ -45,6 +46,10 @@ object LegacyDatabaseKeyMigration {
         try {
             rekey(databaseFile.absolutePath, newPassphrase)
             Log.i(TAG, "Đã đổi khoá '$databaseName' từ passphrase hard-code sang khoá Android Keystore")
+        } catch (e: CancellationException) {
+            // Giữ nguyên tắc "không nuốt tín hiệu huỷ coroutine" (phụ lục C #39), dù hàm này không
+            // `suspend`: nó có thể được gọi trong ngữ cảnh đã bị huỷ.
+            throw e
         } catch (e: Exception) {
             // Không mở/rekey được DB cũ (file hỏng, khoá lạ, DB do bản build khác tạo…). Giữ lại
             // file sẽ làm app crash vĩnh viễn mỗi lần Room mở → xoá để app tạo DB mới sạch, đúng

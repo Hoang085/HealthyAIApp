@@ -1,5 +1,6 @@
 package com.healthyai.app.presentation.screen.home
 
+import com.healthyai.app.domain.model.CloudSyncSettings
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitLog
@@ -7,21 +8,27 @@ import com.healthyai.app.domain.model.HealthConnectPermissionStatus
 import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.NotificationPermissionStatus
+import com.healthyai.app.domain.model.SleepSchedule
 import com.healthyai.app.domain.model.StepCounterStatus
 import com.healthyai.app.domain.repository.AuthRepository
 import com.healthyai.app.domain.repository.HabitRepository
+import com.healthyai.app.domain.repository.SettingsRepository
+import com.healthyai.app.domain.repository.SleepTrackerRepository
 import com.healthyai.app.domain.repository.StepCounterRepository
 import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthConnectPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase
+import com.healthyai.app.domain.usecase.health.GetLatestRecordedHeartRateUseCase
 import com.healthyai.app.domain.usecase.notification.GetNotificationPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.steps.GetStepCounterStatusUseCase
 import io.mockk.coEvery
+import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -35,6 +42,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.LocalTime
 
 /**
  * Unit test cho trạng thái hoàn thành của thói quen trên màn Home và cho luồng
@@ -57,6 +65,15 @@ class HomeViewModelTest {
     private val habitRepository = mockk<HabitRepository>()
     private val authRepository = mockk<AuthRepository>(relaxed = true)
     private val stepCounterRepository = mockk<StepCounterRepository>()
+    private val sleepTrackerRepository = mockk<SleepTrackerRepository>()
+    private val settingsRepository = mockk<SettingsRepository>()
+    private val getLatestRecordedHeartRateUseCase = mockk<GetLatestRecordedHeartRateUseCase>()
+
+    /** Khung giờ ngủ "trong DB" — test đổi giá trị này rồi cho `advanceUntilIdle()` để mô phỏng Room phát lại. */
+    private val scheduleFlow = MutableStateFlow(SleepSchedule.DEFAULT)
+
+    /** Thiết lập "Đồng bộ đám mây" trong DB — mặc định TẮT, đúng như lần cài đầu. */
+    private val cloudSyncFlow = MutableStateFlow(CloudSyncSettings())
 
     private val waterHabit = Habit(
         id = 1L,
@@ -72,6 +89,10 @@ class HomeViewModelTest {
         givenHealthConnect(HealthConnectStatus.AVAILABLE, hasAllPermissions = true)
         givenNotificationsEnabled()
         givenStepCounter(sensorAvailable = false, permissionGranted = false)
+        givenSleepTracker(hours = 0.0)
+        givenRecordedHeartRate(bpm = 0.0)
+        every { settingsRepository.observeSleepSchedule() } returns scheduleFlow
+        every { settingsRepository.observeCloudSync() } returns cloudSyncFlow
     }
 
     @After
@@ -379,7 +400,6 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(4_230L, state.sensorSteps)
         assertEquals("Số bước hiển thị lấy từ cảm biến của máy", 4_230L, state.displaySteps)
-        assertTrue(state.stepsFromSensor)
         assertFalse(state.showStepCounterCard)
     }
 
@@ -400,7 +420,6 @@ class HomeViewModelTest {
             4_230L,
             state.displaySteps
         )
-        assertTrue(state.stepsFromSensor)
     }
 
     @Test
@@ -420,7 +439,6 @@ class HomeViewModelTest {
             3_000L,
             state.displaySteps
         )
-        assertFalse(state.stepsFromSensor)
     }
 
     @Test
@@ -495,6 +513,287 @@ class HomeViewModelTest {
         assertEquals(800L, state.sensorSteps)
     }
 
+    // ── Tự ước lượng giờ ngủ bằng cảm biến của máy ─────────────
+
+    @Test
+    fun `device sleep estimate is used when health connect has no sleep data`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(sleepHours = 0.0))
+        givenSleepTracker(hours = 6.5)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(6.5, state.sensorSleepHours, 0.001)
+        assertEquals("Giờ ngủ hiển thị lấy từ bộ ước lượng của app", 6.5, state.displaySleepHours, 0.001)
+    }
+
+    @Test
+    fun `health connect sleep wins over the device estimate`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(sleepHours = 7.5))
+        givenSleepTracker(hours = 6.0)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            "Số của Health Connect (đồng hồ đeo tay) được ưu tiên; bộ ước lượng chỉ là dự phòng",
+            7.5,
+            state.displaySleepHours,
+            0.001
+        )
+    }
+
+    @Test
+    fun `no sleep at all keeps the circle at zero`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(sleepHours = 0.0))
+        givenSleepTracker(hours = 0.0)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(0.0, state.displaySleepHours, 0.001)
+    }
+
+    @Test
+    fun `refresh re-reads the sleep estimate`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(sleepHours = 0.0))
+        givenSleepTracker(hours = 0.0)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        assertEquals(0.0, viewModel.uiState.value.sensorSleepHours, 0.001)
+
+        // Worker đã lấy đủ mẫu trong lúc app đóng → mở lại màn Home thấy số mới
+        givenSleepTracker(hours = 7.2)
+        viewModel.refreshSystemPermissions()
+        advanceUntilIdle()
+
+        assertEquals(7.2, viewModel.uiState.value.sensorSleepHours, 0.001)
+    }
+
+    // ── Nhịp tim ghi trên máy (đo bằng camera) ────────────────
+
+    @Test
+    fun `the heart rate recorded on the device is shown when health connect has none`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 0.0))
+        givenRecordedHeartRate(bpm = 88.0)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            "Health Connect chưa có nhịp tim thì lấy số đo trong ngày trên máy",
+            88.0,
+            state.displayHeartRate,
+            0.001
+        )
+    }
+
+    @Test
+    fun `health connect heart rate wins over the one recorded on the device`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        // Health Connect có thể có số của đồng hồ đeo tay nên được ưu tiên
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 62.0))
+        givenRecordedHeartRate(bpm = 88.0)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            "Số của Health Connect được ưu tiên",
+            62.0,
+            state.displayHeartRate,
+            0.001
+        )
+    }
+
+    @Test
+    fun `a new day with no measurement yet keeps the heart circle empty`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        // Sang ngày mới: cả Health Connect lẫn nhịp tim ghi trong ngày đều chưa có số nào.
+        // Số của hôm qua KHÔNG được hiện lại (getLatestRecordedHeartRate chỉ đọc hàng của hôm nay),
+        // nên UI hiện "-- bpm" thay vì một nhịp tim cũ.
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 0.0))
+        givenRecordedHeartRate(bpm = 0.0)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(0.0, viewModel.uiState.value.displayHeartRate, 0.001)
+    }
+
+    @Test
+    fun `coming back from a measurement re-reads the recorded heart rate`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 0.0))
+        givenRecordedHeartRate(bpm = 0.0)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        assertEquals(0.0, viewModel.uiState.value.displayHeartRate, 0.001)
+
+        // Người dùng đo nhịp tim bằng camera rồi quay lại màn Trang chủ → thấy số vừa đo ngay
+        givenRecordedHeartRate(bpm = 76.0)
+        viewModel.refreshSystemPermissions()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(76.0, state.displayHeartRate, 0.001)
+    }
+
+    // ── Khung giờ ngủ do người dùng đặt ────────────────────────
+
+    @Test
+    fun `the default window is 23 to 7 when the user has not set anything`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(SleepSchedule.DEFAULT, viewModel.uiState.value.sleepSchedule)
+        assertEquals(LocalTime.of(23, 0), viewModel.uiState.value.sleepSchedule.bedtime)
+        assertEquals(LocalTime.of(7, 0), viewModel.uiState.value.sleepSchedule.wakeTime)
+    }
+
+    @Test
+    fun `the window stored in the database is the one shown on home`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        val custom = SleepSchedule(LocalTime.of(22, 30), LocalTime.of(6, 15))
+        scheduleFlow.value = custom
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(custom, viewModel.uiState.value.sleepSchedule)
+    }
+
+    @Test
+    fun `opening the editor starts from the window currently in use`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        val custom = SleepSchedule(LocalTime.of(22, 0), LocalTime.of(6, 0))
+        scheduleFlow.value = custom
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isSleepScheduleEditorOpen)
+        viewModel.openSleepScheduleEditor()
+
+        assertTrue(viewModel.uiState.value.isSleepScheduleEditorOpen)
+        assertEquals(custom, viewModel.uiState.value.sleepScheduleDraft)
+    }
+
+    @Test
+    fun `saving a valid window stores it and closes the editor`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        coJustRun { settingsRepository.setSleepSchedule(any()) }
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val newWindow = SleepSchedule(LocalTime.of(22, 45), LocalTime.of(6, 30))
+        viewModel.openSleepScheduleEditor()
+        viewModel.onSleepScheduleDraftChange(newWindow)
+        viewModel.saveSleepSchedule()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { settingsRepository.setSleepSchedule(newWindow) }
+        assertFalse("Lưu xong thì đóng hộp thoại", viewModel.uiState.value.isSleepScheduleEditorOpen)
+        assertNull(viewModel.uiState.value.sleepScheduleError)
+    }
+
+    @Test
+    fun `saving the same bedtime and wake time keeps the editor open with an error`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.openSleepScheduleEditor()
+        viewModel.onSleepScheduleDraftChange(SleepSchedule(LocalTime.of(7, 0), LocalTime.of(7, 0)))
+        viewModel.saveSleepSchedule()
+        advanceUntilIdle()
+
+        assertTrue("Khung rỗng thì phải báo lỗi", viewModel.uiState.value.sleepScheduleError != null)
+        assertTrue("Hộp thoại vẫn mở để người dùng sửa", viewModel.uiState.value.isSleepScheduleEditorOpen)
+        coVerify(exactly = 0) { settingsRepository.setSleepSchedule(any()) }
+    }
+
+    @Test
+    fun `changing the draft clears the previous error`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.openSleepScheduleEditor()
+        viewModel.onSleepScheduleDraftChange(SleepSchedule(LocalTime.of(7, 0), LocalTime.of(7, 0)))
+        viewModel.saveSleepSchedule()
+        assertTrue(viewModel.uiState.value.sleepScheduleError != null)
+
+        viewModel.onSleepScheduleDraftChange(SleepSchedule(LocalTime.of(23, 0), LocalTime.of(6, 45)))
+
+        assertNull("Chọn giờ xong thì lỗi cũ biến mất", viewModel.uiState.value.sleepScheduleError)
+    }
+
+    @Test
+    fun `dismissing the editor discards the draft`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.openSleepScheduleEditor()
+        viewModel.onSleepScheduleDraftChange(SleepSchedule(LocalTime.of(21, 0), LocalTime.of(5, 0)))
+        viewModel.dismissSleepScheduleEditor()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isSleepScheduleEditorOpen)
+        assertNull(state.sleepScheduleError)
+        assertEquals("Huỷ thì khung đang dùng không đổi", SleepSchedule.DEFAULT, state.sleepSchedule)
+        coVerify(exactly = 0) { settingsRepository.setSleepSchedule(any()) }
+    }
+
     // ── Lời chào: tên thật, không hard-code (phụ lục C #30) ─────
 
     @Test
@@ -525,6 +824,76 @@ class HomeViewModelTest {
 
     // ── Helpers ────────────────────────────────────────────────
 
+    // ── Đồng bộ đám mây (mục 3 #31) ───────────────────────────
+
+    @Test
+    fun `cloud sync is off by default`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(
+            "Chưa bật thì app không được tải dữ liệu lên đám mây",
+            viewModel.uiState.value.cloudSync.enabled
+        )
+    }
+
+    @Test
+    fun `the stored cloud sync setting is reflected in the state`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        cloudSyncFlow.value = CloudSyncSettings(enabled = true, consentAtMillis = 1_700_000_000_000L)
+        advanceUntilIdle()
+
+        assertEquals(1_700_000_000_000L, viewModel.uiState.value.cloudSync.consentAtMillis)
+        assertTrue(viewModel.uiState.value.cloudSync.enabled)
+    }
+
+    @Test
+    fun `toggling cloud sync writes it through the settings repository`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        coJustRun { settingsRepository.setCloudSyncEnabled(any(), any()) }
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.setCloudSyncEnabled(true)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { settingsRepository.setCloudSyncEnabled(true, any()) }
+    }
+
+    @Test
+    fun `a signed in user is reported as signed in`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        every { authRepository.currentUserId } returns "uid-tester"
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.isSignedIn)
+    }
+
+    @Test
+    fun `a guest is not reported as signed in`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        every { authRepository.currentUserId } returns null
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isSignedIn)
+    }
+
     private fun createViewModel() = HomeViewModel(
         getTodayHabitsUseCase = getTodayHabitsUseCase,
         getHealthDataUseCase = getHealthDataUseCase,
@@ -533,7 +902,10 @@ class HomeViewModelTest {
         getStepCounterStatusUseCase = getStepCounterStatusUseCase,
         habitRepository = habitRepository,
         authRepository = authRepository,
-        stepCounterRepository = stepCounterRepository
+        stepCounterRepository = stepCounterRepository,
+        sleepTrackerRepository = sleepTrackerRepository,
+        settingsRepository = settingsRepository,
+        getLatestRecordedHeartRateUseCase = getLatestRecordedHeartRateUseCase
     )
 
     private fun givenHabits(vararg habits: Habit) {
@@ -581,6 +953,15 @@ class HomeViewModelTest {
             permissionGranted = permissionGranted
         )
         every { stepCounterRepository.observeTodaySteps() } returns flowOf(steps)
+    }
+
+    private fun givenSleepTracker(hours: Double) {
+        coEvery { sleepTrackerRepository.readLastNightSleepHours() } returns hours
+    }
+
+    /** Nhịp tim ghi gần nhất trên máy (`health_data_history`) mà màn Trang chủ đọc được. */
+    private fun givenRecordedHeartRate(bpm: Double) {
+        coEvery { getLatestRecordedHeartRateUseCase() } returns bpm
     }
 
     private fun waterLog(value: Float) = HabitLog(

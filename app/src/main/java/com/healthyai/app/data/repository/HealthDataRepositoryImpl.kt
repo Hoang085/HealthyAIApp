@@ -7,7 +7,10 @@ import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.SleepStageBreakdown
 import com.healthyai.app.domain.repository.HealthDataRepository
+import com.healthyai.app.domain.repository.SleepTrackerRepository
 import com.healthyai.app.domain.repository.StepCounterRepository
+import com.healthyai.app.domain.widget.HealthWidgetRefresher
+import com.healthyai.app.util.runCatchingCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
@@ -19,15 +22,25 @@ import javax.inject.Singleton
 /**
  * Triển khai [HealthDataRepository].
  *
- * Ngoài Health Connect, repository này còn dùng **cảm biến đếm bước của máy** ([StepCounterRepository])
- * làm nguồn dự phòng cho bước chân — nhờ vậy `health_data_history` vẫn có dữ liệu bước chân (và AI ở
- * tab Phân tích dùng được) ngay cả khi máy không cài ứng dụng sức khỏe nào.
+ * Ngoài Health Connect, repository này còn dùng hai nguồn **"tự lực" của chính app** làm dự phòng:
+ * **cảm biến đếm bước của máy** ([StepCounterRepository]) cho bước chân và **bộ ước lượng giấc ngủ từ
+ * cảm biến** ([SleepTrackerRepository]) cho giờ ngủ — nhờ vậy `health_data_history` vẫn có dữ liệu
+ * (và AI ở tab Phân tích dùng được) ngay cả khi máy không cài ứng dụng sức khỏe nào.
+ *
+ * Thứ tự ưu tiên luôn là **Health Connect trước** (dữ liệu có thể gồm cả đồng hồ đeo tay, và với giấc
+ * ngủ còn có chi tiết pha Sâu/Nông/REM), chỉ khi Health Connect không có số mới dùng nguồn tự đo.
+ *
+ * Repository này cũng là nơi **báo cho widget màn hình chính vẽ lại**: mọi lần ghi dữ liệu sức khỏe của
+ * hôm nay đều đi qua [upsertToday] — sau đó gọi [HealthWidgetRefresher.refresh] để widget "Sức khỏe hôm
+ * nay" hiện số mới ngay, không phải chờ tới nhịp vẽ định kỳ 30 phút.
  */
 @Singleton
 class HealthDataRepositoryImpl @Inject constructor(
     private val dataSource: HealthConnectDataSource,
     private val healthDataDao: HealthDataDao,
-    private val stepCounterRepository: StepCounterRepository
+    private val stepCounterRepository: StepCounterRepository,
+    private val sleepTrackerRepository: SleepTrackerRepository,
+    private val healthWidgetRefresher: HealthWidgetRefresher
 ) : HealthDataRepository {
 
     override suspend fun isAvailable(): Boolean = dataSource.isAvailable()
@@ -36,23 +49,26 @@ class HealthDataRepositoryImpl @Inject constructor(
     override suspend fun getRequiredPermissions(): Set<String> = dataSource.requiredPermissions
     override suspend fun getTodaySteps(): Long = dataSource.getTodaySteps()
     override suspend fun getTodaySleepHours(): Double = dataSource.getTodaySleepHours()
-    override suspend fun getRecentHeartRate(): Double = dataSource.getRecentHeartRate()
+    override suspend fun getTodayHeartRate(): Double = dataSource.getTodayHeartRate()
 
-    override suspend fun getHealthData(start: Instant, end: Instant): HealthData = HealthData(
+    override suspend fun getTodayHealthData(): HealthData = HealthData(
         steps = dataSource.getTodaySteps(),
         sleepHours = dataSource.getTodaySleepHours(),
-        heartRate = dataSource.getRecentHeartRate(),
+        heartRate = dataSource.getTodayHeartRate(),
         activeCalories = dataSource.getTodayActiveCalories()
     )
 
-    override suspend fun syncHealthData(): Result<Unit> = runCatching {
+    override suspend fun syncHealthData(): Result<Unit> = runCatchingCancellable {
         val healthConnect = readHealthConnectSnapshot()
         val sensorSteps = stepCounterRepository.readTodaySteps()
+        val sensorSleepHours = sleepTrackerRepository.readLastNightSleepHours()
 
         // Bước chân: Health Connect trước (có thể gồm cả đồng hồ đeo tay), không có số thì dùng cảm biến của máy.
+        // Giấc ngủ: Health Connect trước (có cả chi tiết pha Sâu/Nông/REM), không có thì dùng ước lượng từ
+        // cảm biến ánh sáng + gia tốc của chính điện thoại (SleepTrackerRepository).
         val snapshot = HealthData(
             steps = (healthConnect?.steps ?: 0L).takeIf { it > 0L } ?: sensorSteps,
-            sleepHours = healthConnect?.sleepHours ?: 0.0,
+            sleepHours = (healthConnect?.sleepHours ?: 0.0).takeIf { it > 0.0 } ?: sensorSleepHours,
             heartRate = healthConnect?.heartRate ?: 0.0,
             activeCalories = healthConnect?.activeCalories ?: 0.0
         )
@@ -64,7 +80,7 @@ class HealthDataRepositoryImpl @Inject constructor(
                 "HealthDataRepository",
                 "Bỏ qua đồng bộ: chưa có dữ liệu sức khỏe thật (Health Connect trống và cảm biến không có số)"
             )
-            return@runCatching
+            return@runCatchingCancellable
         }
 
         upsertToday(snapshot)
@@ -72,9 +88,13 @@ class HealthDataRepositoryImpl @Inject constructor(
         // Dọn dẹp dữ liệu cũ (hơn 30 ngày)
         healthDataDao.deleteOldData(System.currentTimeMillis() - RETENTION_MS)
 
+        // Vẽ lại widget "Sức khỏe hôm nay" để bước chân / giấc ngủ / nhịp tim vừa đồng bộ hiện ra ngay.
+        healthWidgetRefresher.refresh()
+
         android.util.Log.d(
             "HealthDataRepository",
-            "Đồng bộ xong và lưu vào Room: ${snapshot.steps} bước hôm nay"
+            "Đồng bộ xong và lưu vào Room: ${snapshot.steps} bước, " +
+                "${snapshot.sleepHours} giờ ngủ hôm nay"
         )
     }
 
@@ -89,7 +109,7 @@ class HealthDataRepositoryImpl @Inject constructor(
         return HealthData(
             steps = dataSource.getTodaySteps(),
             sleepHours = dataSource.getTodaySleepHours(),
-            heartRate = dataSource.getRecentHeartRate(),
+            heartRate = dataSource.getTodayHeartRate(),
             activeCalories = dataSource.getTodayActiveCalories()
         )
     }
@@ -103,11 +123,7 @@ class HealthDataRepositoryImpl @Inject constructor(
      * đồng bộ không có quyền Health Connect **không** xoá mất dữ liệu giấc ngủ/nhịp tim đã ghi trước đó.
      */
     private suspend fun upsertToday(snapshot: HealthData) {
-        val startOfToday = LocalDate.now()
-            .atStartOfDay(ZoneId.systemDefault())
-            .toInstant()
-            .toEpochMilli()
-        val existing = healthDataDao.getLatestSince(startOfToday)
+        val existing = healthDataDao.getLatestSince(startOfToday())
 
         if (existing == null) {
             healthDataDao.insertHealthData(HealthDataEntity.fromDomain(snapshot))
@@ -125,6 +141,12 @@ class HealthDataRepositoryImpl @Inject constructor(
         )
     }
 
+    /** Mốc 00:00 của **hôm nay** theo múi giờ thiết bị (epoch millis) — mọi mốc "hôm nay" đều dùng chung. */
+    private fun startOfToday(): Long = LocalDate.now()
+        .atStartOfDay(ZoneId.systemDefault())
+        .toInstant()
+        .toEpochMilli()
+
     /** Bản chụp có ít nhất một chỉ số thật (khác 0) hay không. */
     private fun HealthData.hasAnyData(): Boolean =
         steps > 0L || sleepHours > 0.0 || heartRate > 0.0 || activeCalories > 0.0
@@ -136,6 +158,24 @@ class HealthDataRepositoryImpl @Inject constructor(
 
     override suspend fun getRecentHealthHistory(limit: Int): List<HealthData> {
         return healthDataDao.getRecentHealthDataList(limit.coerceAtLeast(1)).map { it.toDomain() }
+    }
+
+    override suspend fun getLatestRecordedHeartRate(): Double? =
+        healthDataDao.getLatestHeartRateSince(startOfToday())?.takeIf { it > 0.0 }
+
+    /**
+     * Lưu nhịp tim vừa đo vào hàng của **hôm nay**.
+     *
+     * Dùng lại [upsertToday] nên giữ nguyên luật gộp: các chỉ số khác của hôm nay (bước chân, giờ ngủ,
+     * calo) không bị ghi đè bởi hàng mới chỉ có nhịp tim.
+     *
+     * Sau khi ghi phải vẽ lại widget màn hình chính, nếu không ô "Nhịp tim" trên widget vẫn là số của
+     * lần đo trước cho tới nhịp vẽ định kỳ kế tiếp (tối đa 30 phút).
+     */
+    override suspend fun saveMeasuredHeartRate(bpm: Double): Result<Unit> = runCatchingCancellable {
+        require(bpm > 0.0) { "Nhịp tim đo được phải lớn hơn 0 (nhận được $bpm)" }
+        upsertToday(HealthData(heartRate = bpm, recordedAt = System.currentTimeMillis()))
+        healthWidgetRefresher.refresh()
     }
 
     /**
@@ -150,6 +190,9 @@ class HealthDataRepositoryImpl @Inject constructor(
             list.map { it.toDomain() }
         }
     }
+
+    override fun getHealthHistorySince(fromTs: Long): Flow<List<HealthData>> =
+        healthDataDao.getHealthDataSince(fromTs).map { list -> list.map { it.toDomain() } }
 
     /**
      * Đọc chi tiết pha giấc ngủ trong [daysBack] ngày gần nhất **trực tiếp từ Health Connect**

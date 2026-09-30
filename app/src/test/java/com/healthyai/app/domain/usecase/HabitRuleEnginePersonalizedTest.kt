@@ -1,128 +1,120 @@
 package com.healthyai.app.domain.usecase
 
 import com.healthyai.app.domain.model.HabitCategory
-import com.healthyai.app.domain.model.HabitLog
 import com.healthyai.app.domain.model.HealthData
-import com.healthyai.app.domain.model.SuggestionPriority
-import org.junit.Assert.assertEquals
+import com.healthyai.app.domain.model.Suggestion
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
 /**
- * Test cho nhánh phân tích **dữ liệu Health Connect** của [HabitRuleEngine] (phụ lục C #16).
+ * Test cho nhánh đọc **dữ liệu sức khỏe cứng** của [HabitRuleEngine] (phụ lục C #16).
  *
- * `health_data_history` ghi 1 hàng cho mỗi lần sync (6 giờ/lần) chứ không phải 1 hàng/ngày, nên
- * các test ở đây dựng dữ liệu theo **ngày** (mốc 12:00 mỗi ngày) và kiểm tra rule gom theo ngày.
+ * `health_data_history` ghi 1 hàng cho mỗi lần sync (6 giờ/lần) chứ không phải 1 hàng/ngày, nên các
+ * test ở đây dựng dữ liệu theo **ngày** (mốc 12:00 mỗi ngày) và kiểm tra rule gom theo ngày.
+ *
+ * Sau bản cải tiến feed gợi ý, "phát hiện xu hướng" được quan sát qua việc engine **chọn mẹo nhóm
+ * CONCERN** cho danh mục tương ứng (thay vì dựng một thẻ cảnh báo cố định).
  */
 class HabitRuleEnginePersonalizedTest {
 
     private val engine = HabitRuleEngine()
 
     @Test
-    fun `analyzeHealthTrends detects 3 days of sleep deprivation`() {
-        // Arrange — 3 ngày liên tiếp, mỗi ngày 1 hàng (đều ngủ < 6 giờ)
+    fun `three consecutive short sleep days flag sleep`() {
         val history = listOf(
             healthRow(daysAgo = 0, sleepHours = 5.5),
             healthRow(daysAgo = 1, sleepHours = 4.0),
             healthRow(daysAgo = 2, sleepHours = 5.0)
         )
 
-        // Act
-        val suggestions = engine.generateSuggestions(emptyList(), history)
+        val suggestions = engine.generateSuggestions(emptyList(), emptyList(), history, rotationSeed = 0)
 
-        // Assert
-        val sleepDeprivation = suggestions.find { it.title.contains("xu hướng thiếu ngủ") }
-        assertTrue(sleepDeprivation != null)
-        assertEquals(SuggestionPriority.CRITICAL, sleepDeprivation?.priority)
+        assertTrue(suggestions.isConcernTipFor(HabitCategory.SLEEP))
     }
 
     @Test
-    fun `analyzeHealthTrends does NOT alert sleep deprivation when rows are from the same day`() {
-        // Arrange — 3 lần sync trong CÙNG một ngày (6h/12h/18h) và đều ngủ < 6 giờ.
-        // Trước bản sửa #16, 3 hàng này bị hiểu nhầm là "3 ngày liên tiếp" → bắn CRITICAL sai.
+    fun `rows from the same day never flag sleep`() {
+        // 3 lần sync trong CÙNG một ngày (6h/12h/18h) đều ngủ < 6 giờ.
+        // Trước bản sửa #16, 3 hàng này bị hiểu nhầm là "3 ngày liên tiếp".
         val history = listOf(
             healthRow(daysAgo = 0, sleepHours = 5.0, hourOfDay = 6),
             healthRow(daysAgo = 0, sleepHours = 5.0, hourOfDay = 12),
             healthRow(daysAgo = 0, sleepHours = 5.0, hourOfDay = 18)
         )
 
-        // Act
-        val suggestions = engine.generateSuggestions(emptyList(), history)
+        val suggestions = engine.generateSuggestions(emptyList(), emptyList(), history, rotationSeed = 0)
 
-        // Assert
-        assertTrue(
+        assertFalse(
             "1 ngày dữ liệu không được coi là xu hướng 3 ngày",
-            suggestions.none { it.title.contains("xu hướng thiếu ngủ") }
+            suggestions.isConcernTipFor(HabitCategory.SLEEP)
         )
     }
 
     @Test
-    fun `analyzeHealthTrends does NOT alert sleep deprivation when days are not consecutive`() {
-        // Arrange — ngày gần nhất và 2 ngày có dữ liệu trước đó bị cách quãng (thiếu hôm qua)
+    fun `non consecutive days never flag sleep`() {
         val history = listOf(
             healthRow(daysAgo = 0, sleepHours = 5.0),
             healthRow(daysAgo = 2, sleepHours = 5.0),
             healthRow(daysAgo = 3, sleepHours = 5.0)
         )
 
-        // Act
-        val suggestions = engine.generateSuggestions(emptyList(), history)
+        val suggestions = engine.generateSuggestions(emptyList(), emptyList(), history, rotationSeed = 0)
 
-        // Assert
-        assertTrue(
-            "3 ngày không liên tiếp thì không được cảnh báo '3 ngày liên tiếp'",
-            suggestions.none { it.title.contains("xu hướng thiếu ngủ") }
-        )
+        assertFalse(suggestions.isConcernTipFor(HabitCategory.SLEEP))
     }
 
     @Test
-    fun `analyzeHealthTrends detects high resting heart rate`() {
-        // Arrange — 7 NGÀY (không phải 7 lần sync) đều có nhịp tim 90 bpm; ngủ đủ để không lẫn
-        // với cảnh báo thiếu ngủ.
+    fun `rows without sleep data never flag sleep`() {
+        // 3 ngày liên tiếp chỉ có bước chân (sleepHours = 0) → "chưa có dữ liệu", không phải "ngủ 0 giờ".
+        val history = (0..2).map { healthRow(daysAgo = it, steps = 5_000L) }
+
+        val suggestions = engine.generateSuggestions(emptyList(), emptyList(), history, rotationSeed = 0)
+
+        assertFalse(suggestions.isConcernTipFor(HabitCategory.SLEEP))
+    }
+
+    @Test
+    fun `seven days of high heart rate flag mindfulness`() {
         val history = (0..6).map { healthRow(daysAgo = it, sleepHours = 7.5, heartRate = 90.0) }
 
-        // Act
-        val suggestions = engine.generateSuggestions(emptyList(), history)
+        val suggestions = engine.generateSuggestions(emptyList(), emptyList(), history, rotationSeed = 0)
 
-        // Assert
-        val heartRateSuggestion = suggestions.find { it.title.contains("Nhịp tim nghỉ ngơi hơi cao") }
-        assertTrue(heartRateSuggestion != null)
-        assertEquals(SuggestionPriority.MEDIUM, heartRateSuggestion?.priority)
+        assertTrue(suggestions.isConcernTipFor(HabitCategory.MINDFULNESS))
     }
 
     @Test
-    fun `generateSuggestions combines logs and health trends correctly`() {
-        // Arrange
-        val logs = listOf(
-            HabitLog(
-                habitId = 1L, habitName = "Nước", category = HabitCategory.WATER,
-                value = 500f, unit = "ml", targetValueAtTime = 2000f
-            )
-        )
-        val history = (0..2).map { healthRow(daysAgo = it, sleepHours = 4.0) }
+    fun `heart rate average ignores rows without heart rate data`() {
+        // 2 ngày có nhịp tim 60 bpm + 5 ngày chỉ có bước chân → trung bình phải là 60, KHÔNG bị kéo
+        // xuống bởi các hàng 0.
+        val history = listOf(
+            healthRow(daysAgo = 0, steps = 5_000L, heartRate = 60.0),
+            healthRow(daysAgo = 1, steps = 5_000L, heartRate = 60.0)
+        ) + (2..6).map { healthRow(daysAgo = it, steps = 5_000L) }
 
-        // Act
-        val suggestions = engine.generateSuggestions(logs, history)
+        val suggestions = engine.generateSuggestions(emptyList(), emptyList(), history, rotationSeed = 0)
 
-        // Assert
-        // Phải có cả gợi ý về nước (Critical/High) và thiếu ngủ (Critical)
-        assertTrue(suggestions.any { it.category == HabitCategory.WATER })
-        assertTrue(suggestions.any { it.category == HabitCategory.SLEEP })
+        assertFalse(suggestions.isConcernTipFor(HabitCategory.MINDFULNESS))
     }
 
-    /**
-     * Một hàng `health_data_history`: mốc **12:00 (giờ thiết bị)** của ngày cách hôm nay
-     * [daysAgo] ngày → `recordedAt` luôn thuộc đúng ngày mong muốn (không lệch vì DST như khi trừ
-     * thẳng 24 giờ).
-     */
+    // ── Helpers ────────────────────────────────────────────────
+
+    private fun List<Suggestion>.isConcernTipFor(category: HabitCategory): Boolean =
+        any { suggestion ->
+            suggestion.category == category &&
+                SuggestionCatalog.concernTips(category).any { it.title == suggestion.title }
+        }
+
     private fun healthRow(
         daysAgo: Int,
+        steps: Long = 0L,
         sleepHours: Double = 0.0,
         heartRate: Double = 0.0,
         hourOfDay: Int = 12
     ): HealthData = HealthData(
+        steps = steps,
         sleepHours = sleepHours,
         heartRate = heartRate,
         recordedAt = LocalDate.now()

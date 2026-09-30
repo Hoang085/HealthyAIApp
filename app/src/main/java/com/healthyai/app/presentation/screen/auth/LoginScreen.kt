@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.healthyai.app.R
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
 private val BrandGreen = Color(0xFF2E7D32)
@@ -89,7 +91,7 @@ fun LoginScreenContent(
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = if (uiState.isRegisterMode) "Tạo tài khoản" else "Đăng nhập",
+                text = if (uiState.isRegisterMode) stringResource(R.string.auth_tab_register) else stringResource(R.string.auth_tab_sign_in),
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 26.sp
@@ -98,9 +100,9 @@ fun LoginScreenContent(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = if (uiState.isRegisterMode) {
-                    "Đăng ký để đồng bộ thói quen lên Firebase"
+                    stringResource(R.string.auth_subtitle_register)
                 } else {
-                    "Đăng nhập để đồng bộ thói quen lên Firebase"
+                    stringResource(R.string.auth_subtitle_sign_in)
                 },
                 style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray),
                 textAlign = TextAlign.Center
@@ -111,7 +113,7 @@ fun LoginScreenContent(
             OutlinedTextField(
                 value = uiState.email,
                 onValueChange = onEmailChange,
-                label = { Text("Email") },
+                label = { Text(stringResource(R.string.auth_email_label)) },
                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -134,7 +136,7 @@ fun LoginScreenContent(
             OutlinedTextField(
                 value = uiState.password,
                 onValueChange = onPasswordChange,
-                label = { Text("Mật khẩu") },
+                label = { Text(stringResource(R.string.auth_password_label)) },
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = onTogglePasswordVisibility) {
@@ -145,9 +147,9 @@ fun LoginScreenContent(
                                 Icons.Default.Visibility
                             },
                             contentDescription = if (uiState.isPasswordVisible) {
-                                "Ẩn mật khẩu"
+                                stringResource(R.string.auth_hide_password)
                             } else {
-                                "Hiện mật khẩu"
+                                stringResource(R.string.auth_show_password)
                             }
                         )
                     }
@@ -201,7 +203,7 @@ fun LoginScreenContent(
                     )
                 } else {
                     Text(
-                        text = if (uiState.isRegisterMode) "Đăng ký" else "Đăng nhập",
+                        text = if (uiState.isRegisterMode) stringResource(R.string.auth_button_register) else stringResource(R.string.auth_button_sign_in),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -213,9 +215,9 @@ fun LoginScreenContent(
             TextButton(onClick = onToggleMode, enabled = !uiState.isSubmitting) {
                 Text(
                     text = if (uiState.isRegisterMode) {
-                        "Đã có tài khoản? Đăng nhập"
+                        stringResource(R.string.auth_switch_to_sign_in)
                     } else {
-                        "Chưa có tài khoản? Đăng ký"
+                        stringResource(R.string.auth_switch_to_register)
                     },
                     color = BrandGreen,
                     fontWeight = FontWeight.SemiBold
@@ -234,14 +236,13 @@ fun LoginScreenContent(
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Bỏ qua, dùng ở chế độ khách", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.auth_skip_guest), fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Chế độ khách: thói quen và dữ liệu Health Connect vẫn hoạt động bình thường, " +
-                    "chỉ dữ liệu đồng bộ Firebase là không chạy.",
+                text = stringResource(R.string.auth_guest_note),
                 style = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
                 textAlign = TextAlign.Center
             )
@@ -268,7 +269,7 @@ private fun BrandHeader() {
         }
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "HealthyAI",
+            text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 28.sp,
@@ -276,7 +277,7 @@ private fun BrandHeader() {
             )
         )
         Text(
-            text = "Theo dõi & cải thiện thói quen sức khỏe",
+            text = stringResource(R.string.auth_tagline),
             style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray),
             textAlign = TextAlign.Center
         )
@@ -309,7 +310,7 @@ private fun LoginErrorCard(message: String, onDismiss: () -> Unit) {
             IconButton(onClick = onDismiss) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Đóng thông báo lỗi",
+                    contentDescription = stringResource(R.string.auth_dismiss_error),
                     tint = Color(0xFFC62828)
                 )
             }

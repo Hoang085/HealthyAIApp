@@ -12,6 +12,7 @@ import com.healthyai.app.domain.usecase.habit.AddHabitUseCase
 import com.healthyai.app.domain.usecase.habit.DeleteHabitUseCase
 import com.healthyai.app.domain.usecase.habit.UpdateHabitUseCase
 import com.healthyai.app.presentation.ui.format.formatTargetValue
+import com.healthyai.app.util.runCatchingCancellable
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -24,7 +25,6 @@ data class AddEditHabitUiState(
     val targetValue: String = "",
     val unit: String = "ml",
     val timeOfDay: HabitTimeOfDay = HabitTimeOfDay.ALL_DAY,
-    val frequency: HabitFrequency = HabitFrequency.DAILY,
     val isEditMode: Boolean = false,
     val isSaved: Boolean = false,
     /**
@@ -72,7 +72,6 @@ class AddEditHabitViewModel @Inject constructor(
                             targetValue = formatTargetValue(h.targetValue),
                             unit = h.unit,
                             timeOfDay = h.timeOfDay,
-                            frequency = h.frequency,
                             isEditMode = true
                         )
                     }
@@ -96,7 +95,6 @@ class AddEditHabitViewModel @Inject constructor(
     }
     fun onTargetValueChange(value: String) = _uiState.update { it.copy(targetValue = value) }
     fun onTimeOfDayChange(time: HabitTimeOfDay) = _uiState.update { it.copy(timeOfDay = time) }
-    fun onFrequencyChange(freq: HabitFrequency) = _uiState.update { it.copy(frequency = freq) }
 
     /**
      * Lưu thói quen đang tạo/sửa.
@@ -126,7 +124,10 @@ class AddEditHabitViewModel @Inject constructor(
             targetValue = target,
             unit = state.unit,
             timeOfDay = state.timeOfDay,
-            frequency = state.frequency
+            // Tần suất hiện chỉ có "Hàng ngày" (mục 3 #30): mọi logic tiến độ/nhất quán/chỉ số sinh
+            // lực đều xét theo ngày. Ghi thẳng DAILY để thói quen cũ lỡ lưu "Hàng tuần"/"Hàng tháng"
+            // (chọn được ở bản trước nhưng không có tác dụng) được chuẩn hoá lại khi người dùng lưu.
+            frequency = HabitFrequency.DAILY
         )
 
         _uiState.update { it.copy(isSaving = true) }
@@ -137,7 +138,7 @@ class AddEditHabitViewModel @Inject constructor(
                     return@launch
                 }
 
-                runCatching {
+                runCatchingCancellable {
                     if (state.isEditMode) updateHabitUseCase(habit)
                     else addHabitUseCase(habit)
                 }.onSuccess {
@@ -173,7 +174,7 @@ class AddEditHabitViewModel @Inject constructor(
     fun deleteHabit() {
         if (habitId == -1L || _uiState.value.isDeleted) return // Chế độ thêm mới / đã xóa rồi
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 deleteHabitUseCase(habitId)
             }.onSuccess {
                 _uiState.update { it.copy(isDeleted = true) }

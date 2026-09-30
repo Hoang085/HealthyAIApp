@@ -6,7 +6,9 @@ import com.healthyai.app.data.local.entity.health.HealthDataEntity
 import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.SleepStageBreakdown
 import com.healthyai.app.domain.model.StepCounterStatus
+import com.healthyai.app.domain.repository.SleepTrackerRepository
 import com.healthyai.app.domain.repository.StepCounterRepository
+import com.healthyai.app.domain.widget.HealthWidgetRefresher
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -32,24 +35,36 @@ class HealthDataRepositoryImplTest {
     private lateinit var fakeDataSource: FakeHealthConnectDataSource
     private val healthDataDao = mockk<HealthDataDao>(relaxed = true)
     private val stepCounterRepository = mockk<StepCounterRepository>()
+    private val sleepTrackerRepository = mockk<SleepTrackerRepository>()
+
+    /** Widget màn hình chính phải được vẽ lại mỗi khi dữ liệu sức khỏe hôm nay thay đổi. */
+    private val widgetRefresher = mockk<HealthWidgetRefresher>(relaxed = true)
 
     @Before
     fun setup() {
         fakeDataSource = FakeHealthConnectDataSource()
         coEvery { stepCounterRepository.readTodaySteps(any()) } returns 0L
-        repository = HealthDataRepositoryImpl(fakeDataSource, healthDataDao, stepCounterRepository)
+        coEvery { sleepTrackerRepository.readLastNightSleepHours() } returns 0.0
+        repository = HealthDataRepositoryImpl(
+            fakeDataSource,
+            healthDataDao,
+            stepCounterRepository,
+            sleepTrackerRepository,
+            widgetRefresher
+        )
     }
 
     @Test
-    fun `getHealthData returns correct data from data source`() = runTest {
-        // Arrange
+    fun `getTodayHealthData returns correct data from data source`() = runTest {
+        // Arrange — hợp đồng nói rõ "hôm nay": tên hàm không còn nhận start/end nhưng bỏ qua chúng
+        // (phụ lục C #42)
         fakeDataSource.steps = 1000
         fakeDataSource.sleepHours = 7.5
         fakeDataSource.heartRate = 72.0
         fakeDataSource.calories = 300.0
 
         // Act
-        val result = repository.getHealthData(Instant.now(), Instant.now())
+        val result = repository.getTodayHealthData()
 
         // Assert
         assertEquals(1000L, result.steps)
@@ -107,6 +122,67 @@ class HealthDataRepositoryImplTest {
         // Assert
         assertEquals(9_000L, saved.captured.steps)
         assertEquals(7.5, saved.captured.sleepHours, 0.01)
+    }
+
+    // ── Giờ ngủ cũng có nguồn "tự lực" từ cảm biến của máy ──
+
+    @Test
+    fun `sync uses the device sleep estimate when health connect has no sleep`() = runTest {
+        // Arrange — máy không có ứng dụng sức khỏe ghi giấc ngủ, nhưng bộ ước lượng từ cảm biến cho 6,5 giờ
+        fakeDataSource.steps = 3_000L
+        fakeDataSource.sleepHours = 0.0
+        coEvery { sleepTrackerRepository.readLastNightSleepHours() } returns 6.5
+        coEvery { healthDataDao.getLatestSince(any()) } returns null
+        val saved = slot<HealthDataEntity>()
+        coJustRun { healthDataDao.insertHealthData(capture(saved)) }
+
+        // Act
+        val result = repository.syncHealthData()
+
+        // Assert
+        assertTrue(result.isSuccess)
+        assertEquals(6.5, saved.captured.sleepHours, 0.01)
+    }
+
+    @Test
+    fun `sync prefers health connect sleep over the device estimate`() = runTest {
+        // Arrange — Health Connect có giấc ngủ của đồng hồ đeo tay (7,5 giờ), bộ ước lượng nói 6 giờ
+        fakeDataSource.steps = 3_000L
+        fakeDataSource.sleepHours = 7.5
+        coEvery { sleepTrackerRepository.readLastNightSleepHours() } returns 6.0
+        coEvery { healthDataDao.getLatestSince(any()) } returns null
+        val saved = slot<HealthDataEntity>()
+        coJustRun { healthDataDao.insertHealthData(capture(saved)) }
+
+        // Act
+        repository.syncHealthData()
+
+        // Assert — số của Health Connect (đồng hồ đeo tay) thắng
+        assertEquals(7.5, saved.captured.sleepHours, 0.01)
+    }
+
+    @Test
+    fun `sync keeps the sleep estimate already recorded today when a later sync has none`() = runTest {
+        // Arrange — hàng hôm nay đã có giờ ngủ; lần đồng bộ này cả Health Connect lẫn bộ ước lượng đều trả 0
+        val existing = HealthDataEntity(
+            id = 11L,
+            steps = 1_200L,
+            sleepHours = 6.5,
+            heartRate = 0.0,
+            activeCalories = 0.0,
+            recordedAt = startOfToday() + 1000L
+        )
+        fakeDataSource.steps = 1_800L
+        fakeDataSource.sleepHours = 0.0
+        coEvery { healthDataDao.getLatestSince(any()) } returns existing
+        val updated = slot<HealthDataEntity>()
+        coJustRun { healthDataDao.updateHealthData(capture(updated)) }
+
+        // Act
+        repository.syncHealthData()
+
+        // Assert
+        assertEquals(6.5, updated.captured.sleepHours, 0.01)
     }
 
     @Test
@@ -182,6 +258,169 @@ class HealthDataRepositoryImplTest {
         .toInstant()
         .toEpochMilli()
 
+    // ── Vẽ lại widget màn hình chính "Sức khỏe hôm nay" ──
+
+    /**
+     * Widget chỉ đọc dữ liệu **một lần** lúc vẽ và nhịp vẽ định kỳ là 30 phút, nên sau khi đồng bộ xong
+     * phải yêu cầu vẽ lại ngay — nếu không, bước chân / giấc ngủ / nhịp tim trên widget vẫn là số cũ.
+     */
+    @Test
+    fun `a successful sync refreshes the home screen widget`() = runTest {
+        // Arrange — có dữ liệu thật để lần đồng bộ này thực sự ghi vào Room
+        fakeDataSource.steps = 1_500L
+
+        // Act
+        repository.syncHealthData()
+
+        // Assert
+        coVerify(exactly = 1) { widgetRefresher.refresh() }
+    }
+
+    /**
+     * Lần đồng bộ **không có số liệu nào** thì không ghi DB (xem test phía trên) và cũng không cần vẽ lại
+     * widget — dữ liệu widget vẫn đúng như trước.
+     */
+    @Test
+    fun `a sync without any data does not refresh the home screen widget`() = runTest {
+        fakeDataSource.available = false
+        coEvery { stepCounterRepository.readTodaySteps(any()) } returns 0L
+
+        repository.syncHealthData()
+
+        coVerify(exactly = 0) { widgetRefresher.refresh() }
+    }
+
+    // ── Nhịp tim do app tự đo (màn "Đo nhịp tim" bằng camera) ──
+
+    @Test
+    fun `a measurement is saved into today's row when there is none yet`() = runTest {
+        // Arrange — hôm nay chưa có hàng nào
+        coEvery { healthDataDao.getLatestSince(any()) } returns null
+        val saved = slot<HealthDataEntity>()
+        coJustRun { healthDataDao.insertHealthData(capture(saved)) }
+
+        // Act
+        val result = repository.saveMeasuredHeartRate(78.0)
+
+        // Assert
+        assertTrue(result.isSuccess)
+        assertEquals(78.0, saved.captured.heartRate, 0.01)
+        assertTrue("Phải ghi vào hàng của hôm nay", saved.captured.recordedAt >= startOfToday())
+    }
+
+    @Test
+    fun `a measurement only replaces the heart rate of today's row`() = runTest {
+        // Arrange — hàng hôm nay đã có bước chân, giờ ngủ và calo
+        val existing = HealthDataEntity(
+            id = 21L,
+            steps = 4_200L,
+            sleepHours = 7.5,
+            heartRate = 60.0,
+            activeCalories = 350.0,
+            recordedAt = startOfToday() + 1000L
+        )
+        coEvery { healthDataDao.getLatestSince(any()) } returns existing
+        val updated = slot<HealthDataEntity>()
+        coJustRun { healthDataDao.updateHealthData(capture(updated)) }
+
+        // Act
+        repository.saveMeasuredHeartRate(92.0)
+
+        // Assert — chỉ nhịp tim đổi, các chỉ số khác của ngày giữ nguyên
+        assertEquals(21L, updated.captured.id)
+        assertEquals(92.0, updated.captured.heartRate, 0.01)
+        assertEquals(4_200L, updated.captured.steps)
+        assertEquals(7.5, updated.captured.sleepHours, 0.01)
+        assertEquals(350.0, updated.captured.activeCalories, 0.01)
+        coVerify(exactly = 0) { healthDataDao.insertHealthData(any()) }
+    }
+
+    @Test
+    fun `an invalid measurement is refused instead of being written`() = runTest {
+        val result = repository.saveMeasuredHeartRate(0.0)
+
+        assertTrue("Nhịp 0 không phải số đo thật", result.isFailure)
+        coVerify(exactly = 0) { healthDataDao.insertHealthData(any()) }
+        coVerify(exactly = 0) { healthDataDao.updateHealthData(any()) }
+    }
+
+    /** Đo nhịp tim xong phải vẽ lại widget để ô "Nhịp tim" hiện số mới ngay, không chờ 30 phút. */
+    @Test
+    fun `a saved measurement refreshes the home screen widget`() = runTest {
+        coEvery { healthDataDao.getLatestSince(any()) } returns null
+
+        repository.saveMeasuredHeartRate(78.0)
+
+        coVerify(exactly = 1) { widgetRefresher.refresh() }
+    }
+
+    /** Số đo không hợp lệ bị từ chối trước khi ghi nên cũng không có gì mới để vẽ lại widget. */
+    @Test
+    fun `an invalid measurement does not refresh the home screen widget`() = runTest {
+        repository.saveMeasuredHeartRate(-1.0)
+
+        coVerify(exactly = 0) { widgetRefresher.refresh() }
+    }
+
+    @Test
+    fun `the recorded heart rate is read from today's rows only`() = runTest {
+        // Arrange — sang ngày mới, số của hôm qua không được tính (nhịp tim cũng "đọc lại từ đầu ngày")
+        coEvery { healthDataDao.getLatestHeartRateSince(any()) } returns 76.0
+
+        val recorded = repository.getLatestRecordedHeartRate()
+
+        assertEquals(76.0, recorded!!, 0.01)
+        val askedFrom = slot<Long>()
+        coVerify { healthDataDao.getLatestHeartRateSince(capture(askedFrom)) }
+        assertEquals(
+            "Phải hỏi đúng từ đầu ngày hôm nay",
+            startOfToday(),
+            askedFrom.captured
+        )
+    }
+
+    @Test
+    fun `no recorded heart rate today reads as null`() = runTest {
+        coEvery { healthDataDao.getLatestHeartRateSince(any()) } returns null
+
+        assertNull(repository.getLatestRecordedHeartRate())
+    }
+
+    @Test
+    fun `a zero stored heart rate counts as no heart rate`() = runTest {
+        // Hàng cũ có thể mang nhịp tim 0 (chưa từng đo, Health Connect cũng không có) → coi như chưa có
+        coEvery { healthDataDao.getLatestHeartRateSince(any()) } returns 0.0
+
+        assertNull(repository.getLatestRecordedHeartRate())
+    }
+
+    // ── Lịch sử tóm tắt sức khỏe 7 ngày (thẻ ở tab Phân tích) ──
+
+    @Test
+    fun `the health history window reads every row written since the start of the window`() = runTest {
+        // Arrange — cắt theo mốc thời gian chứ không theo số hàng, để đủ dữ liệu cả 7 ngày
+        val rows = listOf(
+            HealthDataEntity(
+                id = 1L,
+                steps = 4_200L,
+                sleepHours = 7.0,
+                heartRate = 70.0,
+                activeCalories = 300.0,
+                recordedAt = startOfToday() + 1000L
+            )
+        )
+        every { healthDataDao.getHealthDataSince(any()) } returns flowOf(rows)
+
+        // Act
+        val history = repository.getHealthHistorySince(startOfToday()).first()
+
+        // Assert
+        assertEquals(1, history.size)
+        assertEquals(4_200L, history.single().steps)
+        assertEquals(70.0, history.single().heartRate, 0.01)
+        verify { healthDataDao.getHealthDataSince(startOfToday()) }
+    }
+
     // Fake implementation for testing
     private class FakeHealthConnectDataSource : HealthConnectDataSource {
         var steps: Long = 0
@@ -200,7 +439,7 @@ class HealthDataRepositoryImplTest {
         override suspend fun hasAllPermissions(): Boolean = true
         override suspend fun getTodaySteps(): Long = steps
         override suspend fun getTodaySleepHours(): Double = sleepHours
-        override suspend fun getRecentHeartRate(): Double = heartRate
+        override suspend fun getTodayHeartRate(): Double = heartRate
         override suspend fun getTodayActiveCalories(): Double = calories
 
         override suspend fun getSleepStageBreakdown(

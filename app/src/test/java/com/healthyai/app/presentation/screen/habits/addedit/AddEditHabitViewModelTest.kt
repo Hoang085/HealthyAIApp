@@ -3,6 +3,7 @@ package com.healthyai.app.presentation.screen.habits.addedit
 import androidx.lifecycle.SavedStateHandle
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
+import com.healthyai.app.domain.model.HabitFrequency
 import com.healthyai.app.domain.repository.HabitRepository
 import com.healthyai.app.domain.usecase.habit.AddHabitUseCase
 import com.healthyai.app.domain.usecase.habit.DeleteHabitUseCase
@@ -314,6 +315,25 @@ class AddEditHabitViewModelTest {
         // Không được kẹt ở trạng thái "đang lưu" (finally luôn tắt cờ)
         assertFalse(state.isSaving)
         assertFalse(state.isSaved)
+    }
+
+    // ── Tần suất chỉ còn "Hàng ngày" (mục 3 #30) ────
+
+    @Test
+    fun `an old habit stored as weekly is saved back as daily`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        coEvery { updateHabitUseCase(any()) } returns 5L
+        val saved = slot<Habit>()
+        // Thói quen cũ lỡ lưu "Hàng tuần" (chọn được ở bản trước nhưng không có tác dụng gì)
+        val legacyWeekly = waterHabit.copy(frequency = HabitFrequency.WEEKLY)
+        val viewModel = createViewModel(habitId = 5L, habits = listOf(legacyWeekly))
+        advanceUntilIdle()
+
+        viewModel.saveHabit()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { updateHabitUseCase(capture(saved)) }
+        assertEquals(HabitFrequency.DAILY, saved.captured.frequency)
     }
 
     private fun createViewModel(

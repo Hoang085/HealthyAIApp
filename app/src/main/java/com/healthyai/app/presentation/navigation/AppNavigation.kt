@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -23,14 +24,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.healthyai.app.R
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.presentation.screen.auth.LoginScreen
 import com.healthyai.app.presentation.screen.camera.CameraScreen
 import com.healthyai.app.presentation.screen.habits.HabitsScreen
 import com.healthyai.app.presentation.screen.habits.KEY_LOG_CATEGORY
 import com.healthyai.app.presentation.screen.habits.addedit.AddEditHabitScreen
+import com.healthyai.app.presentation.screen.heartrate.HeartRateScreen
 import com.healthyai.app.presentation.screen.home.HomeScreen
 import com.healthyai.app.presentation.screen.insights.InsightsScreen
+import com.healthyai.app.presentation.screen.privacy.PrivacyPolicyScreen
 
 /**
  * Điểm vào của UI.
@@ -90,7 +94,7 @@ private fun AuthLoadingScreen() {
         ) {
             CircularProgressIndicator(color = Color(0xFF2E7D32))
             Text(
-                text = "HealthyAI",
+                text = stringResource(R.string.app_name),
                 modifier = Modifier.padding(top = 16.dp),
                 style = MaterialTheme.typography.titleMedium
             )
@@ -114,8 +118,8 @@ private fun MainNavigation(onLogout: () -> Unit) {
                 NavigationBar {
                     bottomNavItems.forEach { screen ->
                         NavigationBarItem(
-                            icon = { Icon(screen.icon, contentDescription = screen.title) },
-                            label = { Text(screen.title) },
+                            icon = { Icon(screen.icon, contentDescription = stringResource(screen.titleRes)) },
+                            label = { Text(stringResource(screen.titleRes)) },
                             selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                             onClick = {
                                 navController.navigate(screen.route) {
@@ -141,7 +145,15 @@ private fun MainNavigation(onLogout: () -> Unit) {
             popEnterTransition = { fadeIn() + slideInHorizontally { -it } },
             popExitTransition = { fadeOut() + slideOutHorizontally { it } }
         ) {
-            composable(Screen.Home.route)     { HomeScreen(onLogout = onLogout) }
+            composable(Screen.Home.route)     {
+                HomeScreen(
+                    onLogout = onLogout,
+                    // Ô "Tim" trên thẻ "Tóm tắt sức khỏe" mở màn đo nhịp tim bằng camera + đèn flash
+                    onMeasureHeartRate = { navController.navigate(Screen.MeasureHeartRate.route) },
+                    // Thẻ "Đồng bộ đám mây" → màn Chính sách bảo mật (mục 3 #31)
+                    onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) }
+                )
+            }
             composable(Screen.Habits.route)   { 
                 HabitsScreen(
                     onNavigateToAddHabit = { 
@@ -161,7 +173,10 @@ private fun MainNavigation(onLogout: () -> Unit) {
             }
             composable(Screen.Insights.route) {
                 InsightsScreen(
-                    onOpenHabitLog = { category -> navController.openHabitLogFor(category) }
+                    onOpenHabitLog = { category -> navController.openHabitLogFor(category) },
+                    // Lối vào Chính sách bảo mật của phần AI đã chuyển từ màn Ghi chép bữa ăn về tab
+                    // "Phân tích AI" (mục 3 #43) — nơi người dùng cần đọc về việc ảnh gửi tới Gemini.
+                    onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) }
                 )
             }
 
@@ -177,6 +192,14 @@ private fun MainNavigation(onLogout: () -> Unit) {
                 AddEditHabitScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
+            }
+
+            composable(Screen.MeasureHeartRate.route) {
+                HeartRateScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Screen.PrivacyPolicy.route) {
+                PrivacyPolicyScreen(onBack = { navController.popBackStack() })
             }
         }
     }

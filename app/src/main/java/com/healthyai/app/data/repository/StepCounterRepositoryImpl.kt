@@ -24,6 +24,10 @@ import javax.inject.Singleton
 /**
  * Đếm bước từ cảm biến của máy: kiểm tra quyền `ACTIVITY_RECOGNITION` rồi chuyển từng mẫu luỹ kế của
  * cảm biến thành "số bước hôm nay" qua [StepCounterStore] (bên trong dùng `StepCounterMath`).
+ *
+ * Chỉ **phần đếm được trong lúc app đang chạy** mới được cộng vào: app đang mở hoặc còn nằm trong tác
+ * vụ (chạy nền) thì đếm tiếp bình thường, còn đóng hẳn app rồi mở lại thì khoảng thời gian ở giữa
+ * **không** được tính (xem `StepCounterMath` / `StepCounterStore`).
  */
 @Singleton
 class StepCounterRepositoryImpl @Inject constructor(

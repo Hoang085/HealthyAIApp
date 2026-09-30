@@ -12,7 +12,7 @@
 | Ứng dụng | HealthyAI (`com.healthyai.app`), `versionName 1.0.0`, Android `minSdk 26` |
 | Người thực hiện | .......................... |
 | Thiết bị / API level | .......................... |
-| Số kịch bản | **80** (chia 11 hành trình) |
+| Khách hàng đóng vai | **Quỳnh** — một khách hàng duy nhất, 11 hành trình |
 
 ---
 
@@ -60,7 +60,7 @@ Ghi vào **bảng theo dõi ở mục 8**, kèm ảnh chụp nếu không đạt
 1. **Một tài khoản email test** (ví dụ `healthyai.test01@gmail.com`) + mật khẩu ≥ 6 ký tự, để test đăng nhập/đăng ký.
    Nếu app báo *"Phương thức Email/Mật khẩu chưa được bật trên Firebase Console"* hoặc *"Không có kết nối mạng"*: ghi lại, rồi **bỏ qua** bằng chế độ khách và tiếp tục — mọi thứ khác vẫn test được.
 2. **Health Connect Toolbox** (cài từ Google Play trên emulator) — đây là "máy bơm" dữ liệu giả để xem chỉ số sức khỏe (xem **phụ lục B**).
-3. **Chỗ trống trên màn hình chính** để thêm widget "Tiến độ thói quen".
+3. **Chỗ trống trên màn hình chính** để thêm widget "Sức khỏe hôm nay".
 
 ### 2.4. Trước mỗi vòng test, làm sạch để bắt đầu từ số 0
 
@@ -73,22 +73,33 @@ Ghi vào **bảng theo dõi ở mục 8**, kèm ảnh chụp nếu không đạt
 
 ---
 
-## 3. Nhân vật & hành trình
+## 3. Khách hàng: Quỳnh
 
-Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân vật có tính cách khác nhau — và người khó tính nhất thường tìm ra lỗi nhiều nhất.
+Bộ kịch bản này chỉ có **một khách hàng duy nhất: Quỳnh**. Bạn cầm điện thoại và làm mọi việc Quỳnh sẽ làm, lần lượt qua **11 hành trình** dưới đây — có lúc Quỳnh là người mới dùng app, có lúc lỡ tay bấm sai, có lúc khó tính soi từng chi tiết.
 
-| Nhân vật | Là ai | Mong muốn | Hành trình |
-|:--|:--|:--|:--|
-| **Lan** | Nhân viên văn phòng, 30 tuổi, mới tải app | Không muốn tạo tài khoản, chỉ muốn theo dõi uống nước và giấc ngủ | A, B |
-| **Hùng** | Chạy bộ 3 buổi/tuần, đã dùng Health Connect | Số bước chân/giấc ngủ phải tự động hiện, thói quen phải đúng theo buổi | B, D, H |
-| **Mai** | Quan tâm "app có thông minh không" | Muốn app mách nước và ghi chép bữa ăn bằng camera | F, G |
-| **Bảo** | Khó tính: từ chối mọi quyền, tắt thông báo, dùng chế độ tối, gõ sai tùm lum | App không được crash dù bị từ chối mọi thứ | C, E, I, J |
+- **Là ai:** nhân viên văn phòng, 30 tuổi, mới tải app, dùng điện thoại Android hằng ngày, chạy bộ 2–3 buổi/tuần.
+- **Mong muốn:** theo dõi uống nước & giấc ngủ mà **không** phải tạo tài khoản; số bước chân / giấc ngủ **tự hiện**; app mách nước và ghi bữa ăn bằng camera; app **không được crash** dù chị từ chối quyền hay gõ sai.
+- **Tính cách khi test:** có lúc cẩu thả (gõ sai, bấm lia lịa), có lúc khó tính (tắt thông báo, bật chế độ tối, thử cả thao tác hiểm).
+
+| Hành trình | Quỳnh làm gì trong hành trình này |
+|:--|:--|
+| **A** | Ngày đầu tiên: mở app, vào bằng chế độ khách, tạo 5 thói quen đầu tiên |
+| **B** | Một ngày dùng app: ghi nhận, lọc theo buổi, sửa mục tiêu |
+| **C** | Quỳnh lỡ tay: gõ sai, bấm lia lịa, nhập số vô lý |
+| **D** | Quỳnh muốn số liệu sức khỏe tự hiện (Health Connect) |
+| **E** | Quỳnh không muốn bị làm phiền (thông báo nhắc nhở) |
+| **F** | Quỳnh muốn chụp ảnh bữa ăn |
+| **G** | Quỳnh kiểm tra xem app có thông minh không (gợi ý AI, chỉ số sinh lực) |
+| **H** | Quỳnh muốn thấy sức khỏe hôm nay ngay trên màn hình chính (widget) |
+| **I** | Quỳnh kiểm tra tài khoản và dữ liệu (đăng xuất, cài đè, giữ dữ liệu) |
+| **J** | Quỳnh soi từng chi tiết: màu, cỡ chữ, vòng đời màn hình |
+| **K** | Quỳnh muốn app tự đếm bước, không cần app nào khác |
 
 ---
 
 ## 4. Kịch bản
 
-### Hành trình A — "Ngày đầu tiên của Lan"
+### Hành trình A — "Ngày đầu tiên của Quỳnh"
 
 **KB-01 · Mở app lần đầu** 🔴
 - **Bạn đang ở:** vừa cài app xong, chưa từng mở.
@@ -108,11 +119,11 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 **KB-04 · Tạo tài khoản mới** 🟠
 - **Bạn làm:** bấm "Chưa có tài khoản? Đăng ký" → gõ email + mật khẩu → bấm **Đăng ký**.
-- **Bạn sẽ thấy:** nút đổi thành vòng xoay trong lúc chờ, rồi app vào thẳng **Trang chủ**. Lời chào có **2 dòng**: "Chào buổi sáng," và dòng tên màu xanh = **phần trước dấu `@`** của email (ví dụ email `lan.nguyen@gmail.com` → hiện `lan.nguyen`).
+- **Bạn sẽ thấy:** nút đổi thành vòng xoay trong lúc chờ, rồi app vào thẳng **Trang chủ**. Lời chào có **2 dòng**: "Chào buổi sáng," và dòng tên màu xanh = **phần trước dấu `@`** của email (ví dụ email `quynh.nguyen@gmail.com` → hiện `quynh.nguyen`).
 - **Đáng ngờ nếu:** hiện tên người khác, hiện chữ "Alex", hoặc vẫn đứng ở màn Đăng nhập dù đã tạo được tài khoản.
 - **Lưu ý:** nếu tài khoản đã tồn tại, app phải báo **"Email này đã được đăng ký, hãy đăng nhập"**.
 
-**KB-05 · Vào app không cần tài khoản (như Lan)** 🔴
+**KB-05 · Vào app không cần tài khoản (như Quỳnh)** 🔴
 - **Bạn làm:** ở màn Đăng nhập, bấm **"Bỏ qua, dùng ở chế độ khách"**.
 - **Bạn sẽ thấy:** vào thẳng Trang chủ, lời chào **chỉ có 1 dòng** ("Chào buổi sáng") và **không có dòng tên màu xanh** nào.
 - **Đáng ngờ nếu:** vẫn hiện một dòng tên (nhất là "Alex"), hoặc hiện dấu phẩy treo lơ lửng ở cuối câu chào.
@@ -142,7 +153,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình B — "Một ngày dùng app của Lan"
+### Hành trình B — "Một ngày dùng app của Quỳnh"
 
 **KB-09 · Ghi nhận một lần uống nước** 🔴
 - **Bạn làm:** tab Thói quen → bấm nút **"Ghi"** trên thẻ `Uống nước` → hộp thoại **"Ghi nhận Uống nước"** hiện ra với ô số **điền sẵn `2000`** (không có đuôi `.0`) → xoá và gõ `1000` → bấm **Lưu**.
@@ -195,7 +206,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình C — "Bảo là người gõ sai và thao tác lộn xộn"
+### Hành trình C — "Quỳnh lỡ tay: gõ sai và thao tác lộn xộn"
 
 **KB-19 · Tạo thói quen khi bỏ trống tên** 🟠
 - **Bạn làm:** màn Thêm thói quen → **không gõ tên** → nhập mục tiêu `100` → bấm **Tạo thói quen**.
@@ -242,7 +253,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình D — "Hùng muốn số liệu sức khỏe tự hiện"
+### Hành trình D — "Quỳnh muốn số liệu sức khỏe tự hiện"
 
 **KB-28 · Máy chưa cài Health Connect** 🟠
 - **Bạn đang ở:** Trang chủ, máy không có app Health Connect.
@@ -285,7 +296,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình E — "Bảo không muốn bị làm phiền"
+### Hành trình E — "Quỳnh không muốn bị làm phiền"
 
 **KB-36 · Bật nhắc nhở hàng ngày** 🟠
 - **Bạn làm:** ở Trang chủ, thẻ **"Bật nhắc nhở hàng ngày"** → bấm **"Bật thông báo"** → hộp thoại hệ thống → **Cho phép**.
@@ -316,7 +327,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình F — "Mai muốn chụp ảnh bữa ăn"
+### Hành trình F — "Quỳnh muốn chụp ảnh bữa ăn"
 
 **KB-42 · Lần đầu mở tab Ghi chép** 🟠
 - **Bạn làm:** tab **Ghi chép** → thẻ **"Cần quyền Camera"** → bấm **"Cấp quyền Camera"** → **Cho phép**.
@@ -350,7 +361,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình G — "Mai kiểm tra xem app có thông minh không"
+### Hành trình G — "Quỳnh kiểm tra xem app có thông minh không"
 
 > Công thức tạo nhanh từng loại gợi ý nằm ở **phụ lục A** — dùng khi bạn muốn "dàn dựng" một gợi ý cụ thể.
 
@@ -409,35 +420,37 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình H — "Hùng muốn thấy tiến độ ngay trên màn hình chính"
+### Hành trình H — "Quỳnh muốn thấy sức khỏe hôm nay ngay trên màn hình chính"
 
-**KB-57 · Thêm widget ra màn hình chính** 🟠
-- **Bạn làm:** chạm giữ vùng trống trên màn hình chính → **Widget** → tìm **HealthyAI → "Tiến độ thói quen"** → kéo ra.
-- **Bạn sẽ thấy:** widget có dòng tiêu đề **"Tiến độ hôm nay"**, dòng **"x/y thói quen đạt mục tiêu"**, một thanh tiến độ, và tối đa 3 dòng kiểu **"✓ Uống nước  2.0L / 2.0L"** hoặc **"○ Ngủ đủ giấc  0.0 / 8.0 giờ"**.
+**KB-57 · Thêm widget "Sức khỏe hôm nay" ra màn hình chính** 🟠
+- **Bạn làm:** chạm giữ vùng trống trên màn hình chính → **Widget** → tìm **HealthyAI → "Sức khỏe hôm nay"** → kéo ra.
+- **Bạn sẽ thấy:** widget có dòng **"Healthy AI"** và **"Hôm nay"**, rồi **3 cột**: **Bước chân** (ví dụ `6.250`), **Giấc ngủ** (`7h 30m`), **Nhịp tim** (`72 bpm`) — mỗi cột có một **biểu tượng nhỏ** phía trên và một **đường kẻ mảnh** dưới dòng tiêu đề.
 - **Đáng ngờ nếu:** widget trắng trơn, hoặc hiện chữ "Loading" mãi không đổi.
 
-**KB-58 · Widget xếp đúng thói quen của buổi hiện tại** 🟠
-- **Bạn làm:** có 5 thói quen thuộc các buổi khác nhau → nhìn thứ tự 3 dòng trên widget.
-- **Bạn sẽ thấy:** thói quen **đúng buổi hiện tại** nằm đầu, rồi tới thói quen **Cả ngày**, rồi mới tới các thói quen khác; vì chỉ hiện được 3 dòng, dòng cuối có thể là **"+N thói quen khác"**.
-- **Đáng ngờ nếu:** danh sách hiện thói quen bạn đã xoá, hoặc hiện quá 3 dòng làm nội dung bị cắt.
+**KB-58 · Ba số trên widget khớp với app** 🟠
+- **Bạn làm:** so từng số trên widget với thẻ **"Tóm tắt sức khỏe"** ở màn Trang chủ trong app.
+- **Bạn sẽ thấy:** số **giống nhau**. Riêng **bước chân** cả hai nơi đều lấy từ **cảm biến của chính điện thoại** nên có thể **nhỏ hơn** số của đồng hồ đeo tay trong Health Connect — đây là chủ ý, không phải lỗi.
+- **Đáng ngờ nếu:** widget hiện số khác hẳn app, hoặc hiện `0` cho giấc ngủ / nhịp tim trong khi app đang hiện số thật.
+- **Ghi chú:** hôm nay **chưa có số nào** thì widget hiện **`--`** (giấc ngủ) và **`-- bpm`** (nhịp tim) — cố ý, để không bị hiểu thành "ngủ 0 giờ" / "nhịp tim bằng 0".
 
 **KB-59 · Widget tự cập nhật** 🔴
-- **Bạn làm:** ghi nhận một thói quen trong app → về màn hình chính; sau đó tạo thêm một thói quen mới → về màn hình chính; sau đó xoá một thói quen → về màn hình chính.
-- **Bạn sẽ thấy:** widget đổi ngay: tiến độ tăng, số `x/y` và số dòng thay đổi — bạn **không** phải gỡ widget rồi thêm lại.
+- **Bạn làm:** ghi lại số nhịp tim đang hiện trên widget → vào ô **"Tim"** ở màn Trang chủ → **"Đo ngay"** và đo một lần → thoát ra màn hình chính, xem widget (**không** gỡ/thêm lại widget).
+- **Bạn sẽ thấy:** ô **"Nhịp tim"** trên widget đổi sang số vừa đo **ngay** — bạn **không** phải gỡ widget rồi thêm lại.
 - **Đáng ngờ nếu:** widget vẫn hiện số cũ (chờ 1 phút; nếu vẫn cũ thì ghi lại — đây là lỗi từng gặp).
+- **Ghi chú:** thay đổi **thói quen** (tạo / sửa / xoá / ghi nhận) **không** làm nội dung widget đổi — đúng thiết kế, vì widget chỉ hiện **chỉ số sức khỏe**.
 
-**KB-60 · Widget khi chưa có thói quen** ⚪
-- **Bạn làm:** xoá hết thói quen → xem widget.
-- **Bạn sẽ thấy:** dòng **"Healthy AI"** và **"Chưa có thói quen"**; chạm vào widget thì **app mở ra**.
-- **Đáng ngờ nếu:** chạm vào widget không mở app.
+**KB-60 · Widget khi chưa có số liệu nào** ⚪
+- **Bạn làm:** xoá dữ liệu app (hoặc dùng máy mới chưa cấp quyền gì) → xem widget.
+- **Bạn sẽ thấy:** widget **vẫn đủ khung**: **"Healthy AI / Hôm nay"**, bước chân `0`, giấc ngủ **`--`**, nhịp tim **`-- bpm`**; chạm vào widget thì **app mở ra**.
+- **Đáng ngờ nếu:** chạm vào widget không mở app, hoặc widget trắng trơn.
 
 **KB-61 · Kéo giãn widget** ⚪
 - **Bạn làm:** kéo cho widget rộng/cao hơn, rồi thu nhỏ lại.
-- **Bạn sẽ thấy:** nội dung hiện đủ hơn khi rộng ra; khi thu nhỏ có thể bị cắt bớt — chấp nhận được, miễn không vỡ chữ hay chồng lên nhau.
+- **Bạn sẽ thấy:** kéo **rộng** ra thì ba cột nở ra theo và số hiện thoải mái hơn; **thu nhỏ** lại được tới một mức tối thiểu rồi dừng — không vỡ chữ, không chồng lên nhau.
 
 ---
 
-### Hành trình I — "Bảo kiểm tra tài khoản và dữ liệu"
+### Hành trình I — "Quỳnh kiểm tra tài khoản và dữ liệu"
 
 **KB-62 · Đăng xuất** 🟠
 - **Bạn làm:** ở Trang chủ, bấm icon **Đăng xuất** (góc phải, phía trên avatar) → hộp thoại **"Đăng xuất"** với nội dung *"Bạn có chắc muốn đăng xuất? Thói quen và nhật ký trên máy vẫn được giữ nguyên."* → (1) bấm **Huỷ**, (2) bấm lại và chọn **Đăng xuất**.
@@ -478,7 +491,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình J — "Bảo soi từng chi tiết: màu, cỡ chữ, vòng đời"
+### Hành trình J — "Quỳnh soi từng chi tiết: màu, cỡ chữ, vòng đời"
 
 **KB-70 · Chế độ tối (dark mode)** 🟠
 - **Bạn làm:** Cài đặt máy → Hiển thị → bật **Chủ đề tối** → mở app, đi qua cả 4 tab + màn Thêm/Sửa thói quen.
@@ -515,7 +528,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 
 ---
 
-### Hành trình K — "Bảo muốn app tự đếm bước, không cần app nào khác"
+### Hành trình K — "Quỳnh muốn app tự đếm bước, không cần app nào khác"
 
 > Áp dụng từ bản có **đếm bước bằng cảm biến của máy**. Trên **emulator** (không có cảm biến đếm bước) hành trình này bỏ qua — xem KB-80.
 
@@ -523,18 +536,19 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 - **Bạn đang ở:** Trang chủ, máy là **điện thoại thật** (có cảm biến đếm bước), app chưa được cấp quyền.
 - **Bạn sẽ thấy:** thẻ **"Bật đếm bước chân"** (nội dung nói app đọc số bước trực tiếp từ cảm biến của điện thoại), nút **"Bật đếm bước chân"** và nút phụ *"Không thấy hộp thoại? Mở cài đặt quyền"*.
 - **Bạn làm:** bấm **"Bật đếm bước chân"** → hộp thoại hệ thống **"Cho phép HealthyAI nhận diện hoạt động thể chất?"** → **Cho phép**.
-- **Bạn sẽ thấy:** thẻ **biến mất ngay** và chỉ số **Bước chân** chuyển từ `0.0k` sang số thật (có thể mất vài giây để cảm biến trả về giá trị đầu tiên).
-- **Đáng ngờ nếu:** máy thật có cảm biến mà **không** thấy thẻ; hoặc cấp quyền xong vẫn `0.0k` sau khi đi bộ (xem KB-78).
+- **Bạn sẽ thấy:** thẻ **biến mất ngay**; chỉ số **Bước chân** bắt đầu đếm **từ lúc này** — vẫn là `0.0k` cho tới khi bạn đi bộ. (Bản cũ cộng luôn số bước đã đi **trước** khi cấp quyền; nay app **chỉ tính phần đi trong lúc app đang chạy**.)
+- **Đáng ngờ nếu:** máy thật có cảm biến mà **không** thấy thẻ; hoặc đã cấp quyền, đi bộ **trong lúc app đang mở** mà vẫn `0.0k` (xem KB-78).
 
 **KB-78 · Đi bộ và thấy số bước tự tăng** 🟠
-- **Bạn làm:** cầm điện thoại đi bộ khoảng **50–100 bước** (trong nhà cũng được), quay lại Trang chủ.
-- **Bạn sẽ thấy:** số ở ô **Bước chân** tăng lên, kèm dòng chú thích nhỏ **"Số bước đọc trực tiếp từ cảm biến của điện thoại"** (khi Health Connect không có số). Bạn **không** cần cài Google Fit / Samsung Health / đồng hồ gì cả.
-- **Đáng ngờ nếu:** đi 100 bước mà số đứng im (chờ thêm ~15 giây rồi xem lại; vẫn im thì ghi lỗi kèm máy/phiên bản Android).
+- **Bạn làm:** **giữ app đang mở** (màn Trang chủ), cầm điện thoại đi bộ khoảng **50–100 bước** (trong nhà cũng được), quay lại Trang chủ.
+- **Bạn sẽ thấy:** số ở ô **Bước chân** tăng lên. Bạn **không** cần cài Google Fit / Samsung Health / đồng hồ gì cả. (Thẻ "Tóm tắt sức khỏe" **không** còn dòng chú thích nguồn nào dưới 3 vòng tròn.)
+- **Đáng ngờ nếu:** đi 100 bước **trong lúc app đang mở** mà số đứng im (chờ thêm ~15 giây rồi xem lại; vẫn im thì ghi lỗi kèm máy/phiên bản Android).
 
-**KB-79 · Tắt app, khởi động lại máy rồi đi tiếp** 🟠
-- **Bạn làm:** (1) tắt hẳn app → đi tiếp ~50 bước → mở lại app. (2) **Khởi động lại điện thoại** → mở app → đi tiếp ~50 bước → xem lại số.
-- **Bạn sẽ thấy:** (1) số bước **cộng dồn đúng** phần đi lúc app đóng. (2) sau khi khởi động lại máy, số bước trong ngày **không bị tụt về 0** mà tiếp tục tăng.
-- **Đáng ngờ nếu:** số bước về 0 sau khi khởi động lại máy (đây là ca khó nhất đã được xử lý riêng — nếu gặp lại, báo ngay).
+**KB-79 · App ở nền thì vẫn đếm, đóng hẳn app thì không** 🟠
+- **Bạn làm:** (1) ghi lại số bước đang có → bấm **Home** (đưa app xuống **nền** — **đừng** vuốt khỏi tác vụ) → đi tiếp ~50 bước → quay lại app. (2) **Vuốt app khỏi màn hình tác vụ gần đây** (đóng hẳn) → đi tiếp ~50 bước → mở lại app. (3) **Khởi động lại điện thoại** → mở app → đi tiếp ~50 bước → xem lại số.
+- **Bạn sẽ thấy:** (1) số bước **tăng** đúng phần vừa đi — app ở nền mà **còn trong tác vụ** thì vẫn đếm. (2) phần đi lúc app **đã đóng hẳn** **không** được cộng vào, nhưng số đã đếm trong ngày **vẫn giữ** (không về 0). (3) sau khi khởi động lại máy, số bước trong ngày **không tụt về 0** mà tiếp tục tăng.
+- **Đáng ngờ nếu:** (1) app ở nền (còn trong tác vụ) mà số **không** tăng; hoặc (3) số bước **về 0** sau khi khởi động lại máy.
+- **Ghi chú:** (2) là **chủ ý**: HealthyAI **chỉ đếm bước trong lúc app đang chạy** (đang mở hoặc còn trong tác vụ) — bước đi khi app **đã bị đóng hẳn** không tính, nên số hiển thị sẽ **nhỏ hơn** số bước thật trong ngày nếu bạn đóng app nhiều lần. Muốn số sát thực tế nhất, hãy dùng **Health Connect** (đồng hồ đeo tay / app sức khỏe) — nguồn đó vẫn được **ưu tiên** khi có số.
 
 **KB-80 · Máy không có cảm biến đếm bước (emulator)** ⚪
 - **Bạn làm:** mở app trên **emulator** (hoặc máy không có cảm biến đếm bước).
@@ -559,6 +573,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 | **Số nhịp tim = 0** dù Health Connect có dữ liệu nhịp tim | App chỉ đọc nhịp tim trong **60 phút gần nhất** | Bơm dữ liệu nhịp tim mới rồi mở lại app |
 | **Số giấc ngủ = 0** dù Health Connect có phiên ngủ | App chỉ đọc phiên ngủ nằm trong khoảng **18:00 hôm qua → bây giờ** | Bơm phiên ngủ kết thúc trong khoảng đó |
 | **Số bước chân = 0** dù bạn đã đi bộ | Nếu máy **có cảm biến đếm bước**: cấp quyền "Bật đếm bước chân" (KB-77) là app tự đếm. Nếu máy **không có cảm biến** (emulator): điện thoại không tự ghi bước vào Health Connect — phải có **app nguồn** (Samsung Health / Fitbit / Mi Fitness / Toolbox) đồng bộ vào | Xem **phụ lục B.3** và **KB-77…KB-80** |
+| **Số bước chân nhỏ hơn** số bước bạn thật sự đi trong ngày | App **chỉ đếm bước trong lúc đang chạy** (mở hoặc còn trong tác vụ) — bước đi khi app **đã bị đóng hẳn** không được cộng (KB-79) | **Không** ghi là lỗi; muốn số sát thực tế thì dùng Health Connect |
 
 ---
 
@@ -570,7 +585,7 @@ Bạn sẽ lần lượt "đóng vai" 4 khách hàng dưới đây. Mỗi nhân 
 2. **Thẻ "Tóm tắt sức khỏe" có mũi tên mà không bấm được** (KB-06) — mũi tên thường khiến người dùng nghĩ là "chạm để xem chi tiết".
 3. **Khi đã đạt mục tiêu, nút "Ghi" biến thành "Xong"** (KB-10) → bạn không ghi thêm được trong ngày. Hợp lý hay gây bí?
 4. **Kết quả camera không điền sẵn số calo** (KB-45) → vẫn phải tự nhập tay.
-5. **Tên widget "Healthy AI" viết khác tên app "HealthyAI"** (KB-60) — chi tiết nhỏ nhưng lệch nhận diện thương hiệu.
+5. **Tên widget "Healthy AI" viết khác tên app "HealthyAI"** (KB-57) — chi tiết nhỏ nhưng lệch nhận diện thương hiệu.
 6. **Chữ "Hủy"/"Huỷ" viết không thống nhất giữa các hộp thoại** (hộp thoại ghi nhận dùng "Hủy", hộp thoại đăng xuất dùng "Huỷ").
 7. **Bấm nút hành động trong thẻ gợi ý AI khi chưa có thói quen đúng danh mục** → chỉ hiện dòng nhắc *"Chưa có thói quen phù hợp — bấm nút + để tạo mới."*; có nên đưa thẳng tới màn tạo thói quen với danh mục đã chọn sẵn?
 8. **Thói quen đã xoá vẫn ảnh hưởng Phân tích**: nhật ký cũ vẫn được tính vào gợi ý AI và Chỉ số sinh lực (vì app giữ lại nhật ký theo thiết kế xoá mềm). Nếu bạn thấy cảnh báo về một thói quen bạn đã xoá, hãy ghi lại để nhóm sản phẩm quyết định.
@@ -667,10 +682,10 @@ Mỗi kịch bản ghi **Đạt / Không đạt / Chưa test được / Không �
 | KB-54 | Chỉ số sinh lực 100/100 | | |
 | KB-55 | Biểu đồ nhất quán tuần | | |
 | KB-56 | Xu hướng chất lượng giấc ngủ | | |
-| KB-57 | Thêm widget | | |
-| KB-58 | Widget xếp theo buổi | | |
+| KB-57 | Thêm widget "Sức khỏe hôm nay" | | |
+| KB-58 | Ba số trên widget khớp với app | | |
 | KB-59 | Widget tự cập nhật | | |
-| KB-60 | Widget khi chưa có thói quen | | |
+| KB-60 | Widget khi chưa có số liệu | | |
 | KB-61 | Kéo giãn widget | | |
 | KB-62 | Đăng xuất | | |
 | KB-63 | Dữ liệu còn nguyên sau đăng xuất | | |
@@ -696,7 +711,7 @@ Mỗi kịch bản ghi **Đạt / Không đạt / Chưa test được / Không �
 
 ## 9. Nếu bạn chỉ có 60 phút
 
-Chạy 16 kịch bản theo đúng thứ tự này — đây là "một ngày của khách hàng" khép kín:
+Chạy 16 kịch bản theo đúng thứ tự này — đây là "một ngày của Quỳnh" khép kín:
 
 **KB-01 → KB-05 → KB-07 → KB-08 → KB-09 → KB-10 → KB-13 → KB-15 → KB-18 → KB-23 → KB-30 → KB-42 → KB-45 → KB-48 → KB-59 → KB-67 → KB-77 → KB-78**
 
@@ -748,9 +763,10 @@ HealthyAI ──► Trang chủ: Bước chân · Ngủ · Tim
 
 Từ bản có tính năng đếm bước bằng cảm biến, **số bước không còn phụ thuộc Health Connect**:
 
-- Trên **điện thoại thật** (có cảm biến đếm bước phần cứng): bấm thẻ **"Bật đếm bước chân"** ở Trang chủ → cấp quyền **Nhận diện hoạt động thể chất** → app tự đếm, số bước hiện ngay và tự tăng khi bạn đi (xem **KB-77…KB-79**).
+- Trên **điện thoại thật** (có cảm biến đếm bước phần cứng): bấm thẻ **"Bật đếm bước chân"** ở Trang chủ → cấp quyền **Nhận diện hoạt động thể chất** → app tự đếm **trong lúc app đang chạy**, số bước tự tăng khi bạn đi (xem **KB-77…KB-79**).
 - Trên **emulator** (không có cảm biến): không có thẻ xin quyền, số bước vẫn lấy từ Health Connect → phải bơm dữ liệu như **B.2**.
-- Thứ tự ưu tiên khi hiển thị: **Health Connect trước** (có thể gồm cả dữ liệu đồng hồ), nếu Health Connect không có số thì dùng **cảm biến của điện thoại** — khi đó thẻ có dòng *"Số bước đọc trực tiếp từ cảm biến của điện thoại"*.
+- Thứ tự ưu tiên khi hiển thị: **Health Connect trước** (có thể gồm cả dữ liệu đồng hồ), nếu Health Connect không có số thì dùng **cảm biến của điện thoại**.
+- ⚠️ **Luật đếm của cảm biến:** app **chỉ cộng phần đếm được trong lúc app đang chạy** — app **đang mở** hoặc **còn trong tác vụ** (chạy nền) thì đếm tiếp; app bị **đóng hẳn** (vuốt khỏi tác vụ) thì khoảng thời gian ở giữa **không** được tính (số đã đếm trong ngày vẫn giữ). Vì vậy số bước có thể **nhỏ hơn** thực tế nếu bạn đóng app nhiều lần — đây là **chủ ý** (KB-79).
 
 ### B.1. Mỗi chỉ số lấy dữ liệu từ đâu và trong khung thời gian nào
 
@@ -836,7 +852,7 @@ App **không** tự tạo số liệu — nó đọc từ **Health Connect** và
 | Màn Thêm/Sửa thói quen | "Thêm thói quen mới" / "Sửa thói quen" · "Danh mục" · "Mục tiêu hàng ngày" · "Thời gian thực hiện" · "Tần suất" · "Tạo thói quen" / "Cập nhật" · "Xóa thói quen?" |
 | Tab Ghi chép | "Ghi chép bữa ăn" · "Hướng camera vào món ăn để phân tích." · "Cần quyền Camera" · "Cấp quyền Camera" · "Quét món ăn" · "Phân tích món ăn" · "Đang phân tích..." · "Kết quả nhận diện" · "Tự động" · "Thêm vào nhật ký" |
 | Tab Phân tích | "Phân tích AI" · "BLOOM AI GỢI Ý" · "CẢNH BÁO KHẨN CẤP" · "Chỉ số sinh lực" · "Sự nhất quán hàng tuần" · "Xu hướng chất lượng giấc ngủ" · "Mọi thứ đang rất tốt!" |
-| Widget | "Tiến độ thói quen" (tên widget) · "Tiến độ hôm nay" · "x/y thói quen đạt mục tiêu" · "+N thói quen khác" · "Healthy AI / Chưa có thói quen" |
+| Widget | "Sức khỏe hôm nay" (tên widget) · "Healthy AI" · "Hôm nay" · "Bước chân" · "Giấc ngủ" · "Nhịp tim" · `--` / `-- bpm` khi chưa có số |
 | Hộp thoại đăng xuất | "Bạn có chắc muốn đăng xuất? Thói quen và nhật ký trên máy vẫn được giữ nguyên." |
 | Thông báo nhắc nhở | "HealthyAI 💪 Nhắc nhở thói quen" · "Bạn đã cập nhật thói quen hôm nay chưa? Chỉ cần vài giây thôi!" · kênh "Nhắc nhở thói quen sức khỏe" |
 

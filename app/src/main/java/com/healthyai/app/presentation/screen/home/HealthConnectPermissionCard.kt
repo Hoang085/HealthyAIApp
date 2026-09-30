@@ -8,10 +8,12 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.healthyai.app.R
 import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.presentation.ui.component.InfoActionCard
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
@@ -32,28 +34,25 @@ fun HealthConnectPermissionCard(
     val card = when (status) {
         HealthConnectStatus.UPDATE_REQUIRED -> HealthConnectCardCopy(
             icon = Icons.Default.SystemUpdate,
-            title = "Health Connect cần được cập nhật",
-            description = "Phiên bản Health Connect trên máy đã cũ nên HealthyAI chưa đọc được dữ liệu. " +
-                "Hãy cập nhật để xem bước chân, giấc ngủ và nhịp tim.",
-            actionLabel = "Cập nhật Health Connect",
+            title = stringResource(R.string.health_connect_update_title),
+            description = stringResource(R.string.health_connect_update_description),
+            actionLabel = stringResource(R.string.health_connect_update_action),
             action = onOpenHealthConnectStore
         )
 
         HealthConnectStatus.NOT_INSTALLED -> HealthConnectCardCopy(
             icon = Icons.Default.HealthAndSafety,
-            title = "Chưa cài Health Connect",
-            description = "Cài Health Connect để HealthyAI đọc bước chân, giấc ngủ và nhịp tim. " +
-                "Hiện tại các chỉ số đang hiển thị 0.",
-            actionLabel = "Cài Health Connect",
+            title = stringResource(R.string.health_connect_missing_title),
+            description = stringResource(R.string.health_connect_missing_description),
+            actionLabel = stringResource(R.string.health_connect_missing_action),
             action = onOpenHealthConnectStore
         )
 
         else -> HealthConnectCardCopy(
             icon = Icons.Default.Favorite,
-            title = "Cấp quyền Health Connect",
-            description = "HealthyAI cần quyền đọc Bước chân, Giấc ngủ, Nhịp tim và Calories " +
-                "để hiển thị chỉ số sức khỏe của bạn.",
-            actionLabel = "Cấp quyền Health Connect",
+            title = stringResource(R.string.health_connect_permission_title),
+            description = stringResource(R.string.health_connect_permission_description),
+            actionLabel = stringResource(R.string.health_connect_permission_action),
             action = onRequestPermission
         )
     }

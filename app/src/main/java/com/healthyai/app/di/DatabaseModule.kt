@@ -6,6 +6,7 @@ import com.healthyai.app.data.local.AppDatabase
 import com.healthyai.app.data.local.dao.HabitDao
 import com.healthyai.app.data.local.dao.HabitLogDao
 import com.healthyai.app.data.local.dao.health.HealthDataDao
+import com.healthyai.app.data.local.dao.settings.SettingsDao
 import com.healthyai.app.data.local.migration.DatabaseMigrations
 import com.healthyai.app.data.local.security.AndroidKeystorePassphraseCipher
 import com.healthyai.app.data.local.security.DatabasePassphraseProvider
@@ -74,4 +75,7 @@ object DatabaseModule {
 
     @Provides
     fun provideHealthDataDao(db: AppDatabase): HealthDataDao = db.healthDataDao()
+
+    @Provides
+    fun provideSettingsDao(db: AppDatabase): SettingsDao = db.settingsDao()
 }

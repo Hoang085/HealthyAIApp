@@ -6,17 +6,25 @@ import androidx.work.*
 import com.healthyai.app.data.firebase.FirestoreSyncDataSource
 import com.healthyai.app.domain.repository.AuthRepository
 import com.healthyai.app.domain.repository.HabitRepository
+import com.healthyai.app.domain.repository.SettingsRepository
+import com.healthyai.app.domain.usecase.sync.CloudSyncPolicy
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
- * SyncWorker — Đẩy dữ liệu chưa đồng bộ (isDirty = true) lên Firebase Firestore.
+ * SyncWorker — Đẩy dữ liệu chưa đồng bộ (`isDirty = true`) lên Firebase Firestore.
  * Chạy ngầm mỗi 6 giờ, chỉ khi có kết nối mạng.
  * Retry tối đa 3 lần với Exponential Backoff nếu thất bại.
  *
- * Nếu người dùng chưa đăng nhập (chế độ khách) thì worker **bỏ qua** và trả `success`:
- * job chạy lại theo chu kỳ 6 giờ và sẽ đồng bộ ngay khi có phiên đăng nhập.
+ * **Cổng riêng tư (mục 3 #31):** worker **chỉ** tải lên khi hội đủ hai điều kiện —
+ * 1. người dùng đã **bật** "Đồng bộ đám mây" ở màn Trang chủ (mặc định TẮT);
+ * 2. log đó được tạo **sau** mốc đồng ý (xem [CloudSyncPolicy]).
+ *
+ * Nhờ vậy người dùng ghi nhật ký ở **chế độ khách** rồi đăng nhập sẽ **không** bị đẩy toàn bộ lịch sử
+ * lên đám mây. Chưa đăng nhập (chế độ khách) thì worker **bỏ qua** và trả `success`: job chạy lại
+ * theo chu kỳ 6 giờ và sẽ đồng bộ ngay khi có phiên đăng nhập **và** người dùng đã bật đồng bộ.
  */
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
@@ -24,7 +32,8 @@ class SyncWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val habitRepository: HabitRepository,
     private val firestoreSyncDataSource: FirestoreSyncDataSource,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val settingsRepository: SettingsRepository
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
@@ -35,9 +44,21 @@ class SyncWorker @AssistedInject constructor(
         }
 
         return try {
-            val unsyncedLogs = habitRepository.getUnsyncedHabitLogs()
-            
-            unsyncedLogs.forEach { log ->
+            val cloudSync = settingsRepository.getCloudSync()
+            val logsToUpload = CloudSyncPolicy.logsToUpload(
+                logs = habitRepository.getUnsyncedHabitLogs(),
+                settings = cloudSync
+            )
+
+            if (logsToUpload.isEmpty()) {
+                android.util.Log.d(
+                    "SyncWorker",
+                    "Sync skipped: chưa bật đồng bộ đám mây hoặc không có log nào tạo sau khi đồng ý"
+                )
+                return Result.success()
+            }
+
+            logsToUpload.forEach { log ->
                 firestoreSyncDataSource.uploadHabitLog(userId, log)
                     .onSuccess {
                         habitRepository.markHabitLogSynced(log.id)
@@ -45,8 +66,12 @@ class SyncWorker @AssistedInject constructor(
                     .onFailure { throw it }
             }
 
-            android.util.Log.d("SyncWorker", "Sync completed successfully: ${unsyncedLogs.size} logs")
+            android.util.Log.d("SyncWorker", "Sync completed successfully: ${logsToUpload.size} logs")
             Result.success()
+        } catch (e: CancellationException) {
+            // WorkManager dừng worker = huỷ coroutine → ném tiếp, không biến thành "thử lại/thất bại"
+            // (phụ lục C #39).
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("SyncWorker", "Sync failed: ${e.message}")
             if (runAttemptCount < 3) Result.retry() else Result.failure()

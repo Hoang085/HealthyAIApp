@@ -6,6 +6,7 @@ import androidx.work.*
 import com.healthyai.app.domain.repository.HealthDataRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -21,22 +22,43 @@ class HealthSyncWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         return try {
-            healthDataRepository.syncHealthData()
-                .onSuccess { 
+            val syncResult = healthDataRepository.syncHealthData()
+
+            syncResult
+                .onSuccess {
                     android.util.Log.d("HealthSyncWorker", "Periodic sync successful")
                 }
                 .onFailure { e ->
                     android.util.Log.e("HealthSyncWorker", "Periodic sync failed: ${e.message}")
                 }
-            
-            Result.success()
+
+            if (syncResult.isSuccess) {
+                Result.success()
+            } else {
+                // Đồng bộ thất bại thật (đọc cảm biến/ghi DB lỗi) → trả `retry` để WorkManager dùng
+                // backoff đã đặt thay vì luôn "thành công" khiến backoff không bao giờ chạy
+                // (phụ lục C #43).
+                retryOrFail()
+            }
+        } catch (e: CancellationException) {
+            // WorkManager dừng worker = huỷ coroutine → phải ném tiếp, KHÔNG được biến thành
+            // "thử lại/thất bại" (phụ lục C #39).
+            throw e
         } catch (e: Exception) {
-            if (runAttemptCount < 3) Result.retry() else Result.failure()
+            android.util.Log.e("HealthSyncWorker", "Periodic sync threw: ${e.message}")
+            retryOrFail()
         }
     }
 
+    /** Thử lại tối đa [MAX_ATTEMPTS] lần rồi báo thất bại hẳn (backoff do [schedule] đặt). */
+    private fun retryOrFail(): Result =
+        if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
+
     companion object {
         const val WORK_NAME = "periodic_health_sync_worker"
+
+        /** Số lần thử tối đa trước khi báo thất bại hẳn. */
+        private const val MAX_ATTEMPTS = 3
 
         /**
          * Lên lịch chạy định kỳ mỗi 6 giờ.

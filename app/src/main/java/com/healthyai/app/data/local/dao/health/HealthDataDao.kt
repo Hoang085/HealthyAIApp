@@ -36,6 +36,29 @@ interface HealthDataDao {
     @Update
     suspend fun updateHealthData(data: HealthDataEntity)
 
+    /**
+     * Nhịp tim **ghi gần nhất từ** [fromTs] trở đi (bỏ qua các hàng chưa có nhịp tim), dùng cho ô
+     * "Tim" ở màn Trang chủ khi Health Connect chưa có số.
+     *
+     * Màn Trang chủ truyền **đầu ngày hôm nay** để nhịp tim cũng được "đọc lại từ đầu ngày" như bước
+     * chân và giờ ngủ: sang ngày mới mà chưa đo lại thì trả `null` thay vì hiện lại số của hôm qua.
+     *
+     * Trả `null` khi khoảng đó chưa có hàng nào có nhịp tim.
+     */
+    @Query("SELECT heartRate FROM health_data_history WHERE heartRate > 0 AND recordedAt >= :fromTs ORDER BY recordedAt DESC LIMIT 1")
+    suspend fun getLatestHeartRateSince(fromTs: Long): Double?
+
+    /**
+     * Toàn bộ hàng lịch sử **ghi từ** [fromTs] trở đi, mới nhất trước — nguồn cho thẻ "Lịch sử sức
+     * khỏe 7 ngày" ở tab Phân tích.
+     *
+     * Khác [getRecentHealthData] (giới hạn theo **số hàng**), truy vấn này giới hạn theo **mốc thời
+     * gian**: dữ liệu cũ có thể có nhiều hàng trong cùng một ngày nên cắt theo số hàng sẽ làm thiếu
+     * ngày, còn tầng dùng luôn gom lại theo ngày.
+     */
+    @Query("SELECT * FROM health_data_history WHERE recordedAt >= :fromTs ORDER BY recordedAt DESC")
+    fun getHealthDataSince(fromTs: Long): Flow<List<HealthDataEntity>>
+
     /** Xóa dữ liệu cũ hơn 30 ngày để tiết kiệm bộ nhớ */
     @Query("DELETE FROM health_data_history WHERE recordedAt < :timestamp")
     suspend fun deleteOldData(timestamp: Long)

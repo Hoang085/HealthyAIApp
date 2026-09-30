@@ -5,7 +5,7 @@ import com.healthyai.app.data.local.dao.HabitLogDao
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitLog
-import com.healthyai.app.domain.widget.HabitWidgetRefresher
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -25,17 +25,18 @@ import java.time.ZoneId
  * - mốc thời gian của `getHabitLogsForPeriod` — bug cũ `fromTs = now - daysBack ngày` khiến
  *   `daysBack = 0` lọc bằng đúng thời điểm gọi hàm → tiến độ trong ngày về 0 mỗi lần mở lại app.
  *   Mốc đúng phải căn theo **đầu ngày (00:00)**;
- * - xóa mềm thói quen;
- * - **widget màn hình chính phải được vẽ lại** mỗi khi dữ liệu thói quen thay đổi (mục 3 #15 —
- *   TC-WG-04): Glance chỉ đọc DB một lần lúc vẽ và `updatePeriodMillis = 0` nên nếu repository
- *   không gọi `HabitWidgetRefresher.refresh()` thì widget đứng yên ở dữ liệu cũ.
+ * - xóa mềm thói quen.
+ *
+ * Trước đây repository này còn phải gọi `HabitWidgetRefresher.refresh()` sau mỗi lần ghi vì widget màn
+ * hình chính hiển thị tiến độ thói quen. Widget đó nay là widget **"Sức khỏe hôm nay"** (bước chân /
+ * giấc ngủ / nhịp tim) nên thay đổi thói quen không còn ảnh hưởng tới nội dung widget; việc vẽ lại
+ * widget theo dữ liệu sức khỏe nằm ở `HealthDataRepositoryImpl` (`HealthDataRepositoryImplTest`).
  */
 class HabitRepositoryImplTest {
 
     private val habitDao = mockk<HabitDao>(relaxed = true)
     private val habitLogDao = mockk<HabitLogDao>(relaxed = true)
-    private val widgetRefresher = mockk<HabitWidgetRefresher>(relaxed = true)
-    private val repository = HabitRepositoryImpl(habitDao, habitLogDao, widgetRefresher)
+    private val repository = HabitRepositoryImpl(habitDao, habitLogDao)
 
     private val startOfToday: Long = LocalDate.now()
         .atStartOfDay(ZoneId.systemDefault())
@@ -84,22 +85,20 @@ class HabitRepositoryImplTest {
     /**
      * Xóa thói quen là **xóa mềm**: repository phải gọi `softDeleteHabit` (đặt `isActive = 0`),
      * không được xóa hàng khỏi bảng `habits` — nếu không log và lịch sử sẽ mất.
-     *
-     * Đồng thời phải vẽ lại widget: thói quen vừa xóa biến mất khỏi `getAllActiveHabits()` nên widget
-     * phải chuyển sang thói quen còn hoạt động khác (TC-WG-06).
      */
     @Test
     fun `deleteHabit soft deletes through the dao`() = runTest {
         repository.deleteHabit(7L)
 
         coVerify(exactly = 1) { habitDao.softDeleteHabit(7L) }
-        coVerify(exactly = 1) { widgetRefresher.refresh() }
     }
 
-    /** Tạo/sửa thói quen (cùng đi qua `insertHabit`) phải vẽ lại widget (TC-WG-04). */
+    /** Tạo/sửa thói quen (cùng đi qua `insertHabit`) vẫn ghi qua DAO và trả về id của hàng. */
     @Test
-    fun `insertHabit refreshes the home screen widget`() = runTest {
-        repository.insertHabit(
+    fun `insertHabit writes through the dao and returns the new id`() = runTest {
+        coEvery { habitDao.insertHabit(any()) } returns 42L
+
+        val id = repository.insertHabit(
             Habit(
                 id = 0,
                 name = "Uống nước",
@@ -109,13 +108,13 @@ class HabitRepositoryImplTest {
             )
         )
 
+        assertEquals(42L, id)
         coVerify(exactly = 1) { habitDao.insertHabit(any()) }
-        coVerify(exactly = 1) { widgetRefresher.refresh() }
     }
 
-    /** Ghi nhận thói quen cũng là thay đổi dữ liệu (bảng `habit_logs`) → widget phải vẽ lại. */
+    /** Ghi nhận một lần thực hiện thói quen chỉ đi qua bảng `habit_logs`. */
     @Test
-    fun `logHabit refreshes the home screen widget`() = runTest {
+    fun `logHabit inserts through the log dao`() = runTest {
         repository.logHabit(
             HabitLog(
                 habitId = 1L,
@@ -128,6 +127,5 @@ class HabitRepositoryImplTest {
         )
 
         coVerify(exactly = 1) { habitLogDao.insertLog(any()) }
-        coVerify(exactly = 1) { widgetRefresher.refresh() }
     }
 }

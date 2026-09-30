@@ -35,8 +35,10 @@ class DatabaseMigrationsTest {
     fun `each migration executes at least one statement`() {
         assertTrue(DatabaseMigrations.STATEMENTS_1_2.isNotEmpty())
         assertTrue(DatabaseMigrations.STATEMENTS_2_3.isNotEmpty())
+        assertTrue(DatabaseMigrations.STATEMENTS_3_4.isNotEmpty())
         DatabaseMigrations.STATEMENTS_1_2.forEach { assertTrue(it.isNotBlank()) }
         DatabaseMigrations.STATEMENTS_2_3.forEach { assertTrue(it.isNotBlank()) }
+        DatabaseMigrations.STATEMENTS_3_4.forEach { assertTrue(it.isNotBlank()) }
     }
 
     /**
@@ -50,6 +52,23 @@ class DatabaseMigrationsTest {
         )
         assertTrue(
             DatabaseMigrations.STATEMENTS_1_2.any { it.startsWith("UPDATE `habit_logs`") }
+        )
+    }
+
+    /**
+     * 3 → 4 chỉ **tạo thêm** bảng `app_settings`, không đụng tới các bảng đang có — nâng cấp không làm
+     * mất thói quen, nhật ký hay lịch sử sức khỏe.
+     */
+    @Test
+    fun `migration 3 to 4 creates the settings table without touching existing tables`() {
+        assertTrue(
+            DatabaseMigrations.STATEMENTS_3_4.none { it.contains("DROP", ignoreCase = true) }
+        )
+        assertTrue(
+            DatabaseMigrations.STATEMENTS_3_4.none { it.contains("ALTER TABLE", ignoreCase = true) }
+        )
+        assertTrue(
+            DatabaseMigrations.STATEMENTS_3_4.single().startsWith("CREATE TABLE IF NOT EXISTS `app_settings`")
         )
     }
 }

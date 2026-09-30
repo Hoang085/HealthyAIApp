@@ -7,7 +7,6 @@ import com.healthyai.app.data.local.entity.HabitLogEntity
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitLog
 import com.healthyai.app.domain.repository.HabitRepository
-import com.healthyai.app.domain.widget.HabitWidgetRefresher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -18,8 +17,7 @@ import javax.inject.Singleton
 @Singleton
 class HabitRepositoryImpl @Inject constructor(
     private val habitDao: HabitDao,
-    private val habitLogDao: HabitLogDao,
-    private val habitWidgetRefresher: HabitWidgetRefresher
+    private val habitLogDao: HabitLogDao
 ) : HabitRepository {
 
     override fun getAllActiveHabits(): Flow<List<Habit>> =
@@ -51,26 +49,21 @@ class HabitRepositoryImpl @Inject constructor(
     /**
      * Ghi thói quen mới **hoặc** cập nhật thói quen đã có (`OnConflictStrategy.REPLACE`).
      *
-     * Sau khi ghi DB phải gọi [HabitWidgetRefresher.refresh] để widget màn hình chính vẽ lại: Glance
-     * chỉ đọc dữ liệu một lần lúc vẽ và `updatePeriodMillis = 0` nên widget sẽ đứng yên ở dữ liệu cũ
-     * nếu không có ai yêu cầu cập nhật (mục 3 #15 — TC-WG-04).
+     * Không còn phải vẽ lại widget màn hình chính: widget nay hiển thị **chỉ số sức khỏe** (bước chân,
+     * giấc ngủ, nhịp tim) chứ không hiển thị tiến độ thói quen nữa, nên thay đổi thói quen không làm nội
+     * dung widget khác đi.
      */
-    override suspend fun insertHabit(habit: Habit): Long {
-        val id = habitDao.insertHabit(habit.toEntity())
-        habitWidgetRefresher.refresh()
-        return id
-    }
+    override suspend fun insertHabit(habit: Habit): Long =
+        habitDao.insertHabit(habit.toEntity())
 
-    /** Ghi nhận một lần thực hiện thói quen rồi vẽ lại widget (widget đọc tiến độ từ `habit_logs`). */
+    /** Ghi nhận một lần thực hiện thói quen (bảng `habit_logs`) — widget không hiển thị dữ liệu này. */
     override suspend fun logHabit(log: HabitLog) {
         habitLogDao.insertLog(log.toEntity())
-        habitWidgetRefresher.refresh()
     }
 
-    /** Xóa mềm (`isActive = 0`) rồi vẽ lại widget — widget chuyển sang thói quen còn hoạt động khác. */
+    /** Xóa mềm thói quen (`isActive = 0`) — log và lịch sử của thói quen vẫn được giữ lại. */
     override suspend fun deleteHabit(habitId: Long) {
         habitDao.softDeleteHabit(habitId)
-        habitWidgetRefresher.refresh()
     }
 
     override suspend fun getUnsyncedHabitLogs(): List<HabitLog> =

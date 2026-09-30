@@ -9,6 +9,7 @@ import com.healthyai.app.domain.model.HabitLog
 import com.healthyai.app.domain.repository.HabitRepository
 import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase
 import com.healthyai.app.domain.usecase.LogHabitUseCase
+import com.healthyai.app.util.runCatchingCancellable
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -40,7 +41,7 @@ const val KEY_LOG_CATEGORY = "logCategory"
 data class HabitsUiState(
     val habits: List<HabitWithProgress> = emptyList(),
     val filteredHabits: List<HabitWithProgress> = emptyList(),
-    val selectedFilter: String = "Tất cả",
+    val selectedFilter: HabitFilter = HabitFilter.ALL,
     val isLoading: Boolean = true,
     /**
      * Id của thói quen vừa được ghi nhận thành công — **sự kiện một lần** để UI hiện phản hồi
@@ -137,7 +138,7 @@ class HabitsViewModel @Inject constructor(
     /** UI đã mở hộp thoại / hiện lời nhắc cho yêu cầu ghi nhận → xoá sự kiện một lần. */
     fun onLogRequestHandled() = _uiState.update { it.copy(logRequest = null) }
 
-    fun setFilter(filter: String) {
+    fun setFilter(filter: HabitFilter) {
         _uiState.update { state ->
             state.copy(
                 selectedFilter = filter,
@@ -146,22 +147,19 @@ class HabitsViewModel @Inject constructor(
         }
     }
 
-    private fun applyFilter(habits: List<HabitWithProgress>, filter: String): List<HabitWithProgress> {
-        if (filter == "Tất cả") return habits
-        
-        val timeOfDay = when (filter) {
-            "Sáng" -> HabitTimeOfDay.MORNING
-            "Chiều" -> HabitTimeOfDay.AFTERNOON
-            "Tối" -> HabitTimeOfDay.EVENING
-            else -> null
-        }
-        
-        return if (timeOfDay != null) {
-            habits.filter { 
-                (it.habit.timeOfDay == timeOfDay) || (it.habit.timeOfDay == HabitTimeOfDay.ALL_DAY) 
-            }
-        } else {
-            habits
+    /**
+     * Lọc theo **buổi trong ngày**: thói quen thuộc buổi đang chọn, cộng thói quen "Cả ngày"
+     * (`ALL_DAY`) vì chúng không gắn với một buổi cụ thể (phụ lục C #41 — khoá lọc là enum
+     * [HabitFilter], không còn là chuỗi tiếng Việt viết cứng).
+     */
+    private fun applyFilter(
+        habits: List<HabitWithProgress>,
+        filter: HabitFilter
+    ): List<HabitWithProgress> {
+        val timeOfDay = filter.timeOfDay ?: return habits
+
+        return habits.filter {
+            (it.habit.timeOfDay == timeOfDay) || (it.habit.timeOfDay == HabitTimeOfDay.ALL_DAY)
         }
     }
     /**
@@ -182,7 +180,7 @@ class HabitsViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 logHabitUseCase(
                     HabitLog(
                         habitId = habit.id,

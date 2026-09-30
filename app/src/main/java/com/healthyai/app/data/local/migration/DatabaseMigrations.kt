@@ -15,6 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *   chưa có bảng `health_data_history`.
  * - **2**: thêm 3 cột trên.
  * - **3**: thêm bảng `health_data_history`.
+ * - **4**: thêm bảng `app_settings` (thiết lập của người dùng, dạng khoá – giá trị).
  *
  * ⚠️ **Khi tăng version**: thêm `MIGRATION_<n>_<n+1>` vào [ALL] và cập nhật [DATABASE_VERSION] cho
  * khớp `@Database(version = …)` trong `data/local/AppDatabase.kt`. Test `DatabaseMigrationsTest`
@@ -31,7 +32,7 @@ object DatabaseMigrations {
      * Version schema hiện tại của `AppDatabase` — **phải khớp** `@Database(version = …)`.
      * Dùng cho test kiểm tra dãy migration không bị thiếu bước.
      */
-    const val DATABASE_VERSION = 3
+    const val DATABASE_VERSION = 4
 
     /** 1 → 2: thêm `habits.timeOfDay`, `habits.frequency`, `habit_logs.targetValueAtTime`. */
     val MIGRATION_1_2: Migration = object : Migration(1, 2) {
@@ -47,8 +48,19 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * 3 → 4: thêm bảng `app_settings` (thiết lập của người dùng, dạng **khoá – giá trị**).
+     *
+     * Bảng khoá – giá trị được chọn để các thiết lập thêm sau này **không cần** migration nữa.
+     */
+    val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            STATEMENTS_3_4.forEach(db::execSQL)
+        }
+    }
+
     /** Toàn bộ migration theo thứ tự — dùng cho `Room.databaseBuilder(...).addMigrations(*ALL)`. */
-    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3)
+    val ALL: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
     /**
      * Giá trị mặc định khớp với default trong model domain: thói quen cũ được coi là "Cả ngày"
@@ -80,5 +92,17 @@ object DatabaseMigrations {
             "`heartRate` REAL NOT NULL, " +
             "`activeCalories` REAL NOT NULL, " +
             "`recordedAt` INTEGER NOT NULL)"
+    )
+
+    /**
+     * DDL của `app_settings` — **phải khớp từng ký tự** với `createSql` mà Room sinh ra trong
+     * `app/schemas/…/4.json`, nếu không Room sẽ báo lệch schema khi mở database
+     * (`Migration didn't properly handle: app_settings`).
+     */
+    internal val STATEMENTS_3_4: List<String> = listOf(
+        "CREATE TABLE IF NOT EXISTS `app_settings` (" +
+            "`settingKey` TEXT NOT NULL, " +
+            "`settingValue` TEXT NOT NULL, " +
+            "PRIMARY KEY(`settingKey`))"
     )
 }

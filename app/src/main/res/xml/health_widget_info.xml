@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Widget "Sức khỏe hôm nay" — ba cột chỉ số (bước chân / giấc ngủ / nhịp tim) trong một hàng.
+
+    minWidth = 250dp: ba cột chia đều nên mỗi cột cần ~75dp mới đủ cho số đo cỡ 19sp
+    ("6.250", "7h 30m", "72 bpm") mà không bị cắt. `minWidth`/`minHeight` cũng là **kích thước nhỏ nhất
+    người dùng được phép kéo tới**, nhờ vậy bố cục không cần nhánh dự phòng cho khung hẹp.
+
+    minHeight = 130dp: tiêu đề + đường kẻ + khối ba cột (icon 22dp + số đo + nhãn) + padding hai đầu.
+
+    updatePeriodMillis = 1 800 000 ms = **30 phút** (mức nhỏ nhất mà Android chấp nhận): sang ngày mới
+    hoặc số liệu đổi ở nơi khác (Health Connect) thì widget tự vẽ lại. Ngoài ra widget còn được vẽ lại
+    **ngay theo sự kiện** khi app ghi dữ liệu sức khỏe:
+    `HealthDataRepositoryImpl` → `HealthWidgetRefresher` → `HealthWidget().updateAll(context)`.
+
+    resizeMode: người dùng vẫn kéo rộng/thu hẹp được; widget dùng `SizeMode.Exact` nên nội dung được vẽ
+    lại theo đúng kích thước hiện tại thay vì bị launcher phóng to.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="250dp"
+    android:minHeight="130dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

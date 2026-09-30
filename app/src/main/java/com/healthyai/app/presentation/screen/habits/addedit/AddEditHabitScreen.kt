@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.healthyai.app.R
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitFrequency
 import com.healthyai.app.domain.model.HabitTimeOfDay
@@ -51,7 +53,7 @@ fun AddEditHabitScreen(
     // Xóa mềm xong: báo cho người dùng biết dữ liệu vẫn được giữ, rồi quay lại danh sách.
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) {
-            Toast.makeText(context, "Đã xóa thói quen", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.habit_deleted_toast), Toast.LENGTH_SHORT).show()
             onNavigateBack()
         }
     }
@@ -59,11 +61,10 @@ fun AddEditHabitScreen(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Xóa thói quen?", fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.habit_delete_dialog_title), fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Thói quen sẽ bị ẩn khỏi danh sách và không còn được tính vào tiến độ hôm nay. " +
-                        "Nhật ký đã ghi vẫn được giữ lại trong máy."
+                    stringResource(R.string.habit_delete_dialog_message)
                 )
             },
             confirmButton = {
@@ -73,12 +74,12 @@ fun AddEditHabitScreen(
                         viewModel.deleteHabit()
                     }
                 ) {
-                    Text("Xóa", color = Color.Red, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.common_delete), color = Color.Red, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Hủy")
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -89,19 +90,19 @@ fun AddEditHabitScreen(
             CenterAlignedTopAppBar(
                 title = { 
                     Text(
-                        if (uiState.isEditMode) "Sửa thói quen" else "Thêm thói quen mới",
+                        if (uiState.isEditMode) stringResource(R.string.habit_edit_title) else stringResource(R.string.habit_add_title),
                         fontWeight = FontWeight.Bold
                     ) 
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
                     if (uiState.isEditMode) {
                         IconButton(onClick = { showDeleteConfirm = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = Color.Red)
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.common_delete), tint = Color.Red)
                         }
                     }
                 },
@@ -133,7 +134,7 @@ fun AddEditHabitScreen(
                     )
                 } else {
                     Text(
-                        if (uiState.isEditMode) "Cập nhật" else "Tạo thói quen",
+                        if (uiState.isEditMode) stringResource(R.string.habit_update_button) else stringResource(R.string.habit_create_button),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -156,7 +157,7 @@ fun AddEditHabitScreen(
             OutlinedTextField(
                 value = uiState.name,
                 onValueChange = viewModel::onNameChange,
-                label = { Text("Tên thói quen (ví dụ: Chạy bộ buổi sáng)") },
+                label = { Text(stringResource(R.string.habit_name_label)) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -166,7 +167,7 @@ fun AddEditHabitScreen(
             )
 
             // Danh mục
-            Text("Danh mục", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(stringResource(R.string.habit_category_label), fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -182,7 +183,7 @@ fun AddEditHabitScreen(
             }
 
             // Mục tiêu
-            Text("Mục tiêu hàng ngày", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(stringResource(R.string.habit_daily_target_label), fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -201,7 +202,7 @@ fun AddEditHabitScreen(
             }
 
             // Thời gian trong ngày
-            Text("Thời gian thực hiện", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(stringResource(R.string.habit_time_of_day_label), fontWeight = FontWeight.Bold, fontSize = 18.sp)
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -217,25 +218,34 @@ fun AddEditHabitScreen(
                 }
             }
 
-            // Tần suất
-            Text("Tần suất", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            HabitFrequency.values().forEach { freq ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { viewModel.onFrequencyChange(freq) }
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = uiState.frequency == freq,
-                        onClick = { viewModel.onFrequencyChange(freq) },
-                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF2E7D32))
+            // Tần suất — hiện chỉ hỗ trợ "Hàng ngày" (mục 3 #30).
+            //
+            // Logic tính tiến độ hôm nay, "Sự nhất quán hàng tuần" và "Chỉ số sinh lực" đều xét theo
+            // NGÀY cho mọi thói quen, nên trước đây chọn "Hàng tuần"/"Hàng tháng" chỉ đổi nhãn mà
+            // không thay đổi hành vi gì. Bỏ hai lựa chọn đó để không gây hiểu nhầm; khi nào có logic
+            // theo chu kỳ thì mở lại cùng với việc xử lý ở các use case.
+            Text(stringResource(R.string.habit_frequency_label), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = true,
+                    onClick = null, // Chỉ còn một lựa chọn → không có gì để đổi
+                    enabled = false,
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = Color(0xFF2E7D32),
+                        disabledSelectedColor = Color(0xFF2E7D32)
                     )
-                    Text(freq.displayName, fontSize = 16.sp)
-                }
+                )
+                Text(HabitFrequency.DAILY.displayName, fontSize = 16.sp)
             }
+            Text(
+                stringResource(R.string.habit_frequency_note),
+                style = MaterialTheme.typography.bodySmall.copy(color = Color.Gray)
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -244,11 +254,11 @@ fun AddEditHabitScreen(
         if (uiState.error != null) {
             AlertDialog(
                 onDismissRequest = viewModel::dismissError,
-                title = { Text("Lỗi") },
+                title = { Text(stringResource(R.string.common_error_title)) },
                 text = { Text(uiState.error!!) },
                 confirmButton = {
                     TextButton(onClick = viewModel::dismissError) {
-                        Text("Đóng")
+                        Text(stringResource(R.string.common_close))
                     }
                 }
             )

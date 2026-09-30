@@ -17,8 +17,10 @@ import javax.inject.Singleton
  *
  * Chọn `TYPE_STEP_COUNTER` (chứ không phải `TYPE_STEP_DETECTOR`) vì:
  * - đếm **ở phần cứng**, gần như không tốn pin và vẫn đếm khi màn hình tắt;
- * - app không cần foreground service để giữ việc đếm;
- * - giá trị luỹ kế bao gồm cả số bước đi lúc app không mở, nên không mất dữ liệu.
+ * - app không cần foreground service để giữ việc đếm khi còn chạy nền;
+ * - trả về **giá trị luỹ kế** nên tầng trên tự quyết định lấy phần nào — hiện chỉ tính phần quan sát
+ *   được **trong lúc app đang chạy** (xem `StepCounterMath`): bước đi lúc app đã bị đóng hẳn **không**
+ *   được cộng vào, dù cảm biến vẫn đếm chúng.
  *
  * ⚠️ Từ Android 10 (API 29) trở lên, đăng ký listener của cảm biến này cần quyền
  * `ACTIVITY_RECOGNITION` — tầng gọi (`StepCounterRepository`) chỉ đăng ký sau khi đã kiểm tra quyền.

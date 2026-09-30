@@ -8,12 +8,14 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.healthyai.app.R
 import com.healthyai.app.domain.model.StepCounterStatus
 import com.healthyai.app.presentation.ui.component.InfoActionCard
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
@@ -40,11 +42,9 @@ fun StepCounterPermissionCard(
     ) {
         InfoActionCard(
             icon = Icons.AutoMirrored.Filled.DirectionsWalk,
-            title = "Bật đếm bước chân",
-            description = "HealthyAI đọc số bước trực tiếp từ cảm biến đếm bước của điện thoại — " +
-                "không cần cài thêm ứng dụng sức khỏe nào. Bật lên để thẻ \"Tóm tắt sức khỏe\" " +
-                "có số bước của bạn.",
-            actionLabel = "Bật đếm bước chân",
+            title = stringResource(R.string.step_counter_title),
+            description = stringResource(R.string.step_counter_description),
+            actionLabel = stringResource(R.string.step_counter_action),
             onAction = onRequestPermission
         )
 
@@ -54,7 +54,7 @@ fun StepCounterPermissionCard(
                 modifier = Modifier.align(Alignment.End)
             ) {
                 Text(
-                    text = "Không thấy hộp thoại? Mở cài đặt quyền",
+                    text = stringResource(R.string.step_counter_manual_hint),
                     color = Color.Gray,
                     textAlign = TextAlign.End
                 )

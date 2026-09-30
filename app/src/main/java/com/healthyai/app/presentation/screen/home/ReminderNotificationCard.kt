@@ -7,9 +7,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.healthyai.app.R
 import com.healthyai.app.domain.model.NotificationPermissionStatus
 import com.healthyai.app.presentation.ui.component.InfoActionCard
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
@@ -33,20 +35,18 @@ fun ReminderNotificationCard(
     if (status.canRequestPermission) {
         InfoActionCard(
             icon = Icons.Default.NotificationsActive,
-            title = "Bật nhắc nhở hàng ngày",
-            description = "HealthyAI cần quyền thông báo để nhắc bạn cập nhật thói quen mỗi ngày. " +
-                "Bật lên để không bỏ lỡ thói quen nào!",
-            actionLabel = "Bật thông báo",
+            title = stringResource(R.string.reminder_enable_title),
+            description = stringResource(R.string.reminder_enable_description),
+            actionLabel = stringResource(R.string.reminder_enable_action),
             onAction = onRequestNotificationPermission,
             modifier = modifier
         )
     } else {
         InfoActionCard(
             icon = Icons.Default.NotificationsOff,
-            title = "Thông báo đang bị tắt",
-            description = "Thông báo nhắc nhở của HealthyAI đang bị tắt, nên bạn sẽ không nhận được " +
-                "nhắc nhở hàng ngày. Mở cài đặt thông báo để bật lại.",
-            actionLabel = "Mở cài đặt thông báo",
+            title = stringResource(R.string.reminder_disabled_title),
+            description = stringResource(R.string.reminder_disabled_description),
+            actionLabel = stringResource(R.string.reminder_disabled_action),
             onAction = onOpenNotificationSettings,
             modifier = modifier
         )

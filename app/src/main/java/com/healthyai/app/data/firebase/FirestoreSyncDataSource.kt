@@ -2,6 +2,7 @@ package com.healthyai.app.data.firebase
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.healthyai.app.domain.model.HabitLog
+import com.healthyai.app.util.runCatchingCancellable
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,7 +15,7 @@ class FirestoreSyncDataSource @Inject constructor(
      * Upload một HabitLog lên Firestore.
      * Cấu trúc: users/{uid}/habit_logs/{logId}
      */
-    suspend fun uploadHabitLog(userId: String, log: HabitLog): Result<Unit> = runCatching {
+    suspend fun uploadHabitLog(userId: String, log: HabitLog): Result<Unit> = runCatchingCancellable {
         val data = mapOf(
             "habitId" to log.habitId,
             "habitName" to log.habitName,

@@ -26,15 +26,22 @@ interface HealthConnectDataSource {
     /** Đọc tổng thời gian ngủ từ chiều tối qua đến hiện tại (giờ) */
     suspend fun getTodaySleepHours(): Double
 
-    /** Đọc nhịp tim trung bình trong 1 giờ gần nhất */
-    suspend fun getRecentHeartRate(): Double
+    /**
+     * Đọc nhịp tim **trung bình của ngày hôm nay** (từ 00:00 tới hiện tại).
+     *
+     * Cùng mốc thời gian với [getTodaySteps]/[getTodayActiveCalories] nên sang ngày mới là số được
+     * đọc lại từ đầu ngày, không còn dính số của hôm qua.
+     */
+    suspend fun getTodayHeartRate(): Double
 
     /** Đọc tổng calories tiêu thụ trong ngày hôm nay */
     suspend fun getTodayActiveCalories(): Double
 
     /**
-     * Đọc toàn bộ phiên ngủ trong khoảng [start, end] và cộng dồn thời lượng theo từng pha
-     * (Deep / Light / REM). Trả về [SleepStageBreakdown] rỗng khi thiếu quyền hoặc lỗi.
+     * Đọc toàn bộ phiên ngủ trong khoảng [start, end] và cộng dồn thời lượng:
+     * **theo từng pha** (Deep / Light / REM) khi thiết bị có chia pha, và **theo phiên** khi thiết bị
+     * chỉ báo `STAGE_TYPE_SLEEPING` — nhờ vậy thẻ giấc ngủ không rỗng dù máy không chia pha
+     * (phụ lục C #25). Trả về [SleepStageBreakdown] rỗng khi thiếu quyền hoặc lỗi.
      */
     suspend fun getSleepStageBreakdown(start: Instant, end: Instant): SleepStageBreakdown
 }

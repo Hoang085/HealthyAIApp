@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.healthyai.app.R
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.presentation.ui.component.ErrorStateCard
@@ -54,7 +56,7 @@ fun HabitsScreen(
         viewModel.onLogSuccessShown()
         Toast.makeText(
             context,
-            if (habitName != null) "Đã ghi nhận: $habitName" else "Đã ghi nhận",
+            if (habitName != null) context.getString(R.string.habits_log_success_named, habitName) else context.getString(R.string.habits_log_success),
             Toast.LENGTH_SHORT
         ).show()
     }
@@ -73,7 +75,7 @@ fun HabitsScreen(
 @Composable
 fun HabitsScreenContent(
     uiState: HabitsUiState,
-    onFilterSelected: (String) -> Unit,
+    onFilterSelected: (HabitFilter) -> Unit,
     onAddHabitClick: () -> Unit,
     onHabitClick: (Long) -> Unit,
     onLogHabit: (Habit, Float) -> Unit,
@@ -96,7 +98,7 @@ fun HabitsScreenContent(
             is LogRequest.Missing -> {
                 Toast.makeText(
                     context,
-                    "Chưa có thói quen phù hợp — bấm nút + để tạo mới.",
+                    context.getString(R.string.habits_no_matching_habit),
                     Toast.LENGTH_LONG
                 ).show()
                 onLogRequestHandled()
@@ -114,7 +116,7 @@ fun HabitsScreenContent(
                 shape = CircleShape,
                 modifier = Modifier.size(64.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Thêm thói quen", modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.habits_add_content_description), modifier = Modifier.size(32.dp))
             }
         }
     ) { paddingValues ->
@@ -179,7 +181,7 @@ fun HabitsScreenContent(
 
             AlertDialog(
                 onDismissRequest = { showLogDialogFor = null },
-                title = { Text("Ghi nhận ${habit.name}") },
+                title = { Text(stringResource(R.string.habits_log_dialog_title, habit.name)) },
                 text = {
                     OutlinedTextField(
                         value = logValue,
@@ -187,7 +189,7 @@ fun HabitsScreenContent(
                             logValue = it
                             errorMessage = null // người dùng sửa lại → xoá thông báo lỗi cũ
                         },
-                        label = { Text("Số lượng (${habit.unit})") },
+                        label = { Text(stringResource(R.string.habits_log_amount_label, habit.unit)) },
                         isError = errorMessage != null,
                         supportingText = errorMessage?.let { message ->
                             { Text(message, color = MaterialTheme.colorScheme.error) }
@@ -207,12 +209,12 @@ fun HabitsScreenContent(
                             }
                         }
                     }) {
-                        Text("Lưu")
+                        Text(stringResource(R.string.common_save))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showLogDialogFor = null }) {
-                        Text("Hủy")
+                        Text(stringResource(R.string.common_cancel))
                     }
                 }
             )
@@ -225,7 +227,7 @@ private fun HabitHeader() {
     val date = LocalDate.now().format(DateTimeFormatter.ofPattern("'Hôm nay,' EEEE, dd 'tháng' MM", Locale("vi")))
     Column {
         Text(
-            "Theo dõi thói quen",
+            stringResource(R.string.habits_header_title),
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 32.sp
@@ -240,10 +242,10 @@ private fun HabitHeader() {
 
 @Composable
 private fun FilterChipsSection(
-    selectedFilter: String,
-    onFilterSelected: (String) -> Unit
+    selectedFilter: HabitFilter,
+    onFilterSelected: (HabitFilter) -> Unit
 ) {
-    val filters = listOf("Tất cả", "Sáng", "Chiều", "Tối")
+    val filters = HabitFilter.entries
 
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -252,7 +254,7 @@ private fun FilterChipsSection(
             FilterChip(
                 selected = selectedFilter == filter,
                 onClick = { onFilterSelected(filter) },
-                label = { Text(filter) },
+                label = { Text(stringResource(filter.labelRes)) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = Color(0xFF1B5E20),
                     selectedLabelColor = Color.White,
@@ -316,7 +318,7 @@ private fun HabitCard(
                 )
                 if (isCompleted) {
                     Text(
-                        "Hoàn thành",
+                        stringResource(R.string.habits_completed),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = Color(0xFF4CAF50),
                             fontWeight = FontWeight.SemiBold
@@ -341,7 +343,7 @@ private fun HabitCard(
                     modifier = Modifier.height(48.dp).width(80.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("Xong", color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.common_done), color = Color.Gray, fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
@@ -354,7 +356,7 @@ private fun HabitCard(
                 ) {
                     Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Ghi", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.habits_log_button), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -364,7 +366,7 @@ private fun HabitCard(
 @Composable
 private fun EmptyHabitsView() {
     Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
-        Text("Chưa có thói quen nào", color = Color.Gray)
+        Text(stringResource(R.string.habits_empty_title), color = Color.Gray)
     }
 }
 

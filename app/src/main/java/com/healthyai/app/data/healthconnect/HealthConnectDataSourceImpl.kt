@@ -13,6 +13,7 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.SleepStageBreakdown
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -23,6 +24,11 @@ import javax.inject.Singleton
 
 /**
  * HealthConnectDataSourceImpl — Implementation của HealthConnectDataSource.
+ *
+ * ⚠️ **Quy ước chung của file này (phụ lục C #39):** mọi `try/catch` đều phải
+ * `catch (e: CancellationException) { throw e }` **trước** `catch (e: Exception)`. Nếu nuốt
+ * `CancellationException`, việc huỷ coroutine (đổi màn hình, `viewModelScope` bị huỷ, WorkManager
+ * dừng worker) sẽ bị biến thành "không có dữ liệu"/`0` và coroutine không kết thúc đúng.
  */
 @Singleton
 class HealthConnectDataSourceImpl @Inject constructor(
@@ -50,6 +56,8 @@ class HealthConnectDataSourceImpl @Inject constructor(
         return try {
             val granted = client.permissionController.getGrantedPermissions()
             granted.containsAll(requiredPermissions)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             false
         }
@@ -71,6 +79,8 @@ class HealthConnectDataSourceImpl @Inject constructor(
                 )
             )
             response[StepsRecord.COUNT_TOTAL] ?: 0L
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             0L
         }
@@ -94,26 +104,34 @@ class HealthConnectDataSourceImpl @Inject constructor(
             )
             val duration = response[SleepSessionRecord.SLEEP_DURATION_TOTAL]
             duration?.toMinutes()?.toDouble()?.div(60.0) ?: 0.0
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             0.0
         }
     }
 
-    /** 
-     * Đọc nhịp tim trung bình trong 1 giờ gần nhất.
+    /**
+     * Đọc nhịp tim **trung bình của ngày hôm nay** (00:00 → hiện tại).
+     *
+     * Mốc thời gian được căn theo đầu ngày giống [getTodaySteps] nên chỉ số này cũng "đọc lại từ đầu
+     * ngày": 00:05 hôm nay sẽ **không** còn tính số đo của tối hôm qua như khi lấy 1 giờ gần nhất.
      */
-    override suspend fun getRecentHeartRate(): Double {
+    override suspend fun getTodayHeartRate(): Double {
+        val startOfDay = LocalDate.now()
+            .atStartOfDay(ZoneId.systemDefault()).toInstant()
         val now = Instant.now()
-        val oneHourAgo = now.minusSeconds(3_600)
 
         return try {
             val response = client.aggregate(
                 AggregateRequest(
                     metrics = setOf(HeartRateRecord.BPM_AVG),
-                    timeRangeFilter = TimeRangeFilter.between(oneHourAgo, now)
+                    timeRangeFilter = TimeRangeFilter.between(startOfDay, now)
                 )
             )
             response[HeartRateRecord.BPM_AVG]?.toDouble() ?: 0.0
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             0.0
         }
@@ -135,17 +153,21 @@ class HealthConnectDataSourceImpl @Inject constructor(
                 )
             )
             response[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             0.0
         }
     }
 
     /**
-     * Đọc toàn bộ phiên ngủ trong khoảng thời gian và cộng dồn thời lượng theo từng pha.
+     * Đọc toàn bộ phiên ngủ trong khoảng thời gian, cộng dồn **thời lượng theo từng pha** và **thời
+     * lượng của những phiên không chia pha**.
      *
-     * Lưu ý: chỉ những phiên ngủ có dữ liệu phân chia pha (Deep/Light/REM) mới được tính;
-     * thiết bị chỉ báo `STAGE_TYPE_SLEEPING` (không chia pha) sẽ cho kết quả rỗng — UI sẽ
-     * hiển thị trạng thái "chưa có dữ liệu chi tiết" thay vì số liệu sai.
+     * Máy/ứng dụng sức khỏe chỉ báo `STAGE_TYPE_SLEEPING` (không chia Sâu/Nông/REM) **không còn** cho
+     * kết quả rỗng: thời lượng của phiên đó vào [SleepStageBreakdown.unstagedMinutes] để thẻ giấc ngủ
+     * vẫn hiển thị được số liệu thật (phụ lục C #25). Phiên ngủ có chia pha chỉ tính theo pha để không
+     * cộng trùng cùng một khoảng thời gian hai lần.
      */
     override suspend fun getSleepStageBreakdown(start: Instant, end: Instant): SleepStageBreakdown {
         return try {
@@ -159,23 +181,45 @@ class HealthConnectDataSourceImpl @Inject constructor(
             var deepMinutes = 0L
             var lightMinutes = 0L
             var remMinutes = 0L
+            var unstagedMinutes = 0L
 
             response.records.forEach { session ->
+                var sessionHasStages = false
                 session.stages.forEach { stage ->
                     val minutes = Duration.between(stage.startTime, stage.endTime).toMinutes()
                     when (stage.stage) {
-                        SleepSessionRecord.STAGE_TYPE_DEEP -> deepMinutes += minutes
-                        SleepSessionRecord.STAGE_TYPE_LIGHT -> lightMinutes += minutes
-                        SleepSessionRecord.STAGE_TYPE_REM -> remMinutes += minutes
+                        SleepSessionRecord.STAGE_TYPE_DEEP -> {
+                            deepMinutes += minutes
+                            sessionHasStages = true
+                        }
+                        SleepSessionRecord.STAGE_TYPE_LIGHT -> {
+                            lightMinutes += minutes
+                            sessionHasStages = true
+                        }
+                        SleepSessionRecord.STAGE_TYPE_REM -> {
+                            remMinutes += minutes
+                            sessionHasStages = true
+                        }
                     }
+                }
+
+                if (!sessionHasStages) {
+                    // Phiên ngủ không chia pha (STAGE_TYPE_SLEEPING/UNKNOWN/…): dùng chính khoảng thời
+                    // gian của phiên làm thời lượng ngủ.
+                    unstagedMinutes += Duration.between(session.startTime, session.endTime)
+                        .toMinutes()
+                        .coerceAtLeast(0L)
                 }
             }
 
             SleepStageBreakdown(
                 deepMinutes = deepMinutes,
                 lightMinutes = lightMinutes,
-                remMinutes = remMinutes
+                remMinutes = remMinutes,
+                unstagedMinutes = unstagedMinutes
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             SleepStageBreakdown()
         }

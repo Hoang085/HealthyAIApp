@@ -25,15 +25,25 @@ interface StepCounterRepository {
     fun observeTodaySteps(): Flow<Long>
 
     /**
-     * Đọc **một lần** số bước hôm nay từ cảm biến (dùng cho worker ghi lịch sử vào Room).
+     * Đọc **một lần** số bước hôm nay từ cảm biến (dùng cho worker ghi lịch sử vào Room và cho widget
+     * màn hình chính).
      *
      * Chờ tối đa [timeoutMs] cho mẫu cảm biến đầu tiên; hết thời gian chờ (hoặc chưa đủ điều kiện)
-     * thì trả về giá trị đã lưu gần nhất — nhờ vậy worker không bao giờ treo.
+     * thì trả về giá trị đã lưu gần nhất — nhờ vậy worker không bao giờ treo. Truyền [NO_WAIT_MS] để
+     * lấy ngay giá trị đã lưu mà không chờ mẫu mới.
      */
     suspend fun readTodaySteps(timeoutMs: Long = DEFAULT_READ_TIMEOUT_MS): Long
 
     companion object {
         /** Thời gian chờ mẫu cảm biến đầu tiên khi worker đọc số bước. */
         const val DEFAULT_READ_TIMEOUT_MS = 2_000L
+
+        /**
+         * Không chờ mẫu cảm biến nào: trả về **ngay** số bước đã lưu.
+         *
+         * Dùng cho widget màn hình chính — nơi chỉ cần con số đã biết và không được phép chờ [DEFAULT_READ_TIMEOUT_MS]
+         * giây để vẽ (một lần vẽ widget bị chậm sẽ làm launcher hiện khung trắng).
+         */
+        const val NO_WAIT_MS = 0L
     }
 }

@@ -4,9 +4,12 @@ import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
 
 /**
- * Chuỗi hiển thị **tiến độ đã ghi / mục tiêu** của một thói quen — dùng chung cho thẻ thói quen ở màn
- * Thói quen (`HabitsScreen`) và từng dòng trên **widget màn hình chính** (`HabitWidget`), nhờ vậy hai
- * nơi không lệch định dạng.
+ * Chuỗi hiển thị **tiến độ đã ghi / mục tiêu** của một thói quen — dùng ở dòng tiến độ trên thẻ thói
+ * quen của màn Thói quen (`HabitsScreen`).
+ *
+ * Trước đây hàm này còn dùng chung với từng dòng trên widget màn hình chính (`HabitWidget`), nhờ vậy hai
+ * nơi không lệch định dạng; widget đó đã được thay bằng widget **"Sức khỏe hôm nay"** (bước chân / giấc
+ * ngủ / nhịp tim) nên nay chỉ còn màn Thói quen dùng hàm này.
  *
  * Định dạng theo danh mục:
  * - `WATER` — quy đổi sang lít: `1.2L / 2.0L`.
