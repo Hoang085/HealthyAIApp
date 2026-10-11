@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
+import com.healthyai.app.R
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -52,9 +53,9 @@ class ReminderWorker @AssistedInject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Nhắc nhở thói quen sức khỏe",
+                context.getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "Nhắc nhở hàng ngày cập nhật thói quen" }
+            ).apply { description = context.getString(R.string.notification_channel_description) }
             (context.getSystemService(NotificationManager::class.java))
                 .createNotificationChannel(channel)
         }
@@ -63,8 +64,8 @@ class ReminderWorker @AssistedInject constructor(
     private fun showNotification() {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("HealthyAI 💪 Nhắc nhở thói quen")
-            .setContentText("Bạn đã cập nhật thói quen hôm nay chưa? Chỉ cần vài giây thôi!")
+            .setContentTitle(context.getString(R.string.notification_title))
+            .setContentText(context.getString(R.string.notification_text))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()

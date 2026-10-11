@@ -5,7 +5,8 @@
 /local.properties
 /.idea
 .DS_Store
-/build
+# `build/` (không dùng `/build`) để bỏ qua MỌI thư mục build của Gradle, kể cả `app/build`
+build/
 /captures
 .externalNativeBuild
 .cxx

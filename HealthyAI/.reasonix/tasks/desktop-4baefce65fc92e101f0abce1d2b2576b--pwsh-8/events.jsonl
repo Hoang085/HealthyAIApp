@@ -1,0 +1,2 @@
+{"sequence":1,"timestamp":"2026-09-22T01:09:26.5569521+07:00","event_type":"state_change","task_id":"desktop-4baefce65fc92e101f0abce1d2b2576b--pwsh-8","session_id":"desktop-4baefce65fc92e101f0abce1d2b2576b","state":"running","runtime_state":"alive"}
+{"sequence":2,"timestamp":"2026-09-22T01:10:51.8500577+07:00","event_type":"state_change","task_id":"desktop-4baefce65fc92e101f0abce1d2b2576b--pwsh-8","session_id":"desktop-4baefce65fc92e101f0abce1d2b2576b","state":"failed","runtime_state":"exited","error_code":"job_failed"}

@@ -10,16 +10,31 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- ── Đo nhịp tim bằng camera + đèn flash (PPG): cần camera sau có đèn flash ── -->
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+
+    <!-- ── Đếm bước bằng cảm biến của máy (từ Android 10 mới cần ACTIVITY_RECOGNITION) ── -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
+
+    <!-- ── Tự tính giờ ngủ: cảm biến ánh sáng + gia tốc (không cần quyền nào) ── -->
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.light" android:required="false" />
+
     <!-- ── Notifications (WorkManager reminders) ── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
-    <!-- ── Health Connect Permissions ── -->
+    <!--
+      ── Health Connect Permissions (chỉ ĐỌC — phụ lục C #44) ──
+      Trước đây manifest khai thêm WRITE_STEPS/WRITE_SLEEP nhưng **không code nào ghi dữ liệu lên
+      Health Connect** (xem `HealthConnectDataSourceImpl.requiredPermissions` — chỉ có 4 quyền ĐỌC)
+      ⇒ hộp thoại xin quyền hỏi thừa quyền ghi và làm người dùng/Play review nghi ngờ. Chỉ giữ đúng
+      những quyền app thật sự dùng.
+    -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
-    <uses-permission android:name="android.permission.health.WRITE_STEPS" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
-    <uses-permission android:name="android.permission.health.WRITE_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
 
@@ -31,12 +46,18 @@
         </intent>
     </queries>
 
+    <!--
+      allowBackup=false (mục 3 #32): DB SQLCipher + prefs bị auto-backup lên Google Drive, nhưng KHOÁ
+      mở DB nằm trong Android Keystore (KHÔNG backup được) ⇒ restore trên máy mới sẽ mở DB thất bại và
+      rơi vào nhánh xoá DB (LegacyDatabaseKeyMigration) = mất sạch dữ liệu. Tắt hẳn backup cục bộ để
+      không có bản sao rò rỉ dữ liệu sức khỏe và không có "restore" nào xoá dữ liệu của người dùng.
+    -->
     <application
         android:name=".HiltApplication"
-        android:allowBackup="true"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@android:drawable/sym_def_app_icon"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.HealthyAIApp">
 
@@ -79,6 +100,19 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!-- ── Home Screen Widget (Glance): "Sức khỏe hôm nay" — bước chân / giấc ngủ / nhịp tim ── -->
+        <receiver
+            android:name=".presentation.widget.HealthWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/health_widget_info" />
+        </receiver>
 
     </application>
 </manifest>

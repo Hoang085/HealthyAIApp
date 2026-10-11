@@ -3,34 +3,75 @@ package com.healthyai.app.worker
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
+import com.healthyai.app.data.firebase.FirestoreSyncDataSource
+import com.healthyai.app.domain.repository.AuthRepository
+import com.healthyai.app.domain.repository.HabitRepository
+import com.healthyai.app.domain.repository.SettingsRepository
+import com.healthyai.app.domain.usecase.sync.CloudSyncPolicy
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
- * SyncWorker — Đẩy dữ liệu chưa đồng bộ (isDirty = true) lên Firebase Firestore.
+ * SyncWorker — Đẩy dữ liệu chưa đồng bộ (`isDirty = true`) lên Firebase Firestore.
  * Chạy ngầm mỗi 6 giờ, chỉ khi có kết nối mạng.
  * Retry tối đa 3 lần với Exponential Backoff nếu thất bại.
+ *
+ * **Cổng riêng tư (mục 3 #31):** worker **chỉ** tải lên khi hội đủ hai điều kiện —
+ * 1. người dùng đã **bật** "Đồng bộ đám mây" ở màn Trang chủ (mặc định TẮT);
+ * 2. log đó được tạo **sau** mốc đồng ý (xem [CloudSyncPolicy]).
+ *
+ * Nhờ vậy người dùng ghi nhật ký ở **chế độ khách** rồi đăng nhập sẽ **không** bị đẩy toàn bộ lịch sử
+ * lên đám mây. Chưa đăng nhập (chế độ khách) thì worker **bỏ qua** và trả `success`: job chạy lại
+ * theo chu kỳ 6 giờ và sẽ đồng bộ ngay khi có phiên đăng nhập **và** người dùng đã bật đồng bộ.
  */
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted workerParams: WorkerParameters,
-    // TODO: Inject HabitRepository khi bật Firebase
-    // private val habitRepository: HabitRepository,
+    private val habitRepository: HabitRepository,
+    private val firestoreSyncDataSource: FirestoreSyncDataSource,
+    private val authRepository: AuthRepository,
+    private val settingsRepository: SettingsRepository
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
+        val userId = authRepository.currentUserId
+        if (userId == null) {
+            android.util.Log.d("SyncWorker", "Sync skipped: chưa đăng nhập (chế độ khách)")
+            return Result.success()
+        }
+
         return try {
-            // TODO (Module 2 — Firebase):
-            //   1. val unsyncedLogs = habitRepository.getUnsyncedLogs()
-            //   2. firestore.collection("users/{uid}/habit_logs").add(log)
-            //   3. habitRepository.markAsSynced(log.id) → isDirty = false
-            //
-            // Last Write Wins conflict resolution:
-            //   Mỗi log có timestamp loggedAt → bên nào có timestamp mới hơn thắng.
-            android.util.Log.d("SyncWorker", "Sync completed successfully")
+            val cloudSync = settingsRepository.getCloudSync()
+            val logsToUpload = CloudSyncPolicy.logsToUpload(
+                logs = habitRepository.getUnsyncedHabitLogs(),
+                settings = cloudSync
+            )
+
+            if (logsToUpload.isEmpty()) {
+                android.util.Log.d(
+                    "SyncWorker",
+                    "Sync skipped: chưa bật đồng bộ đám mây hoặc không có log nào tạo sau khi đồng ý"
+                )
+                return Result.success()
+            }
+
+            logsToUpload.forEach { log ->
+                firestoreSyncDataSource.uploadHabitLog(userId, log)
+                    .onSuccess {
+                        habitRepository.markHabitLogSynced(log.id)
+                    }
+                    .onFailure { throw it }
+            }
+
+            android.util.Log.d("SyncWorker", "Sync completed successfully: ${logsToUpload.size} logs")
             Result.success()
+        } catch (e: CancellationException) {
+            // WorkManager dừng worker = huỷ coroutine → ném tiếp, không biến thành "thử lại/thất bại"
+            // (phụ lục C #39).
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("SyncWorker", "Sync failed: ${e.message}")
             if (runAttemptCount < 3) Result.retry() else Result.failure()
@@ -44,7 +85,11 @@ class SyncWorker @AssistedInject constructor(
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)
-                .setRequiresDeviceIdle(true) // Sync when user is not actively using device
+                // KHÔNG dùng setRequiresDeviceIdle(true) ở đây: WorkManager ném
+                // IllegalArgumentException("Cannot set backoff criteria on an idle mode job")
+                // khi vừa requiresDeviceIdle(true) vừa setBackoffCriteria() → crash ngay khi mở app.
+                // Giữ backoff (như KDoc mô tả) và để hệ thống tự hoãn khi máy vào Doze.
+                .setRequiresDeviceIdle(false)
                 .build()
 
             workManager.enqueueUniquePeriodicWork(

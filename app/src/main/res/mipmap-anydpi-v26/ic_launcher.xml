@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Icon launcher dạng **adaptive icon** (mục 3 #32). Trước đây manifest trỏ vào
+  `@android:drawable/sym_def_app_icon` — icon MẶC ĐỊNH của Android — nên app hiện trên máy như một
+  app chưa có thương hiệu. Ở đây chỉ dùng vector + XML nên không cần thêm tệp ảnh nhị phân nào.
+
+  minSdk = 26 nên mọi thiết bị đều hỗ trợ adaptive icon; không cần ảnh PNG dự phòng cho API cũ.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

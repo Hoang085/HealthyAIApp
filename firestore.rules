@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// Firestore Security Rules cho HealthyAI (mục 3 #31).
+//
+// TRƯỚC ĐÂY repo KHÔNG có file rules nào, nên nếu Firestore ở chế độ test/không cấu hình thì bất kỳ ai
+// cũng đọc/ghi được dữ liệu người khác. Nhật ký thói quen được lưu ở:
+//   users/{uid}/habit_logs/{logId}
+// Mỗi người dùng CHỈ được đọc/ghi tài liệu trong nhánh của chính mình; mọi đường khác bị từ chối.
+//
+// Triển khai: `firebase deploy --only firestore:rules` (dùng `firebase.json` trong repo).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Chặn mọi đường không được khai báo ở trên (mặc định đóng, không mở).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
