@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="data.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tầng dữ liệu &amp; bảo mật — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 3</div>
+      <h1>Tầng dữ liệu &amp; bảo mật</h1>
+      <p class="page-lead">
+        Nơi dữ liệu thực sự được lưu: cơ sở dữ liệu Room mã hoá bằng SQLCipher, bốn bước migration
+        không mất dữ liệu, cơ chế khoá dựa trên Android Keystore, Health Connect, Firebase,
+        cổng HTTP ra ngoài và ba cảm biến của máy.
+      </p>
+
+      <h2>1. Bản đồ tầng dữ liệu</h2>
+      <div class="diagram">
+<pre>  NGUỒN DỮ LIỆU                          LƯU Ở ĐÂU                        NGƯỜI GHI
+
+  ┌─ Thói quen / nhật ký ─────────────► Room (SQLCipher)  ──────────► HabitRepositoryImpl
+  │                                     healthy_ai_encrypted.db
+  │
+  ├─ Health Connect ────┐
+  │  (bước, ngủ, tim,   │               Room: health_data_history ──► HealthDataRepositoryImpl
+  │   calo, pha ngủ)    ├──────────────► (bản chụp 6 giờ/lần)          + HealthSyncWorker
+  │                     │
+  ├─ Cảm biến bước chân ┤               SharedPreferences ──────────► StepCounterRepositoryImpl
+  │  TYPE_STEP_COUNTER  │               healthy_ai_step_counter        (mỗi mẫu cảm biến)
+  │                     │
+  ├─ Cảm biến ngủ ──────┘               SharedPreferences ──────────► SleepTrackerRepositoryImpl
+  │  ánh sáng + gia tốc                 healthy_ai_sleep_tracker        + SleepTrackingWorker
+  │
+  ├─ Thiết lập người dùng ────────────► Room: app_settings ─────────► SettingsRepositoryImpl
+  │  (khung giờ ngủ, đồng bộ)           (khoá – giá trị)
+  │
+  ├─ Phiên đăng nhập ─────────────────► FirebaseAuth (tự persist) ──► AuthRepositoryImpl
+  │
+  ├─ Ảnh món ăn ──────────────────────► KHÔNG lưu (chỉ 1 ByteArray ─► CameraViewModel
+  │                                     trong RAM) → gửi Gemini
+  │
+  └─ Nhật ký đồng bộ đám mây ─────────► Firestore users/{uid}/ ─────► FirestoreSyncDataSource
+                                        habit_logs/{id}                + SyncWorker
+
+  ⚠ Khoá mở Room ─────────────────────► Android Keystore (AES-256) ─► DatabasePassphraseProvider
+                                        + bản mã trong prefs             + LegacyDatabaseKeyMigration
+                                        healthy_ai_secure_store</pre>
+      </div>
+
+      <h2>2. Room + SQLCipher</h2>
+      <p>
+        Tên file: <code>healthy_ai_encrypted.db</code>. Cả DB được mã hoá AES-256 bởi SQLCipher; Room
+        <em>không biết</em> mình đang chạy trên DB mã hoá — ta chỉ đưa vào một
+        <code>SupportOpenHelperFactory(passphrase.bytes)</code>.
+      </p>
+      <p><code>AppDatabase</code> đang ở <code>version = 4</code> với <b>bốn bảng</b>:</p>
+
+      <h3>2.1. Bảng <code>habits</code> — thói quen</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Cột</th><th>Kiểu</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td><code>id</code></td><td><code>INTEGER PK AUTOINCREMENT</code></td><td>Khoá chính</td></tr>
+          <tr><td><code>name</code></td><td><code>TEXT</code></td><td>Tên thói quen (chống trùng, không phân biệt hoa/thường)</td></tr>
+          <tr><td><code>category</code></td><td><code>TEXT</code></td><td><code>SLEEP · WATER · EXERCISE · NUTRITION · MINDFULNESS</code> (lưu tên enum)</td></tr>
+          <tr><td><code>targetValue</code></td><td><code>REAL</code></td><td>Mục tiêu (ví dụ 2000 ml, 30 phút)</td></tr>
+          <tr><td><code>unit</code></td><td><code>TEXT</code></td><td>Đơn vị — dùng cả để quyết định ngưỡng phân tích (xem <code>isStepUnit()</code>)</td></tr>
+          <tr><td><code>timeOfDay</code></td><td><code>TEXT</code> <span class="badge">v2+</span></td><td><code>MORNING · AFTERNOON · EVENING · ALL_DAY</code>, mặc định <code>ALL_DAY</code></td></tr>
+          <tr><td><code>frequency</code></td><td><code>TEXT</code> <span class="badge">v2+</span></td><td><code>DAILY · WEEKLY · MONTHLY</code>, mặc định <code>DAILY</code></td></tr>
+          <tr><td><code>isActive</code></td><td><code>INTEGER</code></td><td><strong>Xoá mềm</strong>: <code>0</code> = đã xoá nhưng vẫn giữ log</td></tr>
+          <tr><td><code>createdAt</code></td><td><code>INTEGER</code></td><td>Mốc tạo — dùng làm "snapshot mẫu số" cho biểu đồ tuần</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>2.2. Bảng <code>habit_logs</code> — nhật ký</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Cột</th><th>Kiểu</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td><code>id</code></td><td><code>INTEGER PK AUTOINCREMENT</code></td><td>Khoá chính; cũng là id document trên Firestore</td></tr>
+          <tr><td><code>habitId</code></td><td><code>INTEGER FK → habits.id</code></td><td><strong><code>onDelete = CASCADE</code></strong> + có index</td></tr>
+          <tr><td><code>habitName</code></td><td><code>TEXT</code></td><td>Sao chép tên tại thời điểm ghi (log cũ không đổi khi đổi tên thói quen)</td></tr>
+          <tr><td><code>category</code></td><td><code>TEXT</code></td><td>Danh mục</td></tr>
+          <tr><td><code>value</code></td><td><code>REAL</code></td><td>Giá trị ghi nhận lần này</td></tr>
+          <tr><td><code>unit</code></td><td><code>TEXT</code></td><td>Đơn vị</td></tr>
+          <tr><td><code>targetValueAtTime</code></td><td><code>REAL</code> <span class="badge">v2+</span></td><td>Mục tiêu <em>tại thời điểm ghi</em> — để phân tích lịch sử không bị sai khi đổi mục tiêu</td></tr>
+          <tr><td><code>loggedAt</code></td><td><code>INTEGER</code></td><td>Thời điểm ghi (epoch ms) + có index</td></tr>
+          <tr><td><code>note</code></td><td><code>TEXT</code></td><td>Ghi chú</td></tr>
+          <tr><td><code>isDirty</code></td><td><code>INTEGER</code></td><td>Chiến lược <strong>offline-first</strong>: <code>1</code> = chưa đẩy lên Firestore</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout danger">
+        <span class="callout__title">Cạm bẫy quan trọng nhất của bảng này</span>
+        <p>
+          <code>habit_logs.habitId</code> có <code>onDelete = CASCADE</code>. Trong SQLite,
+          <code>@Insert(onConflict = REPLACE)</code> là <strong>DELETE + INSERT</strong>. Nếu dùng
+          <code>insertHabit()</code> để <em>sửa</em> một thói quen đã có, khoá ngoại sẽ xoá sạch nhật ký
+          của nó và tiến độ trong ngày về 0. Vì vậy đường cập nhật <strong>bắt buộc</strong> đi qua
+          <code>@Update updateHabit()</code>; KDoc trong <code>HabitDao</code> và
+          <code>HabitRepositoryImpl.updateHabit</code> đều ghi rõ điều này.
+        </p>
+      </div>
+
+      <h3>2.3. Bảng <code>health_data_history</code> — lịch sử sức khỏe theo ngày</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Cột</th><th>Kiểu</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td><code>id</code></td><td><code>INTEGER PK AUTOINCREMENT</code></td><td>Khoá chính</td></tr>
+          <tr><td><code>steps</code></td><td><code>INTEGER</code></td><td>Số bước</td></tr>
+          <tr><td><code>sleepHours</code></td><td><code>REAL</code></td><td>Giờ ngủ (1 chữ số thập phân)</td></tr>
+          <tr><td><code>heartRate</code></td><td><code>REAL</code></td><td>Nhịp tim trung bình/đo được (bpm)</td></tr>
+          <tr><td><code>activeCalories</code></td><td><code>REAL</code></td><td>Calo hoạt động</td></tr>
+          <tr><td><code>recordedAt</code></td><td><code>INTEGER</code></td><td>Thời điểm ghi (quyết định "hàng mới nhất của ngày")</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>Bảng này được thiết kế để <strong>gộp theo ngày</strong>, không phải ghi mới mỗi lần sync:</p>
+<pre><code><span class="c">// HealthDataRepositoryImpl.upsertToday() — 1 hàng cho mỗi NGÀY, không phải mỗi lần sync</span>
+<span class="k">val</span> existing = healthDataDao.getLatestSince(startOfToday())
+
+<span class="k">if</span> (existing == <span class="k">null</span>) {
+    healthDataDao.insertHealthData(HealthDataEntity.fromDomain(snapshot))
+    <span class="k">return</span>
+}
+
+healthDataDao.updateHealthData(
+    existing.copy(
+        <span class="c">// Bước chân CHỈ TĂNG trong ngày ⇒ lấy số lớn hơn để lần sync sau không làm tụt số</span>
+        steps = maxOf(existing.steps, snapshot.steps),
+        <span class="c">// Các chỉ số khác lấy giá trị MỚI nếu có số, nếu không thì GIỮ số cũ.</span>
+        <span class="c">// Nhờ vậy lần sync thiếu quyền Health Connect không xoá mất dữ liệu đã ghi trước đó.</span>
+        sleepHours = <span class="k">if</span> (snapshot.sleepHours &gt; <span class="n">0.0</span>) snapshot.sleepHours <span class="k">else</span> existing.sleepHours,
+        heartRate = <span class="k">if</span> (snapshot.heartRate &gt; <span class="n">0.0</span>) snapshot.heartRate <span class="k">else</span> existing.heartRate,
+        activeCalories = <span class="k">if</span> (snapshot.activeCalories &gt; <span class="n">0.0</span>) snapshot.activeCalories <span class="k">else</span> existing.activeCalories,
+        recordedAt = System.currentTimeMillis()
+    )
+)</code></pre>
+      <p class="small">
+        Dọn dẹp: mỗi lần sync gọi <code>deleteOldData(now − 30 ngày)</code> — giữ 30 ngày lịch sử.
+        Không ghi hàng toàn số 0 để không làm nhiễu phân tích của Rule Engine.
+      </p>
+
+      <h3>2.4. Bảng <code>app_settings</code> — thiết lập người dùng</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Cột</th><th>Kiểu</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td><code>settingKey</code></td><td><code>TEXT PK</code></td><td>Tên thiết lập</td></tr>
+          <tr><td><code>settingValue</code></td><td><code>TEXT</code></td><td>Giá trị (luôn lưu dạng chuỗi)</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout tip">
+        <span class="callout__title">Vì sao chọn bảng khoá–giá trị</span>
+        <p>
+          Thêm một thiết lập mới sau này <strong>không cần migration</strong> — chỉ cần thêm một hằng số khoá.
+          Hiện có <strong>năm</strong> khoá, do <code>SettingsRepositoryImpl</code> quản lý:
+        </p>
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th>Khoá</th><th>Giá trị</th><th>Ghi chú</th></tr></thead>
+          <tbody>
+            <tr><td><code>sleep_bedtime_minutes</code></td><td><code>0..1439</code></td><td>Phút trong ngày, <strong>không</strong> phải <code>LocalTime.toString()</code> ⇒ không phụ thuộc locale, không cần TypeConverter</td></tr>
+            <tr><td><code>sleep_wake_minutes</code></td><td><code>0..1439</code></td><td>Như trên</td></tr>
+            <tr><td><code>cloud_sync_enabled</code></td><td><code>true/false</code></td><td>Mặc định TẮT; giá trị hỏng ⇒ rơi về <code>false</code> (hướng an toàn)</td></tr>
+            <tr><td><code>cloud_sync_consent_at</code></td><td>epoch ms</td><td>Mốc chặn: chỉ log có <code>loggedAt &gt;= mốc</code> mới được tải lên</td></tr>
+            <tr><td><code>health_connect_data_enabled</code></td><td><code>true/false</code></td><td>Nguồn dữ liệu của thẻ "Tóm tắt sức khỏe" ở Trang chủ: <code>true</code> = đọc trực tiếp Health Connect; <code>false</code> (mặc định) = dùng bản chụp trong app; giá trị hỏng ⇒ rơi về <code>false</code> (hướng an toàn)</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <h3>2.5. DAO — bốn cổng truy vấn</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>DAO</th><th>Hàm tiêu biểu</th><th>Vì sao tồn tại</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HabitDao</code></td>
+            <td><code>getAllActiveHabits()</code> (Flow)<br><code>insertHabit()</code> / <code>updateHabit()</code> / <code>softDeleteHabit()</code></td>
+            <td>Tách rõ <code>insert</code> và <code>update</code> để không kích hoạt CASCADE</td>
+          </tr>
+          <tr>
+            <td><code>HabitLogDao</code></td>
+            <td><code>getLogsFromTimestamp(fromTs)</code> (Flow)<br><code>getUnsyncedLogs()</code> / <code>markAsSynced(id)</code></td>
+            <td>UI đọc theo <em>mốc thời gian</em>; worker đọc theo cờ <code>isDirty</code></td>
+          </tr>
+          <tr>
+            <td><code>HealthDataDao</code></td>
+            <td><code>getLatestSince(fromTs)</code><br><code>getLatestHeartRateSince(fromTs)</code><br><code>getHealthDataSince(fromTs)</code> (Flow)</td>
+            <td>Ba truy vấn "từ mốc thời gian" phục vụ luật "đọc lại từ đầu ngày", lịch sử 7 ngày, và nguồn <strong>"dữ liệu trong app"</strong> của Trang chủ (<code>getLatestSince</code> → <code>getTodayStoredHealthData()</code>)</td>
+          </tr>
+          <tr>
+            <td><code>SettingsDao</code></td>
+            <td><code>getAll()</code> / <code>observeAll()</code> (Flow)<br><code>putAll(list)</code></td>
+            <td>Ghi nhiều thiết lập trong <strong>một</strong> câu lệnh; Flow để UI luôn khớp DB</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Enum được lưu dạng chuỗi tên (<code>value.name</code>) nhờ <code>Converters</code> — dễ đọc khi
+        mở DB bằng công cụ, và không phụ thuộc thứ tự khai báo enum.
+      </p>
+
+      <h2>3. Migration — nâng cấp schema không mất dữ liệu</h2>
+      <div class="callout warn">
+        <span class="callout__title">Bối cảnh: vì sao migration quan trọng ở đây</span>
+        <p>
+          Trước đây <code>DatabaseModule</code> dùng <code>fallbackToDestructiveMigration()</code>:
+          mỗi lần tăng <code>version</code>, Room <strong>xoá sạch mọi bảng</strong> rồi tạo lại ⇒ người
+          dùng mất toàn bộ thói quen và nhật ký. Nay đã bỏ hẳn; mỗi bước tăng version có một
+          <code>Migration</code> giữ nguyên dữ liệu.
+        </p>
+      </div>
+
+      <h3>3.1. Bản đồ version</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Version</th><th>Thay đổi</th><th>Migration</th></tr></thead>
+        <tbody>
+          <tr><td><b>1</b></td><td><code>habits</code> chưa có <code>timeOfDay</code>/<code>frequency</code>; <code>habit_logs</code> chưa có <code>targetValueAtTime</code>; chưa có <code>health_data_history</code></td><td>—</td></tr>
+          <tr><td><b>2</b></td><td>Thêm 3 cột trên</td><td><code>MIGRATION_1_2</code></td></tr>
+          <tr><td><b>3</b></td><td>Thêm bảng <code>health_data_history</code></td><td><code>MIGRATION_2_3</code></td></tr>
+          <tr><td><b>4</b></td><td>Thêm bảng <code>app_settings</code></td><td><code>MIGRATION_3_4</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>3.2. <code>MIGRATION_1_2</code> — thêm cột và <strong>backfill</strong></h3>
+<pre><code>ALTER TABLE `habits` ADD COLUMN `timeOfDay` TEXT NOT NULL DEFAULT 'ALL_DAY'
+ALTER TABLE `habits` ADD COLUMN `frequency` TEXT NOT NULL DEFAULT 'DAILY'
+ALTER TABLE `habit_logs` ADD COLUMN `targetValueAtTime` REAL NOT NULL DEFAULT 0
+
+<span class="c">-- Log cũ chưa lưu mục tiêu tại thời điểm ghi.</span>
+<span class="c">-- Nếu để 0, "Chỉ số sinh lực" sẽ tính toàn bộ dữ liệu TRƯỚC khi nâng cấp thành 0%.</span>
+<span class="c">-- ⇒ lấy mục tiêu hiện tại của chính thói quen đó để backfill.</span>
+UPDATE `habit_logs`
+SET `targetValueAtTime` = COALESCE(
+    (SELECT `targetValue` FROM `habits` WHERE `habits`.`id` = `habit_logs`.`habitId`),
+    0
+)
+WHERE `targetValueAtTime` = 0</code></pre>
+      <p>
+        Hai giá trị mặc định được chọn để khớp đúng ngữ nghĩa trước khi nâng cấp: mọi thói quen cũ đều
+        được hiểu là "Cả ngày" và "Hàng ngày".
+      </p>
+
+      <h3>3.3. <code>MIGRATION_2_3</code> và <code>MIGRATION_3_4</code></h3>
+      <p>Chỉ tạo bảng mới — hai câu DDL phải <strong>khớp từng ký tự</strong> với <code>createSql</code> mà Room sinh ra trong <code>app/schemas/…/3.json</code> và <code>4.json</code>:</p>
+<pre><code><span class="c">-- 2 → 3</span>
+CREATE TABLE IF NOT EXISTS `health_data_history` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  `steps` INTEGER NOT NULL,
+  `sleepHours` REAL NOT NULL,
+  `heartRate` REAL NOT NULL,
+  `activeCalories` REAL NOT NULL,
+  `recordedAt` INTEGER NOT NULL)
+
+<span class="c">-- 3 → 4</span>
+CREATE TABLE IF NOT EXISTS `app_settings` (
+  `settingKey` TEXT NOT NULL,
+  `settingValue` TEXT NOT NULL,
+  PRIMARY KEY(`settingKey`))</code></pre>
+      <div class="callout note">
+        <span class="callout__title">Vì sao DDL phải khớp chính xác</span>
+        <p>
+          Room kiểm tra schema sau khi chạy migration. Lệch một ký tự (khoảng trắng, thứ tự cột,
+          <code>NOT NULL</code>) sẽ làm Room báo <code>Migration didn't properly handle: app_settings</code>
+          khi mở DB. Repo lưu schema JSON ở <code>app/schemas/com.healthyai.app.data.local.AppDatabase/</code>
+          (1.json…4.json) chính là để đối chiếu việc này.
+        </p>
+      </div>
+
+      <h3>3.4. Hai quy tắc khi thêm version mới</h3>
+      <ol>
+        <li>Các câu lệnh <strong>chỉ dùng</strong> <code>ALTER TABLE … ADD COLUMN … DEFAULT</code> hoặc
+            <code>CREATE TABLE</code> — <strong>không</strong> DROP/RENAME bảng. Giữ nguyên bảng
+            <code>habit_logs</code> (đang có FK CASCADE) nên không có nguy cơ mất log.</li>
+        <li>Tăng <code>version</code> ở <code>AppDatabase</code>, thêm migration vào
+            <code>DatabaseMigrations.ALL</code>, cập nhật <code>DatabaseMigrations.DATABASE_VERSION</code>.
+            Test <code>DatabaseMigrationsTest</code> sẽ <strong>fail</strong> nếu dãy migration bị thiếu bước.</li>
+      </ol>
+      <p class="small">
+        Cách kiểm chứng không cần emulator: dựng DB ở version cũ bằng <code>sqlite3</code> từ schema cũ,
+        chạy các câu lệnh migration, rồi so <code>PRAGMA table_info / index_list / foreign_key_list</code>
+        với schema mới.
+      </p>
+
+      <h2>4. Bảo mật: khoá DB không còn nằm trong APK</h2>
+      <p>
+        Trước đây passphrase SQLCipher là hằng số viết cứng
+        <code>"REPLACE_WITH_SECURE_KEY_FROM_KEYSTORE"</code> ngay trong APK ⇒ bất kỳ ai có file
+        <code>healthy_ai_encrypted.db</code> (máy root, <code>adb backup</code>, file sao lưu) đều mở được.
+        Cơ chế hiện tại gồm bốn mảnh ghép.
+      </p>
+
+      <h3>4.1. Pipeline lấy passphrase</h3>
+      <div class="flow">
+        <span class="flow__step">DatabaseModule</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">DatabasePassphraseProvider.getOrCreate()</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">SharedPreferencesPassphraseVault<br><span class="small">healthy_ai_secure_store</span></span>
+        <span class="flow__arrow">↔</span>
+        <span class="flow__step">AndroidKeystorePassphraseCipher<br><span class="small">AES-256/GCM</span></span>
+      </div>
+<pre><code><span class="k">fun</span> getOrCreate(): DatabasePassphrase {
+    <span class="k">val</span> stored = vault.read()
+    <span class="k">if</span> (stored != <span class="k">null</span>) {
+        <span class="k">try</span> {
+            <span class="c">// Máy đã có passphrase ⇒ đọc lại đúng khoá cũ (KHÔNG sinh khoá mới)</span>
+            <span class="k">return</span> DatabasePassphrase(cipher.decrypt(stored), newlyCreated = <span class="k">false</span>)
+        } <span class="k">catch</span> (_: GeneralSecurityException) {
+            <span class="c">// Khoá Keystore mất/không giải mã được ⇒ rơi xuống nhánh sinh mới</span>
+        }
+    }
+
+    <span class="c">// Lần chạy đầu (hoặc khoá Keystore đã mất): sinh 32 byte ngẫu nhiên</span>
+    <span class="k">val</span> fresh = ByteArray(PASSPHRASE_LENGTH_BYTES).also(random::nextBytes)
+    <span class="c">// Ghi TRƯỚC khi trả khoá về tầng gọi — vault.commit() đồng bộ</span>
+    vault.write(cipher.encrypt(fresh))
+    <span class="k">return</span> DatabasePassphrase(fresh, newlyCreated = <span class="k">true</span>)
+}</code></pre>
+
+      <h3>4.2. Bốn mảnh ghép bảo mật</h3>
+      <div class="grid">
+        <div class="card">
+          <span class="card__icon">🔑</span>
+          <h4>Khoá sinh ngẫu nhiên</h4>
+          <p>32 byte = 256-bit entropy từ <code>SecureRandom</code>, khớp chuẩn AES-256 của SQLCipher. Sinh <strong>một lần</strong> cho mỗi máy.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">🛡️</span>
+          <h4>Bọc bằng Android Keystore</h4>
+          <p>Alias <code>healthy_ai_sqlcipher_key_v1</code>, khoá AES-256/GCM sinh trong Keystore. Khoá <strong>không rời khỏi thiết bị</strong> (có TEE/Secure Element thì không rời phần cứng).</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">💾</span>
+          <h4>Chỉ lưu bản mã</h4>
+          <p>Prefs chỉ chứa <code>Base64(IV ‖ ciphertext+tag)</code>. Mỗi lần ghi ra bản mã khác nhau (IV 12 byte, tag 128 bit).</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">🚫</span>
+          <h4>Không log khoá</h4>
+          <p><code>DatabasePassphrase.toString()</code> cố tình in <code>DatabasePassphrase(***, …)</code> để khoá không lọt vào log/crash report.</p>
+        </div>
+      </div>
+
+      <div class="callout danger">
+        <span class="callout__title">Vì sao ghi prefs bằng <code>commit()</code> mà không phải <code>apply()</code></span>
+        <p>
+          Passphrase được lưu <em>ngay trước khi</em> Room tạo/mở file DB. Nếu tiến trình bị hệ thống kill
+          trong lúc bản ghi còn nằm trong hàng đợi bất đồng bộ của <code>apply()</code>, lần mở sau sẽ
+          không tìm thấy passphrase ⇒ sinh khoá mới ⇒ DB cũ không mở được nữa và bị xoá ⇒
+          <strong>mất dữ liệu</strong>. Ghi đồng bộ loại bỏ đúng khe thời gian này; chi phí chỉ là một lần
+          ghi file XML rất nhỏ, xảy ra ở lần chạy đầu hoặc khi khoá Keystore đã mất.
+        </p>
+      </div>
+
+      <h3>4.3. Rekey DB của bản cũ — <code>LegacyDatabaseKeyMigration</code></h3>
+      <p>
+        Máy đã cài bản cũ vẫn còn file DB mã hoá bằng khoá hard-code. Mở bằng khoá mới sẽ lỗi
+        <em>"file is not a database"</em>; <code>fallbackToDestructiveMigration()</code> không cứu được
+        (nó chỉ xử lý lệch <code>version</code> schema, mà version ở đây không đổi) ⇒ app crash vĩnh viễn.
+        Cách xử lý: đúng <strong>một lần</strong> trên mỗi máy, mở DB cũ bằng khoá cũ rồi
+        <code>PRAGMA rekey</code> sang khoá mới.
+      </p>
+<pre><code><span class="k">private fun</span> rekey(path: String, newPassphrase: ByteArray) {
+    <span class="k">val</span> database = SQLiteDatabase.openDatabase(
+        path, LEGACY_PASSPHRASE.toByteArray(Charsets.UTF_8), <span class="k">null</span>,
+        SQLiteDatabase.OPEN_READWRITE, <span class="k">null</span>
+    )
+    <span class="k">try</span> {
+        database.execPragma(<span class="s">"PRAGMA wal_checkpoint(TRUNCATE)"</span>)  <span class="c">// ① đẩy hết frame WAL vào file chính</span>
+        database.execPragma(<span class="s">"PRAGMA journal_mode=DELETE"</span>)     <span class="c">// ② thoát WAL (rekey khi còn frame</span>
+                                                          <span class="c">//    trong WAL có thể trộn trang khoá cũ/mới → hỏng DB)</span>
+        database.changePassword(newPassphrase)             <span class="c">// ③ đổi khoá</span>
+        database.execPragma(<span class="s">"PRAGMA journal_mode=WAL"</span>)        <span class="c">// ④ bật lại WAL như Room vẫn dùng</span>
+    } <span class="k">finally</span> {
+        database.close()
+    }
+}</code></pre>
+      <p>
+        Hàm được gọi <strong>chỉ khi</strong> <code>newlyCreated == true</code> (lúc đó mọi file DB còn
+        sót lại chắc chắn thuộc bản cũ). Nếu rekey thất bại (file hỏng, DB do bản build khác tạo) thì
+        <strong>xoá DB để tạo mới sạch</strong> — mất dữ liệu cục bộ, nhưng tránh vòng lặp crash.
+        Theo dõi bằng <code>adb logcat -s DatabaseKeyMigration</code>.
+      </p>
+
+      <h3>4.4. <code>allowBackup="false"</code></h3>
+      <p>
+        Manifest đặt <code>android:allowBackup="false"</code> một cách có chủ ý: DB SQLCipher và prefs
+        <em>bị</em> auto-backup lên Google Drive, nhưng khoá mở DB nằm trong Android Keystore —
+        <strong>không backup được</strong>. Restore trên máy mới sẽ mở DB thất bại và rơi vào nhánh xoá DB
+        ⇒ mất sạch dữ liệu. Tắt hẳn backup vừa tránh bản sao rò rỉ dữ liệu sức khỏe, vừa tránh một lần
+        "restore" xoá dữ liệu của người dùng.
+      </p>
+
+      <h3>4.5. Hai SharedPreferences khác (không mã hoá — cố ý)</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>File prefs</th><th>Nội dung</th><th>Ghi bằng</th><th>Vì sao không bọc Keystore</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>healthy_ai_step_counter</code></td>
+            <td><code>date</code>, <code>session_id</code>, <code>baseline</code>, <code>offset</code>, <code>last_cumulative</code>, <code>last_sample_ms</code>, <code>today_steps</code></td>
+            <td><code>commit()</code> khi đổi mốc ngày/phiên/baseline/offset;<br><code>apply()</code> cho mẫu thường, tối đa mỗi 15 giây</td>
+            <td>Chỉ là số đếm bước, không nhạy cảm</td>
+          </tr>
+          <tr>
+            <td><code>healthy_ai_sleep_tracker</code></td>
+            <td><code>night</code>, <code>sleep_millis</code>, <code>last_sample_ms</code>, <code>last_was_asleep</code>, <code>previous_night</code>, <code>previous_sleep_millis</code></td>
+            <td><code>commit()</code> mọi lần (mẫu cách nhau cả chục phút nên chi phí không đáng kể)</td>
+            <td>Chỉ là số phút ngủ ước lượng</td>
+          </tr>
+          <tr>
+            <td><code>healthy_ai_secure_store</code></td>
+            <td><code>sqlcipher_passphrase_v1</code> = bản mã</td>
+            <td><code>commit()</code> — xem lý do ở trên</td>
+            <td>Đây <em>chính là</em> vault: nội dung đã được mã hoá bằng khoá Keystore</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">
+        Việc thêm khoá <code>session_id</code> (cho luật "chỉ đếm bước khi app đang chạy") <strong>không cần</strong>
+        migration: khoá thiếu được đọc là chuỗi rỗng = "phiên khác", tức hướng an toàn (không cộng thêm bước nào).
+      </p>
+
+      <h2>5. Health Connect</h2>
+      <p>
+        Health Connect là API IPC của Android — dữ liệu đi qua tiến trình hệ thống, <strong>không</strong>
+        qua mạng. <code>HealthConnectDataSourceImpl</code> chỉ xin <strong>bốn quyền ĐỌC</strong>:
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Quyền</th><th>Record</th><th>Dùng cho</th></tr></thead>
+        <tbody>
+          <tr><td><code>health.READ_STEPS</code></td><td><code>StepsRecord</code></td><td>Tổng bước từ 00:00 hôm nay</td></tr>
+          <tr><td><code>health.READ_SLEEP</code></td><td><code>SleepSessionRecord</code></td><td>Tổng giờ ngủ + chi tiết pha Sâu/Nông/REM</td></tr>
+          <tr><td><code>health.READ_HEART_RATE</code></td><td><code>HeartRateRecord</code></td><td>Nhịp tim trung bình 00:00 → hiện tại</td></tr>
+          <tr><td><code>health.READ_ACTIVE_CALORIES_BURNED</code></td><td><code>ActiveCaloriesBurnedRecord</code></td><td>Calo hoạt động hôm nay</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">
+        Manifest <strong>không</strong> khai <code>WRITE_STEPS</code>/<code>WRITE_SLEEP</code>: không có code nào
+        ghi lên Health Connect, nên xin quyền ghi chỉ làm người dùng và Play review nghi ngờ.
+      </p>
+
+      <h3>5.1. Bốn truy vấn chính</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Hàm</th><th>Metric</th><th>Khoảng thời gian</th></tr></thead>
+        <tbody>
+          <tr><td><code>getTodaySteps()</code></td><td><code>StepsRecord.COUNT_TOTAL</code></td><td>00:00 hôm nay → hiện tại</td></tr>
+          <tr><td><code>getTodaySleepHours()</code></td><td><code>SleepSessionRecord.SLEEP_DURATION_TOTAL</code></td><td><strong>18:00 hôm qua</strong> → hiện tại (để bắt trọn giấc ngủ qua đêm)</td></tr>
+          <tr><td><code>getTodayHeartRate()</code></td><td><code>HeartRateRecord.BPM_AVG</code></td><td>00:00 hôm nay → hiện tại</td></tr>
+          <tr><td><code>getTodayActiveCalories()</code></td><td><code>ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL</code></td><td>00:00 hôm nay → hiện tại</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout note">
+        <span class="callout__title">Nhịp tim đã đổi từ "1 giờ gần nhất" sang "trung bình hôm nay"</span>
+        <p>
+          Trước đây <code>getRecentHeartRate()</code> lấy nhịp của 1 giờ gần nhất, nên lúc 00:05 hôm nay
+          vẫn còn dính số đo của tối hôm qua. Nay là <code>getTodayHeartRate()</code> — nhịp
+          <strong>trung bình từ 00:00 hôm nay tới hiện tại</strong>. Ngoài giao diện, điều này còn đổi cả
+          con số mà Rule Engine dùng để quyết định "có nên gợi ý thư giãn không".
+        </p>
+      </div>
+
+      <p class="small">
+        Thẻ "Tóm tắt sức khỏe" ở Trang chủ chỉ gọi các truy vấn này khi switch
+        <strong>"Dùng dữ liệu Health Connect"</strong> <strong>BẬT</strong>. Khi switch <strong>TẮT</strong> (mặc
+        định), thẻ đọc bản chụp đã lưu trong <code>health_data_history</code> của hôm nay
+        (<code>HealthDataRepository.getTodayStoredHealthData()</code>) và <strong>không</strong> gọi Health Connect
+        để lấy số.
+      </p>
+
+      <h3>5.2. Chi tiết pha giấc ngủ — hai mức phân giải</h3>
+      <p>
+        Không phải thiết bị nào cũng chia pha giấc ngủ. <code>getSleepStageBreakdown()</code> đọc
+        <code>SleepSessionRecord</code> và phân loại <strong>theo từng phiên</strong>:
+      </p>
+<pre><code>response.records.forEach { session -&gt;
+    <span class="k">var</span> sessionHasStages = <span class="k">false</span>
+    session.stages.forEach { stage -&gt;
+        <span class="k">val</span> minutes = Duration.between(stage.startTime, stage.endTime).toMinutes()
+        <span class="k">when</span> (stage.stage) {
+            STAGE_TYPE_DEEP  -&gt; { deepMinutes  += minutes; sessionHasStages = <span class="k">true</span> }
+            STAGE_TYPE_LIGHT -&gt; { lightMinutes += minutes; sessionHasStages = <span class="k">true</span> }
+            STAGE_TYPE_REM   -&gt; { remMinutes   += minutes; sessionHasStages = <span class="k">true</span> }
+        }
+    }
+
+    <span class="k">if</span> (!sessionHasStages) {
+        <span class="c">// Phiên ngủ KHÔNG chia pha (STAGE_TYPE_SLEEPING/UNKNOWN…) — trước đây bị bỏ qua</span>
+        <span class="c">// hoàn toàn nên thẻ giấc ngủ hiện trạng thái rỗng dù Health Connect CÓ dữ liệu.</span>
+        unstagedMinutes += Duration.between(session.startTime, session.endTime).toMinutes()
+    }
+}</code></pre>
+      <p>
+        Kết quả là <code>SleepStageBreakdown</code> với <code>deep/light/rem</code> và
+        <code>unstagedMinutes</code>. Hai cờ dẫn xuất phân biệt rạch ròi ba trạng thái:
+        <code>hasStages</code> (máy chia pha), <code>hasData</code> (có dữ liệu ngủ, chia pha <em>hoặc</em>
+        chỉ tổng thời lượng), và cả hai <code>false</code> (không có dữ liệu ngủ).
+      </p>
+      <p class="small">
+        Lưu ý thiết kế: <strong>phiên chia pha chỉ tính theo pha</strong> để không cộng trùng cùng một khoảng
+        thời gian hai lần. Dữ liệu này đọc <strong>trực tiếp</strong> từ Health Connect, không qua Room —
+        nhờ vậy không cần thêm cột vào schema.
+      </p>
+
+      <h2>6. Firebase (tuỳ chọn)</h2>
+      <h3>6.1. Auth</h3>
+      <p>
+        <code>AuthRepositoryImpl</code> bọc <code>FirebaseAuth</code>. Phiên do Firebase tự persist trên máy,
+        nên mở lại app là vào thẳng Home. Tên hiển thị có quy tắc dự phòng:
+      </p>
+<pre><code><span class="k">override val</span> currentUserName: String?
+    <span class="k">get</span>() = auth.currentUser?.let { user -&gt;
+        user.displayName?.takeIf { it.isNotBlank() }            <span class="c">// ưu tiên displayName</span>
+            ?: user.email?.substringBefore('@')?.takeIf { it.isNotBlank() }  <span class="c">// tài khoản tạo trong app → phần trước @</span>
+    }</code></pre>
+      <p>
+        Ở <strong>chế độ khách</strong> hàm trả <code>null</code> ⇒ màn Trang chủ <em>không</em> hiện dòng
+        tên nào (thay vì một tên hard-code).
+      </p>
+
+      <h3>6.2. Firestore</h3>
+      <p>
+        Cấu trúc: <code>users/{uid}/habit_logs/{logId}</code>, do <code>FirestoreSyncDataSource</code> ghi.
+        Chỉ <strong>một chiều</strong> (đẩy lên), chưa có kéo về.
+      </p>
+      <p>Nhưng <em>log nào được phép rời thiết bị</em> lại do tầng domain quyết định — xem
+         <a href="logic-ai.html#9-cong-rieng-tu-khi-nao-nhat-ky-duoc-phep-roi-may">CloudSyncPolicy</a>.</p>
+
+      <h2>7. Cổng HTTP ra ngoài</h2>
+      <p>
+        Chỉ có <strong>một</strong> cổng ra mạng, và nó cố ý đơn giản nhất có thể:
+        <code>HttpURLConnection</code> của JDK thay vì thêm OkHttp (yêu cầu chỉ là một POST JSON).
+      </p>
+<pre><code><span class="k">class</span> HttpUrlConnectionPost <span class="k">@Inject constructor</span>() : HttpPost {
+    <span class="k">override suspend fun</span> post(url: String, headers: Map&lt;String, String&gt;, body: String): HttpPostResponse? =
+        withContext(Dispatchers.IO) {          <span class="c">// ⚠ I/O mạng: gọi từ Main thread sẽ ném NetworkOnMainThreadException</span>
+            <span class="k">var</span> connection: HttpURLConnection? = <span class="k">null</span>
+            <span class="k">try</span> {
+                connection = (URL(url).openConnection() <span class="k">as</span> HttpURLConnection).apply {
+                    requestMethod = <span class="s">"POST"</span>
+                    connectTimeout = <span class="n">15_000</span>
+                    readTimeout = <span class="n">60_000</span>     <span class="c">// ảnh gửi kèm nên phản hồi có thể lâu</span>
+                    doOutput = <span class="k">true</span>
+                    setRequestProperty(<span class="s">"Content-Type"</span>, <span class="s">"application/json; charset=utf-8"</span>)
+                    headers.forEach { (name, value) -&gt; setRequestProperty(name, value) }
+                }
+                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+
+                <span class="k">val</span> code = connection.responseCode
+                <span class="c">// Lỗi HTTP nằm ở errorStream, không phải inputStream — vẫn đọc để biết lý do thật</span>
+                <span class="k">val</span> stream = <span class="k">if</span> (code <span class="k">in</span> <span class="n">200</span>..<span class="n">299</span>) connection.inputStream <span class="k">else</span> connection.errorStream
+                <span class="k">val</span> text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                HttpPostResponse(code, text)
+            } <span class="k">catch</span> (e: CancellationException) {
+                <span class="k">throw</span> e                                        <span class="c">// đúng quy ước của repo</span>
+            } <span class="k">catch</span> (e: Exception) {
+                <span class="k">null</span>          <span class="c">// mất mạng / DNS / timeout ⇒ null, phân biệt với "server trả lỗi"</span>
+            } <span class="k">finally</span> {
+                connection?.disconnect()
+            }
+        }
+}</code></pre>
+      <p>
+        Hợp đồng rõ ràng: <code>null</code> = <em>không gọi được</em>; <code>HttpPostResponse(code, body)</code>
+        = <em>đã gọi được</em> (kể cả khi code là 500). Nhờ vậy <code>GeminiFoodInsightSource</code>
+        tách được lỗi mạng khỏi lỗi nghiệp vụ.
+      </p>
+
+      <h2>8. Xử lý ảnh trước khi gửi AI</h2>
+      <p>Hai đường vào khác nhau, nhưng hội tụ về cùng một chuẩn:</p>
+      <div class="grid">
+        <div class="card">
+          <span class="card__icon">📷</span>
+          <h4>Ảnh chụp qua CameraX</h4>
+          <p>Đi thẳng vào <code>ImageJpegEncoder.encode(bitmap)</code>: thu nhỏ cạnh dài ≤ 1280 px (nếu cần) + nén JPEG chất lượng 80, chạy trên <code>Dispatchers.Default</code>.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">🖼️</span>
+          <h4>Ảnh chọn từ thư viện</h4>
+          <p>Qua <code>GalleryImageLoader.load()</code> trước: đọc kích thước bằng <code>inJustDecodeBounds</code>, tính <code>inSampleSize</code> (luỹ thừa 2) rồi mới giải mã, cuối cùng xoay theo EXIF.</p>
+        </div>
+      </div>
+<pre><code><span class="c">// GalleryImageLoader — hai bước bắt buộc với ảnh trong thư viện</span>
+
+<span class="c">// ① Đọc kích thước TRƯỚC khi giải mã (không tốn bộ nhớ)</span>
+<span class="k">val</span> bounds = BitmapFactory.Options().apply { inJustDecodeBounds = <span class="k">true</span> }
+resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, <span class="k">null</span>, bounds) }
+
+<span class="c">// ② Tính hệ số thu nhỏ (luỹ thừa 2 — đúng yêu cầu của BitmapFactory) rồi mới giải mã</span>
+<span class="k">private fun</span> sampleSizeFor(width: Int, height: Int, maxDimension: Int): Int {
+    <span class="k">var</span> sample = <span class="n">1</span>
+    <span class="k">while</span> (max(width, height) / (sample * <span class="n">2</span>) &gt;= maxDimension) sample *= <span class="n">2</span>
+    <span class="k">return</span> sample
+}
+
+<span class="c">// ③ Xoay theo cờ EXIF: ảnh chụp dọc thường lưu dạng NGANG kèm cờ orientation;</span>
+<span class="c">//    thiếu bước này thì món ăn bị quay 90° khi AI phân tích.</span></code></pre>
+      <p class="small">
+        1280 px đủ để mô hình nhận ra món ăn mà vẫn nhẹ: ảnh 4:3 còn ~1,3 MP (~5 MB trong bộ nhớ) so với
+        ~48 MB của ảnh 12 MP nguyên bản. Cả hai lớp dùng chung hằng số 1280 px để <em>mọi</em> đường vào
+        đều qua cùng một chuẩn.
+      </p>
+      <p>
+        Điểm quan trọng về riêng tư: ảnh <strong>không</strong> được lưu ra đĩa.
+        <code>CameraViewModel</code> chỉ giữ <em>một</em> <code>ByteArray</code> JPEG của lượt phân tích
+        gần nhất trong RAM (để nút "Thử lại" chạy lại được), và xoá nó khi rời màn.
+      </p>
+
+      <h2>9. Ba cảm biến của máy</h2>
+
+      <h3>9.1. <code>AndroidStepCounterSensor</code> — <code>TYPE_STEP_COUNTER</code></h3>
+      <p>
+        Chọn <code>TYPE_STEP_COUNTER</code> (không phải <code>TYPE_STEP_DETECTOR</code>) vì ba lý do:
+        đếm <strong>ở phần cứng</strong> nên gần như không tốn pin và vẫn đếm khi màn hình tắt;
+        không cần foreground service để giữ việc đếm khi chạy nền; và trả về <strong>giá trị luỹ kế</strong>
+        nên tầng trên tự quyết định lấy phần nào.
+      </p>
+      <div class="callout warn">
+        <span class="callout__title">Một cái bẫy Android đã được xử lý: thẻ xin quyền "không bao giờ hiện"</span>
+        <p>
+          Từ Android 10, cảm biến bước chân <strong>bị ẩn</strong> với app chưa có quyền
+          <code>ACTIVITY_RECOGNITION</code>: <code>getDefaultSensor(TYPE_STEP_COUNTER)</code> trả
+          <code>null</code>. Nếu chỉ dựa vào đó thì <code>isAvailable</code> luôn <code>false</code> lúc
+          chưa cấp quyền, và thẻ xin quyền ở màn Trang chủ không bao giờ hiện — người dùng rơi vào thế
+          bế tắc <em>"muốn cấp quyền phải thấy thẻ, muốn thấy thẻ phải có quyền"</em>.
+          Vì vậy <code>isAvailable</code> kiểm thêm khả năng phần cứng qua
+          <code>PackageManager.FEATURE_SENSOR_STEP_COUNTER</code> — cờ này <strong>không</strong> phụ thuộc quyền.
+        </p>
+<pre><code><span class="k">override val</span> isAvailable: Boolean
+    <span class="k">get</span>() = stepCounterSensor != <span class="k">null</span> ||
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_COUNTER)</code></pre>
+      </div>
+      <p class="small">
+        Emulator (và một số máy rẻ tiền) không có cả cờ lẫn cảm biến ⇒ app không hiện thẻ xin quyền, và
+        số bước vẫn lấy từ Health Connect.
+      </p>
+
+      <h3>9.2. <code>AndroidSleepSensor</code> — ánh sáng + gia tốc + màn hình</h3>
+      <p>Ba tín hiệu, <strong>không cần quyền nào</strong>:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tín hiệu</th><th>Nguồn</th><th>Cách đọc</th></tr></thead>
+        <tbody>
+          <tr><td>Màn hình có đang được dùng?</td><td><code>PowerManager.isInteractive</code></td><td>Đọc tức thời</td></tr>
+          <tr><td>Phòng có tối?</td><td><code>Sensor.TYPE_LIGHT</code></td><td>Giá trị <em>cuối cùng</em> nhận được trong cửa sổ ngắn (<code>LIGHT_SETTLE_MS</code>)</td></tr>
+          <tr><td>Điện thoại có bất động?</td><td><code>Sensor.TYPE_ACCELEROMETER</code></td><td>Độ lệch <strong>lớn nhất</strong> khỏi 1g trong cửa sổ lấy mẫu</td></tr>
+        </tbody>
+      </table>
+      </div>
+<pre><code><span class="k">private suspend fun</span> readPeakMotion(manager: SensorManager, sensor: Sensor, windowMs: Long): Float {
+    <span class="k">var</span> peak = <span class="n">0f</span>
+    <span class="k">val</span> listener = <span class="k">object</span> : SensorEventListener {
+        <span class="k">override fun</span> onSensorChanged(event: SensorEvent) {
+            <span class="k">val</span> magnitude = sqrt(x*x + y*y + z*z)
+            <span class="c">// Dùng giá trị LỚN NHẤT (không phải trung bình) để một cử động ngắn</span>
+            <span class="c">// cũng đủ kết luận "đang thức".</span>
+            peak = max(peak, abs(magnitude - GRAVITY_M_S2))
+        }
+    }
+    manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+    <span class="k">try</span> {
+        delay(windowMs.coerceAtLeast(MIN_SAMPLE_WINDOW_MS))
+    } <span class="k">finally</span> {
+        manager.unregisterListener(listener)   <span class="c">// ⚠ gỡ listener KỂ CẢ khi coroutine bị huỷ</span>
+    }
+    <span class="k">return</span> peak
+}</code></pre>
+      <p>
+        Nghe cảm biến liên tục sẽ tốn pin, nên lớp này <strong>chỉ lấy mẫu theo yêu cầu</strong>: nghe
+        trong vài giây rồi gỡ listener. Nhờ vậy <code>SleepTrackingWorker</code> chạy thưa (15 phút/lần)
+        mà <strong>không cần foreground service</strong> và không tốn pin suốt đêm.
+      </p>
+      <p>
+        Máy không có cảm biến ánh sáng ⇒ trả <code>0f</code> (coi như "tối"); khi đó hai tín hiệu còn lại
+        vẫn phải đúng mới kết luận là ngủ.
+      </p>
+
+      <h3>9.3. <code>CameraPpgAnalyzer</code> — đọc kênh đỏ từ khung hình</h3>
+      <p>
+        Đây là <code>ImageAnalysis.Analyzer</code> của CameraX. Mỗi khung hình, nó tính
+        <strong>giá trị đỏ trung bình của vùng giữa khung</strong> — đúng vùng ngón tay che lên (đèn flash
+        và ống kính nằm cạnh nhau ở mặt sau máy).
+      </p>
+<pre><code><span class="k">override fun</span> analyze(image: ImageProxy) {
+    <span class="k">try</span> {
+        <span class="k">val</span> red = meanRedOfCenterRoi(image)
+        <span class="k">if</span> (red != <span class="k">null</span>) onSample(red, image.imageInfo.timestamp / NANOS_PER_MILLI)
+    } <span class="k">finally</span> {
+        image.close()   <span class="c">// ⚠ bắt buộc: không close thì ImageAnalysis hết bộ đệm và DỪNG phát khung hình</span>
+    }
+}</code></pre>
+      <p>Ba tối ưu đáng chú ý:</p>
+      <ul>
+        <li><strong>Chỉ đọc hai mặt phẳng <code>Y</code> và <code>V</code></strong> thay vì đổi cả khung sang
+            RGB. Vì YUV→RGB là phép biến đổi <em>tuyến tính</em>, trung bình kênh đỏ suy được từ trung bình
+            <code>Y</code> và <code>V</code>: <code>R = Y + 1.402·(V − 128)</code>. Đổi từng điểm ảnh là thừa
+            và chậm gấp nhiều lần ở 30 khung/giây.</li>
+        <li><strong>Lấy mẫu cách 4 điểm ảnh</strong> (<code>SAMPLE_STEP = 4</code>): vùng giữa ở 640×480 là
+            320×240 điểm ⇒ còn 4 800 mẫu — thừa để tính trung bình mà vẫn kịp 30 fps trên máy yếu.</li>
+        <li><strong>Giá trị trả về không bị cắt về 0..255</strong>: phần chênh lệch nhỏ giữa các khung hình
+            mới là thứ cần đo, cắt biên sẽ làm mất đúng phần tín hiệu đó.</li>
+      </ul>
+      <p class="small">
+        Toán quy đổi nằm ở <code>HeartRateMath.redFromYuvMeans()</code> (domain, test được JVM);
+        phần đọc bộ đệm nằm ở đây (data, chạm Android). Xem thuật toán đầy đủ ở
+        <a href="logic-sensors.html#4-do-nhip-tim-bang-camera-phep-do-ppg">trang Thuật toán cảm biến</a>.
+      </p>
+
+      <h2>10. Tra cứu nhanh: câu hỏi → file</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Câu hỏi</th><th>Đọc file</th></tr></thead>
+        <tbody>
+          <tr><td>Schema DB thế nào?</td><td><code>data/local/AppDatabase.kt</code> + <code>data/local/entity/</code></td></tr>
+          <tr><td>Nâng version schema làm sao?</td><td><code>data/local/migration/DatabaseMigrations.kt</code></td></tr>
+          <tr><td>Khoá DB sinh và lưu ở đâu?</td><td><code>data/local/security/DatabasePassphraseProvider.kt</code>, <code>AndroidPassphraseStorage.kt</code></td></tr>
+          <tr><td>DB bản cũ được rekey thế nào?</td><td><code>data/local/security/LegacyDatabaseKeyMigration.kt</code></td></tr>
+          <tr><td>Room được dựng ở đâu?</td><td><code>di/DatabaseModule.kt</code></td></tr>
+          <tr><td>Vì sao số bước "giữ" qua các lần đóng app?</td><td><code>data/local/steps/StepCounterStore.kt</code></td></tr>
+          <tr><td>Health Connect đọc gì?</td><td><code>data/healthconnect/HealthConnectDataSourceImpl.kt</code></td></tr>
+          <tr><td>Thẻ "Tóm tắt sức khỏe" lấy số từ đâu?</td><td><code>presentation/screen/home/HomeViewModel.kt</code> (<code>readActiveHealthData</code>) + <code>HealthDataRepository.getTodayStoredHealthData()</code> + <code>SettingsRepository.getHealthConnectData()</code> — nguồn do khoá <code>health_connect_data_enabled</code> quyết định</td></tr>
+          <tr><td>Log nào được đẩy lên Firestore?</td><td><code>domain/usecase/sync/CloudSyncPolicy.kt</code></td></tr>
+          <tr><td>Ảnh được gửi cho Gemini ra sao?</td><td><code>data/vision/GeminiFoodInsightSource.kt</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

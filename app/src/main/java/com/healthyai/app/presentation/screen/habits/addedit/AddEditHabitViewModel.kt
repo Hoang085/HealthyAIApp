@@ -25,6 +25,14 @@ data class AddEditHabitUiState(
     val targetValue: String = "",
     val unit: String = "ml",
     val timeOfDay: HabitTimeOfDay = HabitTimeOfDay.ALL_DAY,
+    /**
+     * Mốc tạo thói quen, đọc từ hàng đang sửa.
+     *
+     * Phải mang theo để "Cập nhật" ghi lại đúng giá trị cũ: `Habit` mặc định `createdAt = now`, mà
+     * danh sách thói quen sắp xếp theo `createdAt DESC` — nếu không giữ, mỗi lần sửa là thói quen
+     * nhảy lên đầu danh sách. Ở chế độ thêm mới, giá trị này là thời điểm mở màn (chính là lúc tạo).
+     */
+    val createdAt: Long = System.currentTimeMillis(),
     val isEditMode: Boolean = false,
     val isSaved: Boolean = false,
     /**
@@ -72,6 +80,7 @@ class AddEditHabitViewModel @Inject constructor(
                             targetValue = formatTargetValue(h.targetValue),
                             unit = h.unit,
                             timeOfDay = h.timeOfDay,
+                            createdAt = h.createdAt,
                             isEditMode = true
                         )
                     }
@@ -124,6 +133,8 @@ class AddEditHabitViewModel @Inject constructor(
             targetValue = target,
             unit = state.unit,
             timeOfDay = state.timeOfDay,
+            // Giữ nguyên mốc tạo của hàng đang sửa để "Cập nhật" không đẩy thói quen lên đầu danh sách.
+            createdAt = state.createdAt,
             // Tần suất hiện chỉ có "Hàng ngày" (mục 3 #30): mọi logic tiến độ/nhất quán/chỉ số sinh
             // lực đều xét theo ngày. Ghi thẳng DAILY để thói quen cũ lỡ lưu "Hàng tuần"/"Hàng tháng"
             // (chọn được ở bản trước nhưng không có tác dụng) được chuẩn hoá lại khi người dùng lưu.

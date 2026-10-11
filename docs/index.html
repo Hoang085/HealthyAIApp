@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="index.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tổng quan — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Tài liệu kỹ thuật hệ thống</div>
+      <h1>HealthMate — App theo dõi &amp; cải thiện thói quen sức khỏe</h1>
+      <p class="page-lead">
+        Tài liệu này giải thích <strong>toàn bộ</strong> hệ thống HealthMate: kiến trúc, tầng dữ liệu,
+        logic nghiệp vụ và các <strong>thuật toán</strong> app tự viết (đếm bước chân, ước lượng giấc ngủ,
+        đo nhịp tim bằng camera, sinh gợi ý cá nhân hóa, chấm điểm sinh lực, phân tích món ăn bằng AI).
+        Mỗi kết luận đều kèm tên file/hàm trong mã nguồn để bạn đọc thẳng vào code.
+      </p>
+
+      <div class="callout tip">
+        <span class="callout__title">Cách đọc tài liệu này</span>
+        <p>
+          Nếu bạn muốn hiểu nhanh: đọc trang này → <a href="architecture.html">Kiến trúc</a> →
+          <a href="logic-sensors.html">Thuật toán cảm biến</a>. Nếu bạn muốn đọc theo luồng dữ liệu
+          "từ cảm biến tới màn hình": <a href="data.html">Tầng dữ liệu</a> →
+          <a href="logic-ai.html">Rule Engine &amp; AI</a> → <a href="ui.html">Giao diện</a>.
+          Trang <a href="files.html">Bản đồ mã nguồn</a> là bảng tra cứu "muốn hiểu X thì đọc file nào".
+        </p>
+      </div>
+
+      <h2>1. App này là gì?</h2>
+      <p>
+        <strong>HealthMate</strong> là ứng dụng Android giúp người dùng <em>theo dõi</em> và <em>cải thiện</em>
+        thói quen sức khỏe cá nhân. App gồm bốn nhóm tính năng chính:
+      </p>
+
+      <div class="grid">
+        <div class="card">
+          <span class="card__icon">🎯</span>
+          <h4>Thói quen &amp; nhật ký</h4>
+          <p>Tạo thói quen theo 5 danh mục (Ngủ, Nước, Vận động, Dinh dưỡng, Thiền định), đặt mục tiêu,
+             ghi nhận hằng ngày. Dữ liệu lưu <strong>offline-first</strong> trong Room + SQLCipher.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">❤️</span>
+          <h4>Chỉ số sức khỏe</h4>
+          <p>Bước chân, giờ ngủ, nhịp tim, calo — đọc từ <strong>Health Connect</strong>, và khi máy
+             không có nguồn đó thì app <strong>tự đo bằng cảm biến/camera của chính điện thoại</strong>.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">🧠</span>
+          <h4>"AI" on-device</h4>
+          <p>Một <strong>Rule Engine</strong> thuần Kotlin chạy offline: phân tích 7 ngày dữ liệu và
+             sinh gợi ý cá nhân hóa, chấm <strong>Chỉ số sinh lực</strong> 0–100. Không cần mạng.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">📷</span>
+          <h4>AI cloud (Gemini)</h4>
+          <p>Chụp/chọn ảnh món ăn → gửi cho <strong>Gemini</strong> → trả về tên món tiếng Việt kèm
+             lợi ích và điều nên lưu ý. Đây là tính năng <strong>duy nhất</strong> đưa dữ liệu ra khỏi máy.</p>
+        </div>
+      </div>
+
+      <h2>2. Bản đồ tính năng → nơi cài đặt</h2>
+      <p class="small">Bảng này là điểm khởi đầu nhanh nhất: mỗi tính năng trỏ thẳng tới tầng xử lý của nó.</p>
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Tính năng</th><th>Xử lý ở đâu</th><th>Thuật toán / logic cốt lõi</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Tạo / sửa / xoá mềm thói quen</td>
+            <td><code>domain/usecase/habit/</code>, <code>data/repository/HabitRepositoryImpl</code></td>
+            <td>Chống trùng tên, <code>@Update</code> thay vì <code>REPLACE</code> để giữ log (FK CASCADE)</td>
+          </tr>
+          <tr>
+            <td>Ghi nhận nhật ký thói quen</td>
+            <td><code>presentation/screen/habits/</code>, <code>LogHabitUseCase</code></td>
+            <td><code>parseLogValue</code> chặn rỗng / NaN / ≤ 0</td>
+          </tr>
+          <tr>
+            <td>Đếm bước chân (không cần Health Connect)</td>
+            <td><code>data/steps/</code>, <code>data/local/steps/</code></td>
+            <td><strong>StepCounterMath</strong> — quy đổi luỹ kế → "bước hôm nay", theo <em>phiên chạy</em></td>
+          </tr>
+          <tr>
+            <td>Tự ước lượng giấc ngủ</td>
+            <td><code>data/sleep/</code>, <code>worker/SleepTrackingWorker</code></td>
+            <td><strong>SleepTrackerMath</strong> — khung giờ ngủ + ánh sáng + gia tốc + màn hình</td>
+          </tr>
+          <tr>
+            <td>Đo nhịp tim bằng camera + đèn flash</td>
+            <td><code>data/heartrate/</code>, <code>domain/usecase/heartrate/</code></td>
+            <td><strong>PpgAnalyzer + HeartRateMath</strong> — bỏ DC, tìm đỉnh, tự tương quan</td>
+          </tr>
+          <tr>
+            <td>Gợi ý "BLOOM AI" ở tab Phân tích</td>
+            <td><code>domain/usecase/HabitRuleEngine.kt</code></td>
+            <td><strong>HabitRuleEngine</strong> + <strong>SuggestionCatalog</strong> xoay mẹo theo ngày</td>
+          </tr>
+          <tr>
+            <td>Chỉ số sinh lực 0–100 + so tuần trước</td>
+            <td><code>domain/usecase/health/VitalityScoreMath.kt</code></td>
+            <td>Trung bình theo <strong>từng ngày</strong> của 3 thành phần, chuẩn hoá trọng số</td>
+          </tr>
+          <tr>
+            <td>Lịch sử sức khỏe 7 ngày + xu hướng giấc ngủ</td>
+            <td><code>health/HealthSummaryHistory.kt</code>, <code>health/SleepTrendMath.kt</code></td>
+            <td>Gom <strong>hàng mới nhất mỗi ngày</strong>, luôn đủ 7 dòng</td>
+          </tr>
+          <tr>
+            <td>Phân tích món ăn bằng AI</td>
+            <td><code>domain/usecase/food/FoodAnalysis.kt</code>, <code>data/vision/</code></td>
+            <td>Prompt tiếng Việt + <code>responseSchema</code> + làm sạch kết quả</td>
+          </tr>
+          <tr>
+            <td>Widget "Sức khỏe hôm nay"</td>
+            <td><code>presentation/widget/HealthWidget.kt</code></td>
+            <td><code>TodayHealthSummary.build</code> — quy tắc ưu tiên nguồn của <strong>riêng widget</strong> (thẻ Trang chủ nay theo switch)</td>
+          </tr>
+          <tr>
+            <td>Chọn nguồn dữ liệu cho thẻ "Tóm tắt sức khỏe"</td>
+            <td><code>presentation/screen/home/HealthDataSourceCard.kt</code></td>
+            <td>Switch: <strong>BẬT</strong> = đọc trực tiếp Health Connect; <strong>TẮT</strong> (mặc định) = dùng dữ liệu đã lưu trong app</td>
+          </tr>
+          <tr>
+            <td>Đồng bộ đám mây (tuỳ chọn)</td>
+            <td><code>worker/SyncWorker</code>, <code>data/firebase/</code></td>
+            <td><strong>CloudSyncPolicy</strong> — chỉ tải log tạo <em>sau</em> mốc đồng ý</td>
+          </tr>
+          <tr>
+            <td>Đăng nhập / chế độ khách</td>
+            <td><code>presentation/navigation/AuthGateViewModel.kt</code></td>
+            <td>Cổng <code>SessionState</code>: Loading → SignedOut → SignedIn / Guest</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>3. Ba ý tưởng thiết kế xuyên suốt</h2>
+      <p>Ba nguyên tắc này giải thích phần lớn các quyết định trong mã nguồn; nắm chúng thì đọc code sẽ nhanh hơn nhiều.</p>
+
+      <h3>3.1. App không phụ thuộc bên ngoài — nó tự "đo" được</h3>
+      <p>
+        Nếu chỉ dựa vào Health Connect, app sẽ vô dụng trên máy chưa cài ứng dụng sức khỏe nào.
+        Vì vậy HealthMate có <strong>nguồn dữ liệu thứ hai do chính nó tạo ra</strong>:
+        cảm biến đếm bước phần cứng (<code>TYPE_STEP_COUNTER</code>), suy luận giấc ngủ từ ánh sáng + gia tốc,
+        và đo nhịp tim bằng camera + đèn flash (PPG).
+      </p>
+      <div class="callout note">
+        <span class="callout__title">Quy tắc ưu tiên nguồn (nhớ kỹ, nó khác nhau ở từng chỉ số)</span>
+        <ul>
+          <li><strong>Bước chân</strong>: ưu tiên <strong>cảm biến của điện thoại</strong> khi đã có quyền — vì đó là nguồn <em>live</em>, cập nhật liên tục khi đang đi. Health Connect chỉ dùng khi máy không có cảm biến hoặc chưa cấp quyền.</li>
+          <li><strong>Giấc ngủ &amp; nhịp tim</strong>: ưu tiên <strong>Health Connect</strong> — vì dữ liệu có thể đến từ đồng hồ đeo tay và còn có chi tiết pha Sâu/Nông/REM. Ước lượng của app chỉ dùng khi Health Connect <em>không có số</em>.</li>
+        </ul>
+        <p class="small">Đây là quy tắc <strong>dự phòng</strong> khi nguồn đang chọn không có số. Riêng thẻ "Tóm tắt sức khỏe" ở Trang chủ, <strong>nguồn chính</strong> do switch <strong>"Dùng dữ liệu Health Connect"</strong> quyết định: <strong>BẬT</strong> → Health Connect; <strong>TẮT</strong> (mặc định) → bản chụp đã lưu trong app. Widget dùng quy tắc của <code>domain/usecase/health/TodayHealthSummary.kt</code> và <strong>không</strong> đổi theo switch.</p>
+      </div>
+
+      <h3>3.2. Logic nghiệp vụ nằm ở <em>hàm thuần Kotlin</em>, tách khỏi Android</h3>
+      <p>
+        Mọi phép tính quan trọng (đếm bước, giấc ngủ, nhịp tim, chấm điểm, gợi ý, làm sạch kết quả AI)
+        được viết thành <code>object</code> hoặc class <strong>không phụ thuộc Android</strong>, chỉ dùng
+        <code>java.time</code> và toán thuần. Nhờ vậy <strong>455 unit test chạy trên JVM, không cần
+        emulator</strong> — kể cả thuật toán PPG phức tạp.
+      </p>
+      <p>Đối chiếu nhanh: phần "bẩn" (chạm phần cứng) và phần "sạch" (toán) luôn nằm ở hai file khác nhau.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Toán thuần (test được JVM)</th><th>Phần chạm Android (chỉ chạy trên máy)</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain/usecase/steps/StepCounterMath.kt</code></td><td><code>data/steps/AndroidStepCounterSensor.kt</code></td></tr>
+          <tr><td><code>domain/usecase/sleep/SleepTrackerMath.kt</code></td><td><code>data/sleep/AndroidSleepSensor.kt</code></td></tr>
+          <tr><td><code>domain/usecase/heartrate/PpgAnalyzer.kt</code></td><td><code>data/heartrate/CameraPpgAnalyzer.kt</code></td></tr>
+          <tr><td><code>domain/usecase/health/VitalityScoreMath.kt</code></td><td><code>data/local/dao/…</code> (Room)</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>3.3. Dữ liệu thiếu thì chọn hướng an toàn, không bịa số</h3>
+      <ul>
+        <li>Số <code>0</code> luôn được hiểu là <strong>"chưa có dữ liệu"</strong>, không phải "chỉ số bằng 0".
+            Ô nhịp tim chưa có số hiện <code>-- bpm</code> chứ không hiện <code>0 bpm</code>.</li>
+        <li>Thiếu mốc đồng ý đồng bộ đám mây ⇒ <strong>không tải gì lên</strong> (thay vì tải hết).</li>
+        <li>Nhịp tim không đủ rõ ⇒ app <strong>từ chối kết luận</strong> và báo "chưa đọc được", không hiện một con số sai.</li>
+        <li>Chưa có thói quen / bước chân / giờ ngủ ⇒ Chỉ số sinh lực trả <code>null</code> ⇒ UI hiện lời nhắc thay vì điểm ảo.</li>
+      </ul>
+
+      <h2>4. Tech stack</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tầng</th><th>Công nghệ</th><th>Ghi chú</th></tr></thead>
+        <tbody>
+          <tr><td>Ngôn ngữ / UI</td><td>Kotlin 2.0.21 + Jetpack Compose (BOM 2024.12.01) + Material 3</td><td>Single-Activity, theme Material You, hỗ trợ dynamic color</td></tr>
+          <tr><td>Kiến trúc</td><td>Clean Architecture 3 lớp + MVVM</td><td><code>presentation → domain ← data</code></td></tr>
+          <tr><td>DI</td><td>Dagger Hilt 2.52 (+ <code>hilt-work</code>)</td><td>4 module: <code>App</code>, <code>Database</code>, <code>Ai</code>, <code>Firebase</code></td></tr>
+          <tr><td>CSDL cục bộ</td><td>Room 2.6.1 + <strong>SQLCipher 4.6.1</strong></td><td>AES-256, passphrase sinh ngẫu nhiên bọc bằng Android Keystore</td></tr>
+          <tr><td>Dữ liệu sức khỏe</td><td>Health Connect 1.1.0-alpha10</td><td>IPC nội bộ máy, <strong>không</strong> qua mạng</td></tr>
+          <tr><td>Camera</td><td>CameraX 1.4.1 + ExifInterface</td><td>Preview, chụp ảnh, bật đèn flash, đọc khung hình PPG</td></tr>
+          <tr><td>AI cloud</td><td>Gemini REST (<code>generateContent</code>) + Gson</td><td>Model chính <code>gemini-3.8-flash</code>, dự phòng <code>gemini-flash-lite-latest</code></td></tr>
+          <tr><td>HTTP</td><td><code>HttpURLConnection</code> của JDK</td><td>Cố ý không thêm OkHttp — chỉ cần một POST JSON</td></tr>
+          <tr><td>Chạy nền</td><td>WorkManager 2.10.0 + Coroutines 1.9.0</td><td>4 worker định kỳ</td></tr>
+          <tr><td>Cloud (tuỳ chọn)</td><td>Firebase Auth + Firestore (BOM 33.8.0)</td><td>Mặc định app chạy được <strong>không cần</strong> Firebase</td></tr>
+          <tr><td>Widget</td><td>Jetpack Glance 1.1.1</td><td>Widget "Sức khỏe hôm nay" 3 cột chỉ số</td></tr>
+          <tr><td>Kiểm thử</td><td>JUnit4, MockK, <code>kotlinx-coroutines-test</code></td><td>41 lớp test JVM / 455 <code>@Test</code> + 2 androidTest cho DAO</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>5. Kiến trúc trong 60 giây</h2>
+      <div class="diagram">
+<pre>      ┌──────────────────────────────────────────────────────────────┐
+      │  PRESENTATION   Compose UI + ViewModel (StateFlow)           │
+      │  screen/{home,habits,camera,insights,heartrate,auth,privacy} │
+      │  navigation/ · widget/ (Glance)                              │
+      └───────────────┬──────────────────────────────▲───────────────┘
+                      │ gọi use case                 │ UiState
+      ┌───────────────▼──────────────────────────────┴───────────────┐
+      │  DOMAIN        thuần Kotlin, KHÔNG phụ thuộc Android         │
+      │  model/        Habit · HealthData · Suggestion · …           │
+      │  usecase/      StepCounterMath · SleepTrackerMath            │
+      │                PpgAnalyzer · HabitRuleEngine                 │
+      │                VitalityScoreMath · FoodAnalysis · …          │
+      │  repository/   interface (hợp đồng)                          │
+      └───────────────▲──────────────────────────────┬───────────────┘
+                      │ implements                   │ Flow / Result
+      ┌───────────────┴──────────────────────────────▼───────────────┐
+      │  DATA                                                        │
+      │  local/       Room + SQLCipher · prefs · security            │
+      │  healthconnect/  · firebase/ · network/ · vision/            │
+      │  steps/ · sleep/ · heartrate/  (cảm biến thật)               │
+      └──────────────────────────────────────────────────────────────┘
+                      ▲                              ▲
+                 cảm biến máy                    Health Connect</pre>
+      </div>
+      <p class="small">
+        Chi tiết đầy đủ (kể cả sơ đồ phụ thuộc và bảng ánh xạ DI) ở trang
+        <a href="architecture.html">Kiến trúc &amp; luồng dữ liệu</a>.
+      </p>
+
+      <h2>6. Luồng dữ liệu: một con số đi từ cảm biến tới màn hình</h2>
+      <p>Ví dụ đầy đủ với <strong>"số bước chân hôm nay"</strong> — cùng khuôn mẫu này lặp lại cho mọi chỉ số khác:</p>
+      <div class="flow">
+        <span class="flow__step">Cảm biến <code>TYPE_STEP_COUNTER</code></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">AndroidStepCounterSensor<br><span class="small">Flow&lt;Long&gt; luỹ kế</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">StepCounterRepositoryImpl</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">StepCounterStore<br><span class="small">prefs + phiên chạy</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">StepCounterMath<br><span class="small">quy đổi</span></span>
+      </div>
+      <div class="flow">
+        <span class="flow__step">HomeViewModel<br><span class="small">collect Flow</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">HomeUiState.displaySteps</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">HealthSummaryCard (Compose)</span>
+      </div>
+      <p>
+        Song song đó, một worker chạy nền 6 giờ/lần ghi "bản chụp" vào bảng <code>health_data_history</code>
+        để tab Phân tích và Rule Engine đọc lại theo ngày.
+      </p>
+
+      <h2>7. Chạy dự án &amp; chạy test</h2>
+      <h3>7.1. Mở dự án</h3>
+      <ol>
+        <li>Android Studio → <strong>File &gt; Open</strong> → chọn thư mục <code>HealthyAIApp</code>.</li>
+        <li>Đợi Gradle Sync (lần đầu cần Internet, 5–10 phút).</li>
+        <li>Tạo AVD <em>Pixel 7, API 34, <strong>with Google Play</strong></em> (bắt buộc nếu muốn thử Health Connect).</li>
+      </ol>
+
+      <h3>7.2. Cấu hình (không bắt buộc)</h3>
+      <p>Repo <strong>không</strong> commit Gradle wrapper, nên dùng Gradle đã cài hoặc Gradle tool window của Android Studio. JDK 21 là bắt buộc.</p>
+      <p>Khoá Gemini và tên model đọc từ <code>local.properties</code> (đã bị <code>.gitignore</code>) rồi nhúng vào <code>BuildConfig</code>:</p>
+<pre><code><span class="c"># local.properties — thiếu file này cũng không sao, app vẫn chạy và báo "chưa cấu hình khoá AI"</span>
+sdk.dir=C\:\\Users\\&lt;ban&gt;\\AppData\\Local\\Android\\Sdk
+gemini.api.key=AQ.<span class="n">…</span>
+gemini.model=gemini-3.8-flash
+gemini.fallback.model=gemini-flash-lite-latest</code></pre>
+      <div class="callout warn">
+        <span class="callout__title">Khoá nhúng trong APK là trích xuất được</span>
+        <p>Mô hình này chỉ hợp với app chạy thử nghiệm cá nhân. Muốn phát hành phải gọi Gemini qua một
+           proxy backend, đừng nhúng khoá vào app.</p>
+      </div>
+
+      <h3>7.3. Chạy unit test</h3>
+<pre><code><span class="c"># từ thư mục gốc dự án (nơi có settings.gradle.kts)</span>
+gradle testDebugUnitTest</code></pre>
+      <p class="small">Hoặc trong Android Studio: chuột phải một lớp test → <strong>Run Tests</strong>.</p>
+
+      <h3>7.4. Firebase (tuỳ chọn)</h3>
+      <p>
+        Không có <code>app/google-services.json</code> thì app vẫn chạy đủ tính năng offline; chỉ
+        màn đăng nhập hiện lời mời <strong>"Bỏ qua, dùng ở chế độ khách"</strong> và <code>SyncWorker</code>
+        bỏ qua (<code>Result.success()</code>).
+      </p>
+
+      <h2>8. Lộ trình &amp; những việc cố ý chưa làm</h2>
+      <h3>Đã xong</h3>
+      <ul>
+        <li><span class="badge">Module 1</span> Core UI: Compose, Material You, Navigation, Room + SQLCipher.</li>
+        <li><span class="badge">Module 2</span> Health Connect + WorkManager + xin quyền trong app.</li>
+        <li><span class="badge">Module 3</span> Rule Engine on-device + AI camera (Gemini) + Firebase Auth.</li>
+        <li><span class="badge">Nguồn tự lực</span> Đếm bước chân, ước lượng giấc ngủ, đo nhịp tim PPG.</li>
+        <li><span class="badge">Nguồn dữ liệu</span> Switch <strong>"Dùng dữ liệu Health Connect"</strong> ở Trang chủ: BẬT = đọc Health Connect; TẮT (mặc định) = dùng dữ liệu đã lưu trong app.</li>
+        <li><span class="badge">Chất lượng</span> Migration không mất dữ liệu, Keystore thay passphrase hard-code, i18n, không nuốt <code>CancellationException</code>.</li>
+      </ul>
+
+      <h3>Cố ý chưa làm (đã chốt)</h3>
+      <ul>
+        <li><strong>Bản <code>release</code> đã ký</strong> (<code>signingConfig</code>, <code>isShrinkResources</code>, ProGuard keep cho Firebase/Glance): không làm vì app chỉ chạy thử nghiệm. Bản <code>debug</code> build và cài bình thường.</li>
+        <li><strong>Kiểm thử CameraX/<code>PreviewView</code></strong> (chụp ảnh, bind lifecycle) cần máy thật/emulator — không chạy được trên JVM. Phần còn lại của màn Ghi chép đã có unit test.</li>
+        <li><strong>Đồng bộ hai chiều với Firestore</strong>: hiện chỉ đẩy lên (một chiều), chưa kéo về.</li>
+        <li><strong>Quyền thừa trong manifest</strong> (<code>SCHEDULE_EXACT_ALARM</code>, <code>RECEIVE_BOOT_COMPLETED</code> trùng của <code>work-runtime</code>): đã ghi nhận, chưa dọn — không ảnh hưởng hành vi.</li>
+        <li><strong>Hai API dự phòng</strong> <code>getRecentHealthHistory</code> / <code>getRecentHealthHistoryFlow</code> (cắt theo số hàng) hiện không còn nơi dùng trong code sản phẩm nhưng giữ lại chưa xoá.</li>
+      </ul>
+
+      <h2>9. Đi tiếp</h2>
+      <div class="grid">
+        <div class="card"><a href="architecture.html"><h4>🏗️ Kiến trúc &amp; luồng dữ liệu →</h4></a><p>Các lớp, phụ thuộc một chiều, bảng ánh xạ DI, sơ đồ dữ liệu.</p></div>
+        <div class="card"><a href="data.html"><h4>🗄️ Tầng dữ liệu &amp; bảo mật →</h4></a><p>Schema Room, 4 bước migration, SQLCipher + Keystore, Health Connect, Firestore.</p></div>
+        <div class="card"><a href="logic-sensors.html"><h4>📈 Thuật toán cảm biến &amp; PPG →</h4></a><p>StepCounterMath, SleepTrackerMath, PpgAnalyzer — công thức và hằng số đầy đủ.</p></div>
+        <div class="card"><a href="logic-ai.html"><h4>🧠 Rule Engine &amp; AI →</h4></a><p>Ngưỡng, xoay vòng mẹo, chấm điểm sinh lực, prompt Gemini.</p></div>
+        <div class="card"><a href="ui.html"><h4>📱 Giao diện &amp; điều hướng →</h4></a><p>Cổng xác thực, NavHost, từng màn hình và ViewModel.</p></div>
+        <div class="card"><a href="files.html"><h4>🗂️ Bản đồ mã nguồn →</h4></a><p>184 file Kotlin ở đâu, làm gì; bảng tra "muốn hiểu X đọc file nào".</p></div>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

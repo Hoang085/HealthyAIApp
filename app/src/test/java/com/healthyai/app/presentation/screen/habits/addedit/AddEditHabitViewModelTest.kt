@@ -9,6 +9,7 @@ import com.healthyai.app.domain.usecase.habit.AddHabitUseCase
 import com.healthyai.app.domain.usecase.habit.DeleteHabitUseCase
 import com.healthyai.app.domain.usecase.habit.UpdateHabitUseCase
 import io.mockk.coEvery
+import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -172,7 +173,7 @@ class AddEditHabitViewModelTest {
     @Test
     fun `saving right after opening the edit screen keeps the target value`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        coEvery { updateHabitUseCase(any()) } returns 5L
+        coJustRun { updateHabitUseCase(any()) }
         val updated = slot<Habit>()
         val viewModel = createViewModel(habitId = 5L)
         advanceUntilIdle()
@@ -239,7 +240,7 @@ class AddEditHabitViewModelTest {
     @Test
     fun `editing a habit without renaming keeps its own name valid`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        coEvery { updateHabitUseCase(any()) } returns 5L
+        coJustRun { updateHabitUseCase(any()) }
         val viewModel = createViewModel(habitId = 5L) // Tên điền sẵn chính là "Uống nước"
         advanceUntilIdle()
 
@@ -322,7 +323,7 @@ class AddEditHabitViewModelTest {
     @Test
     fun `an old habit stored as weekly is saved back as daily`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        coEvery { updateHabitUseCase(any()) } returns 5L
+        coJustRun { updateHabitUseCase(any()) }
         val saved = slot<Habit>()
         // Thói quen cũ lỡ lưu "Hàng tuần" (chọn được ở bản trước nhưng không có tác dụng gì)
         val legacyWeekly = waterHabit.copy(frequency = HabitFrequency.WEEKLY)

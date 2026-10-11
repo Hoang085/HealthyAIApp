@@ -1,9 +1,6 @@
 package com.healthyai.app.worker
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.hilt.work.HiltWorker
@@ -24,7 +21,6 @@ class ReminderWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, workerParams) {
 
     companion object {
-        const val CHANNEL_ID   = "healthy_ai_reminders"
         const val WORK_NAME    = "daily_reminder_worker"
         private const val NOTIF_ID = 1001
 
@@ -44,25 +40,15 @@ class ReminderWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        createChannel()
+        // Kênh đã được tạo lúc app khởi động (`HiltApplication.onCreate`); gọi lại cho chắc trong trường
+        // hợp app chỉ chạy nền. Hàm này idempotent nên không tạo kênh trùng.
+        ReminderNotifications.ensureChannel(context)
         showNotification()
         return Result.success()
     }
 
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                context.getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = context.getString(R.string.notification_channel_description) }
-            (context.getSystemService(NotificationManager::class.java))
-                .createNotificationChannel(channel)
-        }
-    }
-
     private fun showNotification() {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, ReminderNotifications.CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(context.getString(R.string.notification_title))
             .setContentText(context.getString(R.string.notification_text))

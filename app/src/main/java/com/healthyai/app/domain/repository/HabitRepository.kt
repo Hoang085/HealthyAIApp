@@ -16,7 +16,19 @@ interface HabitRepository {
     /** Stream lịch sử ghi nhận trong [daysBack] ngày qua */
     fun getHabitLogsForPeriod(daysBack: Int): Flow<List<HabitLog>>
 
+    /** Tạo mới thói quen (`habit.id == 0`) và trả về id hàng vừa tạo. */
     suspend fun insertHabit(habit: Habit): Long
+
+    /**
+     * Cập nhật thói quen đã có theo `habit.id` — **không** xoá hàng cũ rồi ghi lại.
+     *
+     * Đây là điểm khác biệt sống còn so với `insertHabit`: đường ghi cũ dùng
+     * `OnConflictStrategy.REPLACE` (SQLite hiểu là DELETE + INSERT), mà `habit_logs` có khoá ngoại
+     * `onDelete = CASCADE` → mỗi lần sửa thói quen là xoá sạch log của nó và tiến độ trong ngày tụt
+     * về 0 (lỗi KB-13).
+     */
+    suspend fun updateHabit(habit: Habit)
+
     suspend fun logHabit(log: HabitLog)
 
     /**

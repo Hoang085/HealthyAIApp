@@ -1,6 +1,7 @@
 package com.healthyai.app.data.steps
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -24,6 +25,13 @@ import javax.inject.Singleton
  *
  * ⚠️ Từ Android 10 (API 29) trở lên, đăng ký listener của cảm biến này cần quyền
  * `ACTIVITY_RECOGNITION` — tầng gọi (`StepCounterRepository`) chỉ đăng ký sau khi đã kiểm tra quyền.
+ *
+ * ⚠️ Cũng từ Android 10, cảm biến bước chân **bị ẩn** với app chưa có `ACTIVITY_RECOGNITION`:
+ * `getDefaultSensor(TYPE_STEP_COUNTER)` trả `null`. Nếu chỉ dựa vào đó thì `isAvailable` luôn `false`
+ * lúc chưa cấp quyền, và thẻ xin quyền ở màn Trang chủ **không bao giờ hiện** — người dùng rơi vào thế
+ * bế tắc "muốn cấp quyền phải thấy thẻ, muốn thấy thẻ phải có quyền" (lỗi KB-77). Vì vậy `isAvailable`
+ * kiểm thêm **khả năng phần cứng** qua `PackageManager.FEATURE_SENSOR_STEP_COUNTER`, vốn không phụ
+ * thuộc quyền.
  */
 @Singleton
 class AndroidStepCounterSensor @Inject constructor(
@@ -36,8 +44,17 @@ class AndroidStepCounterSensor @Inject constructor(
     private val stepCounterSensor: Sensor?
         get() = sensorManager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
 
+    /**
+     * Máy có **phần cứng** đếm bước hay không — cố ý không phụ thuộc quyền `ACTIVITY_RECOGNITION`.
+     *
+     * `getDefaultSensor(TYPE_STEP_COUNTER)` trả `null` khi app chưa được cấp quyền (từ Android 10),
+     * nên kiểm thêm cờ khả năng phần cứng `FEATURE_SENSOR_STEP_COUNTER`. Nhờ vậy màn Trang chủ vẫn biết
+     * đây là máy "có cảm biến nhưng chưa cấp quyền" mà hiện thẻ xin quyền (lỗi KB-77), còn emulator
+     * (không có cả cờ lẫn cảm biến) vẫn không hiện gì.
+     */
     override val isAvailable: Boolean
-        get() = stepCounterSensor != null
+        get() = stepCounterSensor != null ||
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_COUNTER)
 
     override fun observeCumulativeSteps(): Flow<Long> = callbackFlow {
         val manager = sensorManager

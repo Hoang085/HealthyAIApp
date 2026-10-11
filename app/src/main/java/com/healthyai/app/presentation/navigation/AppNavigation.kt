@@ -154,13 +154,24 @@ private fun MainNavigation(onLogout: () -> Unit) {
                     onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) }
                 )
             }
-            composable(Screen.Habits.route)   { 
+            composable(Screen.Habits.route) { backStackEntry ->
+                // Yêu cầu ghi nhận gửi từ màn khác (màn Phân tích / màn Ghi chép) được đọc NGAY TẠI ĐÂY,
+                // từ `SavedStateHandle` của entry đang hiện — xem ghi chú ở `KEY_LOG_CATEGORY`: để
+                // ViewModel tự nghe thì entry được dựng lại sẽ làm mất giá trị (lỗi KB-45).
+                val pendingLogCategory by backStackEntry.savedStateHandle
+                    .getStateFlow<String?>(KEY_LOG_CATEGORY, null)
+                    .collectAsStateWithLifecycle()
+
                 HabitsScreen(
                     onNavigateToAddHabit = { 
                         navController.navigate(Screen.AddEditHabit.createRoute()) 
                     },
                     onNavigateToEditHabit = { habitId ->
                         navController.navigate(Screen.AddEditHabit.createRoute(habitId))
+                    },
+                    pendingLogCategory = pendingLogCategory,
+                    onPendingLogCategoryConsumed = {
+                        backStackEntry.savedStateHandle.remove<String>(KEY_LOG_CATEGORY)
                     }
                 ) 
             }

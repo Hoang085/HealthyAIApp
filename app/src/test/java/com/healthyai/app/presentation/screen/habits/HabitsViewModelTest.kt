@@ -1,6 +1,5 @@
 package com.healthyai.app.presentation.screen.habits
 
-import androidx.lifecycle.SavedStateHandle
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.repository.HabitRepository
@@ -155,32 +154,47 @@ class HabitsViewModelTest {
         coVerify(exactly = 0) { logHabitUseCase(any()) }
     }
 
-    // ── Yêu cầu ghi nhận từ màn Phân tích (mục 3 #14) ────
+    // ── Yêu cầu ghi nhận từ màn Phân tích / màn Ghi chép (mục 3 #14, phụ lục C #22) ────
 
     @Test
     fun `log request opens the dialog for the matching category`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val handle = SavedStateHandle(mapOf(KEY_LOG_CATEGORY to HabitCategory.WATER.name))
-        val viewModel = createViewModel(handle)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        // Màn Phân tích gửi yêu cầu ghi nhận cho danh mục "Dinh dưỡng"
+        viewModel.onLogRequest(HabitCategory.NUTRITION.name)
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals(LogRequest.Open(waterHabit), state.logRequest)
-        // Đã xoá khoá trong SavedStateHandle → không mở lại hộp thoại khi màn hình tạo lại
-        assertNull(handle.get<String>(KEY_LOG_CATEGORY))
+        assertEquals(LogRequest.Missing(HabitCategory.NUTRITION), state.logRequest)
 
         viewModel.onLogRequestHandled()
         assertNull(viewModel.uiState.value.logRequest)
     }
 
     @Test
+    fun `log request for a category that has a habit opens it`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.WATER.name)
+        advanceUntilIdle()
+
+        assertEquals(LogRequest.Open(waterHabit), viewModel.uiState.value.logRequest)
+    }
+
+    @Test
     fun `log request without a matching habit asks the user to create one`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val handle = SavedStateHandle(mapOf(KEY_LOG_CATEGORY to HabitCategory.MINDFULNESS.name))
-        val viewModel = createViewModel(handle)
+        val viewModel = createViewModel()
         advanceUntilIdle()
 
         // Chỉ có thói quen Uống nước → gợi ý về Thiền định không có thói quen tương ứng
+        viewModel.onLogRequest(HabitCategory.MINDFULNESS.name)
+        advanceUntilIdle()
+
         assertEquals(
             LogRequest.Missing(HabitCategory.MINDFULNESS),
             viewModel.uiState.value.logRequest
@@ -190,20 +204,96 @@ class HabitsViewModelTest {
     @Test
     fun `unknown category in the log request is ignored`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val handle = SavedStateHandle(mapOf(KEY_LOG_CATEGORY to "KHONG_CO_TON_TAI"))
-        val viewModel = createViewModel(handle)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest("KHONG_CO_TON_TAI")
         advanceUntilIdle()
 
         assertNull(viewModel.uiState.value.logRequest)
-        assertNull(handle.get<String>(KEY_LOG_CATEGORY))
     }
 
-    private fun createViewModel(
-        savedStateHandle: SavedStateHandle = SavedStateHandle()
-    ) = HabitsViewModel(
+    // ── Hợp đồng của "Thêm vào nhật ký" / nút gợi ý AI (KB-45, TC-CAM-15) ────
+
+    /**
+     * KB-45 — "Đáng ngờ nếu: … **ghi nhận sai thói quen** (ví dụ ghi vào Uống nước)".
+     *
+     * Yêu cầu ghi nhận cho danh mục Dinh dưỡng **không được** mở hộp thoại của thói quen Uống nước
+     * chỉ vì nó đứng trước trong danh sách.
+     */
+    @Test
+    fun `log request never opens a habit from another category`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val saladHabit = Habit(
+            id = 2L,
+            name = "Ăn salad",
+            category = HabitCategory.NUTRITION,
+            targetValue = 600f,
+            unit = "calo"
+        )
+        every { habitRepository.getAllActiveHabits() } returns flowOf(listOf(waterHabit, saladHabit))
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.NUTRITION.name)
+        advanceUntilIdle()
+
+        assertEquals(
+            "Phải mở đúng thói quen Dinh dưỡng, không phải 'Uống nước' đứng trước",
+            LogRequest.Open(saladHabit),
+            viewModel.uiState.value.logRequest
+        )
+    }
+
+    /**
+     * TC-CAM-15 — "Quay lại tab Ghi chép rồi bấm nút lần nữa **vẫn** hoạt động (yêu cầu là sự kiện một
+     * lần, không bị 'dính')".
+     *
+     * Đây là hợp đồng giữ cho thẻ "Thêm vào nhật ký" dùng lại được: sau khi hộp thoại đã xử lý xong
+     * (`onLogRequestHandled`), cùng một danh mục phải kích hoạt được yêu cầu **mới**.
+     */
+    @Test
+    fun `the same log request can be triggered again after being handled`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.WATER.name)
+        advanceUntilIdle()
+        assertEquals(LogRequest.Open(waterHabit), viewModel.uiState.value.logRequest)
+
+        viewModel.onLogRequestHandled()
+        assertNull(viewModel.uiState.value.logRequest)
+
+        // Bấm "Thêm vào nhật ký" lần thứ hai cho cùng danh mục → phải mở lại, không bị "dính"
+        viewModel.onLogRequest(HabitCategory.WATER.name)
+        advanceUntilIdle()
+
+        assertEquals(LogRequest.Open(waterHabit), viewModel.uiState.value.logRequest)
+    }
+
+    /** Chưa có thói quen nào cả → vẫn là nhánh "nhắc tạo mới", không phải im lặng hay crash. */
+    @Test
+    fun `log request with no habit at all asks the user to create one`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        every { habitRepository.getAllActiveHabits() } returns flowOf(emptyList())
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.NUTRITION.name)
+        advanceUntilIdle()
+
+        assertEquals(
+            LogRequest.Missing(HabitCategory.NUTRITION),
+            viewModel.uiState.value.logRequest
+        )
+    }
+
+    private fun createViewModel() = HabitsViewModel(
         getTodayHabitsUseCase = getTodayHabitsUseCase,
         logHabitUseCase = logHabitUseCase,
-        habitRepository = habitRepository,
-        savedStateHandle = savedStateHandle
+        habitRepository = habitRepository
     )
 }

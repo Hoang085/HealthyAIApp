@@ -1,6 +1,7 @@
 package com.healthyai.app.domain.repository
 
 import com.healthyai.app.domain.model.CloudSyncSettings
+import com.healthyai.app.domain.model.HealthConnectDataSettings
 import com.healthyai.app.domain.model.SleepSchedule
 import kotlinx.coroutines.flow.Flow
 
@@ -49,4 +50,23 @@ interface SettingsRepository {
      * @param nowMillis thời điểm bật, truyền vào để test được.
      */
     suspend fun setCloudSyncEnabled(enabled: Boolean, nowMillis: Long = System.currentTimeMillis())
+
+    /**
+     * Nguồn dữ liệu của thẻ "Tóm tắt sức khỏe" trên Trang chủ, phát lại mỗi khi thiết lập đổi.
+     *
+     * Mặc định [HealthConnectDataSettings.enabled] = `false` — Trang chủ dùng **dữ liệu đã lưu trong
+     * app**; người dùng bật switch để lấy số liệu **trực tiếp từ Health Connect**.
+     */
+    fun observeHealthConnectData(): Flow<HealthConnectDataSettings>
+
+    /**
+     * Đọc **một lần** nguồn dữ liệu đang chọn.
+     *
+     * Dùng ở nơi cần quyết định ngay nên đọc nguồn nào (màn Trang chủ nạp số liệu) mà không phụ thuộc
+     * thời điểm Flow phát giá trị.
+     */
+    suspend fun getHealthConnectData(): HealthConnectDataSettings
+
+    /** Bật/tắt việc dùng dữ liệu Health Connect cho thẻ "Tóm tắt sức khỏe". */
+    suspend fun setHealthConnectDataEnabled(enabled: Boolean)
 }

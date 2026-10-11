@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="architecture.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiến trúc &amp; luồng dữ liệu — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 2</div>
+      <h1>Kiến trúc &amp; luồng dữ liệu</h1>
+      <p class="page-lead">
+        HealthMate theo <strong>Clean Architecture 3 lớp</strong> kết hợp <strong>MVVM</strong>. Trang này
+        mô tả luật phụ thuộc, vai trò từng lớp, cách Dagger Hilt lắp ráp hệ thống, và luồng dữ liệu
+        từ phần cứng tới giao diện.
+      </p>
+
+      <h2>1. Luật phụ thuộc — điều quan trọng nhất</h2>
+      <p>
+        Toàn bộ kiến trúc quy về <strong>một</strong> luật: phụ thuộc chỉ được trỏ <em>vào trong</em>.
+        Lớp <code>domain</code> ở giữa là trung tâm, và nó <strong>không biết gì</strong> về Android,
+        Room, Firebase hay HTTP.
+      </p>
+
+      <div class="diagram">
+<pre>                    ┌───────────────────────────┐
+                    │      PRESENTATION         │   Compose + ViewModel
+                    │  (biết domain + Android)  │
+                    └───────────┬───────────────┘
+                                │ depends on ▼
+    ┌───────────────────────────┴───────────────────────────┐
+    │                       DOMAIN                          │
+    │   model/  ·  repository/ (interface)  ·  usecase/      │
+    │   ⚠ KHÔNG import androidx.* (trừ @Inject của Hilt)     │
+    └───────────────────────────▲───────────────────────────┘
+                                │ implements ▲
+                    ┌───────────┴───────────────┐
+                    │          DATA             │   Room · Health Connect
+                    │  (biết domain + Android)  │   Firebase · sensor · HTTP
+                    └───────────────────────────┘
+
+        Không có mũi tên nào từ DOMAIN trỏ ra ngoài.</pre>
+      </div>
+
+      <div class="callout tip">
+        <span class="callout__title">Vì sao luật này đáng giá</span>
+        <p>
+          Vì <code>domain</code> chỉ phụ thuộc <code>java.time</code> + toán thuần Kotlin, nên
+          <strong>mọi thuật toán của app test được trên JVM không cần emulator</strong>: đếm bước chân,
+          suy luận giấc ngủ, phân tích PPG, chấm điểm sinh lực, sinh gợi ý, làm sạch kết quả AI.
+          Đó là lý do 455 unit test chạy được trong vài giây.
+        </p>
+      </div>
+
+      <h3>1.1. Dấu hiệu kiểm tra nhanh trong code</h3>
+      <p>Muốn biết một file có "sạch" không, xem phần đầu file:</p>
+<pre><code><span class="c">// ✅ DOMAIN sạch — chỉ java.time + Kotlin thuần</span>
+<span class="k">package</span> com.healthyai.app.domain.usecase.steps
+<span class="k">import</span> java.time.Instant
+<span class="k">import</span> java.time.ZoneId
+<span class="k">object</span> StepCounterMath { <span class="c">/* toán thuần */</span> }
+
+<span class="c">// ❌ DATA — được phép chạm Android</span>
+<span class="k">package</span> com.healthyai.app.data.healthconnect
+<span class="k">import</span> android.content.Context
+<span class="k">import</span> androidx.health.connect.client.HealthConnectClient</code></pre>
+
+      <h2>2. Tầng Presentation</h2>
+      <p>
+        Single-Activity + Jetpack Compose. Không có Fragment, không có XML layout cho màn hình
+        (chỉ còn XML cho widget Glance và launcher icon).
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Thư mục</th><th>Vai trò</th><th>Ai dùng</th></tr></thead>
+        <tbody>
+          <tr><td><code>presentation/navigation/</code></td><td>Cổng xác thực + NavHost + bottom nav + khai báo route</td><td><code>MainActivity</code>, <code>AppNavigation</code></td></tr>
+          <tr><td><code>presentation/screen/&lt;feature&gt;/</code></td><td>Mỗi màn hình một gói: <code>*Screen.kt</code> (Compose) + <code>*ViewModel.kt</code></td><td>NavHost</td></tr>
+          <tr><td><code>presentation/ui/theme/</code></td><td>Material You: <code>Color</code>, <code>Theme</code>, <code>Type</code> + palette riêng cho widget</td><td>Toàn bộ Compose</td></tr>
+          <tr><td><code>presentation/ui/component/</code></td><td>Thành phần dùng chung (<code>ErrorStateCard</code>, <code>InfoActionCard</code>)</td><td>Nhiều màn hình</td></tr>
+          <tr><td><code>presentation/ui/format/</code></td><td>Hàm định dạng số/giờ hiển thị (<code>NumberDisplay</code>, <code>TimeDisplay</code>, <code>HabitProgressText</code>)</td><td>Compose + widget</td></tr>
+          <tr><td><code>presentation/widget/</code></td><td>Widget Glance "Sức khỏe hôm nay" + impl <code>HealthWidgetRefresher</code></td><td>Launcher</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>2.1. Mẫu ViewModel thống nhất</h3>
+      <p>Mọi ViewModel đều theo cùng một khuôn, nên đọc màn nào cũng đoán được cấu trúc màn khác:</p>
+<pre><code><span class="k">@HiltViewModel</span>
+<span class="k">class</span> HomeViewModel <span class="k">@Inject constructor</span>(
+    <span class="k">private val</span> getTodayHabitsUseCase: GetTodayHabitsUseCase,
+    <span class="k">private val</span> healthDataRepository: HealthDataRepository,
+    <span class="c">/* … các repository/use case khác được tiêm vào … */</span>
+) : ViewModel() {
+
+    <span class="c">// 1. Một MutableStateFlow riêng tư + một StateFlow công khai (chỉ đọc)</span>
+    <span class="k">private val</span> _uiState = MutableStateFlow(HomeUiState())
+    <span class="k">val</span> uiState: StateFlow&lt;HomeUiState&gt; = _uiState.asStateFlow()
+
+    <span class="k">init</span> {
+        observeHabits()        <span class="c">// Flow từ Room → tự cập nhật khi DB đổi</span>
+        loadHealthConnect(showLoading = <span class="k">true</span>)
+        <span class="c">/* … */</span>
+    }
+
+    <span class="k">private fun</span> observeHabits() {
+        combine(getTodayHabitsUseCase(), habitRepository.getHabitLogsForPeriod(<span class="n">0</span>)) { habits, todayLogs -&gt;
+            <span class="c">/* … biến đổi thành danh sách hiển thị … */</span>
+        }
+            .onStart { _uiState.update { it.copy(isLoading = <span class="k">true</span>) } }
+            .catch { e -&gt; _uiState.update { it.copy(error = e.message, isLoading = <span class="k">false</span>) } }
+            .onEach { habits -&gt; _uiState.update { it.copy(habits = habits, isLoading = <span class="k">false</span>) } }
+            .launchIn(viewModelScope)
+    }
+}</code></pre>
+      <p>Điểm đáng chú ý trong khuôn này:</p>
+      <ul>
+        <li><strong>State bất biến</strong> (<code>data class …UiState</code>): UI chỉ vẽ theo state, không giữ state riêng.</li>
+        <li><strong>State dẫn xuất</strong> nằm ngay trong UiState dưới dạng thuộc tính <code>get()</code> —
+            ví dụ quy tắc chọn nguồn của thẻ tóm tắt sức khỏe (theo switch ở Trang chủ):</li>
+      </ul>
+<pre><code><span class="c">// HomeUiState — quy tắc hiển thị nằm CÙNG chỗ với dữ liệu nên test được.
+// Nguồn CHÍNH do switch "Dùng dữ liệu Health Connect" quyết định:
+//   BẬT → Health Connect (healthData); TẮT (mặc định) → bản chụp đã lưu trong app (storedHealthData).
+// Nguồn chính KHÔNG có số thì dự phòng bằng cảm biến tự đo của máy.</span>
+<span class="k">val</span> displaySteps: <span class="k">Long</span>
+    <span class="k">get</span>() = primarySteps.takeIf { it &gt; <span class="n">0L</span> } ?: sensorSteps
+<span class="k">private val</span> primarySteps: <span class="k">Long</span>
+    <span class="k">get</span>() = <span class="k">if</span> (healthConnectData.enabled) healthData.steps <span class="k">else</span> storedHealthData.steps
+
+<span class="k">val</span> displaySleepHours: <span class="k">Double</span>
+    <span class="k">get</span>() = primarySleepHours.takeIf { it &gt; <span class="n">0.0</span> } ?: sensorSleepHours
+<span class="k">private val</span> primarySleepHours: <span class="k">Double</span>
+    <span class="k">get</span>() = <span class="k">if</span> (healthConnectData.enabled) healthData.sleepHours <span class="k">else</span> storedHealthData.sleepHours
+
+<span class="k">val</span> displayHeartRate: <span class="k">Double</span>
+    <span class="k">get</span>() = primaryHeartRate.takeIf { it &gt; <span class="n">0.0</span> } ?: recordedHeartRate
+<span class="k">private val</span> primaryHeartRate: <span class="k">Double</span>
+    <span class="k">get</span>() = <span class="k">if</span> (healthConnectData.enabled) healthData.heartRate <span class="k">else</span> storedHealthData.heartRate</code></pre>
+      <ul>
+        <li><strong>Sự kiện dùng một lần</strong> (toast, mở hộp thoại) không dùng Channel mà là trường
+            nullable + hàm "đã xử lý" — ví dụ <code>HabitsUiState.showLogSuccessFor</code> kèm
+            <code>onLogSuccessShown()</code>. Nhờ vậy ghi nhận cùng một thói quen nhiều lần vẫn kích hoạt
+            phản hồi mỗi lần.</li>
+      </ul>
+
+      <h2>3. Tầng Domain</h2>
+      <p>Ba nhóm thành phần, không hơn:</p>
+
+      <h3>3.1. <code>domain/model/</code> — dữ liệu thuần</h3>
+      <p>
+        Không có annotation Room/Firebase. Một số model mang luôn logic dẫn xuất nhỏ (thuộc tính
+        <code>get()</code>), ví dụ <code>SleepSchedule.contains()</code>,
+        <code>SleepStageBreakdown.hasStages</code>, <code>DailyHealthSummary.hasData</code>.
+      </p>
+
+      <h3>3.2. <code>domain/repository/</code> — hợp đồng</h3>
+      <p>Chỉ là <code>interface</code>. Tầng <code>data</code> cài đặt, Hilt nối hai bên.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Interface</th><th>Trách nhiệm</th><th>Impl</th></tr></thead>
+        <tbody>
+          <tr><td><code>HabitRepository</code></td><td>CRUD thói quen, đọc/ghi nhật ký, đánh dấu đã sync</td><td><code>HabitRepositoryImpl</code></td></tr>
+          <tr><td><code>HealthDataRepository</code></td><td>Đọc "hôm nay" từ Health Connect, đồng bộ vào Room, lịch sử, chi tiết pha giấc ngủ</td><td><code>HealthDataRepositoryImpl</code></td></tr>
+          <tr><td><code>AuthRepository</code></td><td>Phiên Firebase Auth, tên hiển thị, đăng nhập/đăng ký/đăng xuất</td><td><code>AuthRepositoryImpl</code></td></tr>
+          <tr><td><code>SettingsRepository</code></td><td>Thiết lập người dùng trong bảng khoá–giá trị (khung giờ ngủ, đồng bộ đám mây)</td><td><code>SettingsRepositoryImpl</code></td></tr>
+          <tr><td><code>StepCounterRepository</code></td><td>Trạng thái cảm biến bước chân + Flow "bước hôm nay"</td><td><code>StepCounterRepositoryImpl</code></td></tr>
+          <tr><td><code>SleepTrackerRepository</code></td><td>Lấy mẫu môi trường, cộng dồn giấc ngủ, đọc số giờ đêm vừa qua</td><td><code>SleepTrackerRepositoryImpl</code></td></tr>
+          <tr><td><code>NotificationPermissionRepository</code></td><td>Trạng thái quyền thông báo</td><td><code>NotificationPermissionRepositoryImpl</code></td></tr>
+          <tr><td><code>domain/widget/HealthWidgetRefresher</code></td><td>Cổng để <em>domain</em> yêu cầu vẽ lại widget mà không biết Glance</td><td><code>HealthWidgetRefresherImpl</code> (ở presentation)</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout note">
+        <span class="callout__title">Chi tiết nhỏ nhưng đáng học: HealthWidgetRefresher</span>
+        <p>
+          <code>HealthDataRepositoryImpl</code> (tầng data) cần vẽ lại widget sau khi ghi dữ liệu — nhưng
+          Glance nằm ở tầng presentation. Thay vì để data import presentation, dự án khai một interface
+          trong <code>domain/widget/</code> và cài đặt thật ở <code>presentation/widget/</code>.
+          Luật phụ thuộc vẫn đúng, mà tính năng vẫn chạy.
+        </p>
+      </div>
+
+      <h3>3.3. <code>domain/usecase/</code> — nơi chứa thuật toán</h3>
+      <p>Ba loại use case khác nhau về bản chất, xem tên là biết:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Loại</th><th>Ví dụ</th><th>Đặc điểm</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Toán thuần</strong> (<code>object</code>)</td>
+            <td><code>StepCounterMath</code>, <code>SleepTrackerMath</code>, <code>PpgAnalyzer</code>, <code>VitalityScoreMath</code>, <code>HeartRateMath</code>, <code>FoodAnalysis</code>, <code>HealthSummaryHistory</code>, <code>SleepTrendMath</code>, <code>CloudSyncPolicy</code></td>
+            <td>Không trạng thái ngoài (hoặc chỉ state nội bộ của chính nó), vào–ra xác định, test trực tiếp</td>
+          </tr>
+          <tr>
+            <td><strong>Engine có trạng thái</strong></td>
+            <td><code>HabitRuleEngine</code></td>
+            <td><code>@Singleton</code>, được tiêm; nhận dữ liệu thô rồi trả gợi ý. Vẫn thuần Kotlin</td>
+          </tr>
+          <tr>
+            <td><strong>Điều phối</strong> (<code>class … @Inject</code>)</td>
+            <td><code>GetHealthInsightsUseCase</code>, <code>GetVitalityScoreUseCase</code>, <code>GetWeeklyConsistencyUseCase</code>, <code>SaveMeasuredHeartRateUseCase</code>, <code>LogHabitUseCase</code>, <code>Add/Update/DeleteHabitUseCase</code></td>
+            <td>Gọi repository, <code>combine</code> nhiều Flow, đưa vào hàm toán. Không tự tính toán nặng</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>Ví dụ một use case điều phối "mỏng" đúng nghĩa — logic thật nằm ở <code>VitalityScoreMath</code>:</p>
+<pre><code><span class="k">class</span> GetVitalityScoreUseCase <span class="k">@Inject constructor</span>(
+    <span class="k">private val</span> habitRepository: HabitRepository,
+    <span class="k">private val</span> healthDataRepository: HealthDataRepository
+) {
+    <span class="k">operator fun</span> invoke(): Flow&lt;VitalityScore&gt; {
+        <span class="k">val</span> daysBack = <span class="n">2</span> * VitalityScoreMath.WINDOW_DAYS - <span class="n">1</span>   <span class="c">// 14 ngày = tuần này + tuần trước</span>
+        <span class="k">val</span> fromTs = today.minusDays(daysBack.toLong()).atStartOfDay(zone).toInstant().toEpochMilli()
+
+        <span class="k">return</span> combine(
+            habitRepository.getAllActiveHabits(),
+            habitRepository.getHabitLogsForPeriod(daysBack),
+            healthDataRepository.getHealthHistorySince(fromTs)   <span class="c">// cắt theo MỐC THỜI GIAN</span>
+        ) { habits, logs, healthHistory -&gt;
+            <span class="k">val</span> current = VitalityScoreMath.compute(habits, logs, healthHistory, today, zone)
+            <span class="c">/* … tính delta so với 7 ngày trước … */</span>
+        }
+    }
+}</code></pre>
+
+      <h2>4. Tầng Data</h2>
+      <p>Sáu nhóm nguồn dữ liệu, mỗi nhóm một thư mục:</p>
+      <div class="grid">
+        <div class="card"><span class="card__icon">🗄️</span><h4><code>local/</code></h4><p>Room + SQLCipher: DAO, Entity, Migration, <code>Converters</code>. Kèm <code>local/security/</code> (Keystore), <code>local/steps/</code> và <code>local/sleep/</code> (SharedPreferences).</p></div>
+        <div class="card"><span class="card__icon">❤️</span><h4><code>healthconnect/</code></h4><p>Bọc Health Connect API: 4 truy vấn aggregate + đọc phiên ngủ chi tiết pha.</p></div>
+        <div class="card"><span class="card__icon">📡</span><h4><code>steps/</code> · <code>sleep/</code> · <code>heartrate/</code></h4><p>Ba cảm biến thật của máy: <code>TYPE_STEP_COUNTER</code>, ánh sáng + gia tốc, và đọc khung hình camera cho PPG.</p></div>
+        <div class="card"><span class="card__icon">🤖</span><h4><code>vision/</code></h4><p><code>GeminiFoodInsightSource</code> + <code>GalleryImageLoader</code> (thu nhỏ/xoay EXIF) + <code>ImageJpegEncoder</code>.</p></div>
+        <div class="card"><span class="card__icon">🌐</span><h4><code>network/</code></h4><p>Cổng HTTP POST ra ngoài: <code>HttpPost</code> → <code>HttpUrlConnectionPost</code>.</p></div>
+        <div class="card"><span class="card__icon">☁️</span><h4><code>firebase/</code></h4><p><code>FirestoreSyncDataSource</code> — đẩy nhật ký lên <code>users/{uid}/habit_logs/{id}</code>.</p></div>
+      </div>
+
+      <p>
+        <code>data/repository/</code> là nơi ráp các nguồn lại thành hợp đồng của domain. Điểm đáng chú ý
+        nhất là <code>HealthDataRepositoryImpl</code> — nó <strong>trộn ba nguồn</strong> theo quy tắc ưu tiên:
+      </p>
+<pre><code><span class="c">// HealthDataRepositoryImpl.syncHealthData() — trái tim của việc "không phụ thuộc bên ngoài"</span>
+<span class="k">val</span> healthConnect = readHealthConnectSnapshot()          <span class="c">// null nếu thiếu quyền/chưa cài</span>
+<span class="k">val</span> sensorSteps = stepCounterRepository.readTodaySteps()
+<span class="k">val</span> sensorSleepHours = sleepTrackerRepository.readLastNightSleepHours()
+
+<span class="k">val</span> snapshot = HealthData(
+    <span class="c">// bước chân: Health Connect trước, không có số thì dùng cảm biến của máy</span>
+    steps = (healthConnect?.steps ?: <span class="n">0L</span>).takeIf { it &gt; <span class="n">0L</span> } ?: sensorSteps,
+    <span class="c">// giấc ngủ: Health Connect trước (có chi tiết pha), không có thì ước lượng từ cảm biến</span>
+    sleepHours = (healthConnect?.sleepHours ?: <span class="n">0.0</span>).takeIf { it &gt; <span class="n">0.0</span> } ?: sensorSleepHours,
+    heartRate = healthConnect?.heartRate ?: <span class="n">0.0</span>,
+    activeCalories = healthConnect?.activeCalories ?: <span class="n">0.0</span>
+)
+
+<span class="c">// Không có dữ liệu thật → KHÔNG ghi hàng toàn số 0 (sẽ làm nhiễu phân tích của AI)</span>
+<span class="k">if</span> (!snapshot.hasAnyData()) return@runCatchingCancellable
+upsertToday(snapshot)</code></pre>
+
+      <h2>5. Dependency Injection với Hilt</h2>
+      <p>Bốn module, mỗi module một việc rõ ràng:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Module</th><th>Kiểu</th><th>Cung cấp gì</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>di/AppModule</code></td>
+            <td><code>abstract class</code> + <code>@Binds</code></td>
+            <td>Nối 9 cặp interface → implementation (repository, sensor, data source, HTTP, widget refresher)</td>
+          </tr>
+          <tr>
+            <td><code>di/DatabaseModule</code></td>
+            <td><code>object</code> + <code>@Provides</code></td>
+            <td><code>AppDatabase</code> (SQLCipher) + 4 DAO. Đây là nơi <em>duy nhất</em> nạp native lib và lấy passphrase</td>
+          </tr>
+          <tr>
+            <td><code>di/AiModule</code></td>
+            <td><code>object</code> + <code>@Provides @Named</code></td>
+            <td>3 chuỗi từ <code>BuildConfig</code>: khoá Gemini, model chính, model dự phòng</td>
+          </tr>
+          <tr>
+            <td><code>di/FirebaseModule</code></td>
+            <td><code>object</code> + <code>@Provides</code></td>
+            <td><code>FirebaseAuth</code> và <code>FirebaseFirestore</code> (singleton)</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <p>Bảng ánh xạ đầy đủ trong <code>AppModule</code> — tra nhanh khi bạn cần biết "interface này chạy bằng class nào":</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Interface được yêu cầu</th><th>Implementation được tiêm</th></tr></thead>
+        <tbody>
+          <tr><td><code>HabitRepository</code></td><td><code>HabitRepositoryImpl</code></td></tr>
+          <tr><td><code>HealthDataRepository</code></td><td><code>HealthDataRepositoryImpl</code></td></tr>
+          <tr><td><code>HealthConnectDataSource</code></td><td><code>HealthConnectDataSourceImpl</code></td></tr>
+          <tr><td><code>AuthRepository</code></td><td><code>AuthRepositoryImpl</code></td></tr>
+          <tr><td><code>NotificationPermissionRepository</code></td><td><code>NotificationPermissionRepositoryImpl</code></td></tr>
+          <tr><td><code>StepCounterSensor</code></td><td><code>AndroidStepCounterSensor</code></td></tr>
+          <tr><td><code>StepCounterRepository</code></td><td><code>StepCounterRepositoryImpl</code></td></tr>
+          <tr><td><code>SleepSensor</code></td><td><code>AndroidSleepSensor</code></td></tr>
+          <tr><td><code>SleepTrackerRepository</code></td><td><code>SleepTrackerRepositoryImpl</code></td></tr>
+          <tr><td><code>SettingsRepository</code></td><td><code>SettingsRepositoryImpl</code></td></tr>
+          <tr><td><code>HealthWidgetRefresher</code></td><td><code>HealthWidgetRefresherImpl</code> <span class="badge">ở presentation</span></td></tr>
+          <tr><td><code>FoodInsightSource</code></td><td><code>GeminiFoodInsightSource</code></td></tr>
+          <tr><td><code>HttpPost</code></td><td><code>HttpUrlConnectionPost</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout warn">
+        <span class="callout__title">DatabaseModule — 4 bước phải theo đúng thứ tự</span>
+        <p>File này dễ gây lỗi khó tìm nhất nếu làm sai thứ tự. Trình tự thật trong
+           <code>provideAppDatabase()</code>:</p>
+        <ol>
+          <li><code>System.loadLibrary("sqlcipher")</code> — <code>sqlcipher-android</code> <strong>không</strong> tự nạp native lib; thiếu bước này là crash.</li>
+          <li>Lấy passphrase từ <code>DatabasePassphraseProvider</code> (sinh mới hoặc đọc lại từ Keystore).</li>
+          <li>Nếu passphrase <em>vừa mới sinh</em> ⇒ gọi <code>LegacyDatabaseKeyMigration</code> để rekey DB của bản cũ thay vì mất dữ liệu.</li>
+          <li><code>Room.databaseBuilder(…).openHelperFactory(SupportOpenHelperFactory(passphrase.bytes))</code> và <strong>chỉ</strong> cộng thêm <code>.addMigrations(*DatabaseMigrations.ALL)</code> — không có <code>fallbackToDestructiveMigration()</code>.</li>
+        </ol>
+      </div>
+
+      <h2>6. Entry point của ứng dụng</h2>
+      <div class="flow">
+        <span class="flow__step">Android khởi động process</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>HiltApplication</code><br><span class="small">@HiltAndroidApp</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>onCreate()</code><br><span class="small">tạo kênh thông báo</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>MainActivity</code><br><span class="small">@AndroidEntryPoint</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>AppNavigation()</code></span>
+      </div>
+
+      <h3>6.1. <code>HiltApplication</code></h3>
+      <p>Hai việc:</p>
+      <ul>
+        <li>Khởi tạo Hilt (<code>@HiltAndroidApp</code>) và cung cấp <code>HiltWorkerFactory</code> để
+            WorkManager tiêm được dependency vào worker.</li>
+        <li><strong>Tạo kênh thông báo ngay lúc khởi động</strong> (<code>ReminderNotifications.ensureChannel</code>).
+            Lý do rất cụ thể: trên Android 8+, app <em>chưa có kênh nào</em> thì trạng thái thông báo là
+            "chưa xác định" và <code>areNotificationsEnabled()</code> trả kết quả khác nhau tuỳ OEM —
+            làm thẻ "Bật nhắc nhở hàng ngày" hành xử không nhất quán. Tạo kênh ở đây (thay vì đợi worker
+            chạy, tối đa 24 giờ) khiến hành vi giống nhau trên mọi bản Android ngay từ lần mở đầu tiên.</li>
+      </ul>
+
+      <h3>6.2. <code>MainActivity</code></h3>
+      <ol>
+        <li>Gọi <code>schedule()</code> của <strong>4 worker</strong> (<code>HealthSyncWorker</code>,
+            <code>SyncWorker</code>, <code>ReminderWorker</code>, <code>SleepTrackingWorker</code>).
+            Dùng <code>KEEP</code> nên mở app nhiều lần không tạo job trùng.</li>
+        <li>Kiểm tra intent có phải yêu cầu hiển thị rationale của Health Connect không
+            (<code>ACTION_SHOW_PERMISSIONS_RATIONALE</code> hoặc <code>ACTION_VIEW_PERMISSION_USAGE</code>).
+            Nếu đúng ⇒ hiện thẳng <code>PrivacyPolicyScreen</code>, <strong>không</strong> đi qua cổng đăng nhập —
+            vì Health Connect sẽ từ chối duyệt nếu thấy app hiện màn Đăng nhập.</li>
+        <li>Ngược lại ⇒ <code>AppNavigation()</code>.</li>
+      </ol>
+
+      <h2>7. Cổng xác thực &amp; điều hướng</h2>
+      <p><code>AuthGateViewModel</code> hợp nhất hai nguồn thành một máy trạng thái 4 nhánh:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th><code>SessionState</code></th><th>Khi nào</th><th>UI hiện gì</th></tr></thead>
+        <tbody>
+          <tr><td><code>Loading</code></td><td>Chưa đọc xong phiên Firebase đã lưu</td><td>Vòng xoay + tên app (tránh "nháy" màn login)</td></tr>
+          <tr><td><code>SignedOut</code></td><td><code>uid == null</code> và chưa chọn chế độ khách</td><td><code>LoginScreen</code> + nút "Bỏ qua, dùng ở chế độ khách"</td></tr>
+          <tr><td><code>Guest</code></td><td>Đã bấm "Bỏ qua"</td><td>NavHost chính</td></tr>
+          <tr><td><code>SignedIn</code></td><td>Có <code>uid</code></td><td>NavHost chính</td></tr>
+        </tbody>
+      </table>
+      </div>
+<pre><code><span class="k">val</span> sessionState: StateFlow&lt;SessionState&gt; = combine(
+    authRepository.authState,                                        <span class="c">// uid? (Flow từ AuthStateListener)</span>
+    savedStateHandle.getStateFlow(KEY_GUEST_MODE, <span class="k">false</span>)              <span class="c">// cờ khách, sống qua xoay màn</span>
+) { userId, isGuest -&gt;
+    <span class="k">when</span> {
+        userId != <span class="k">null</span> -&gt; SessionState.SignedIn
+        isGuest -&gt; SessionState.Guest
+        <span class="k">else</span> -&gt; SessionState.SignedOut
+    }
+}.stateIn(viewModelScope, SharingStarted.Eagerly, SessionState.Loading)</code></pre>
+      <p>
+        Đọc kỹ bước 4 của NavHost ở <a href="ui.html">trang Giao diện</a> để thấy cách truyền yêu cầu
+        "mở sẵn hộp thoại ghi nhận thói quen" giữa các màn — đó là chỗ có một cái bẫy tinh vi đã được
+        sửa và ghi chú trong code.
+      </p>
+
+      <h2>8. Nguồn sự thật (source of truth)</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Dữ liệu</th><th>Nguồn sự thật</th><th>Hệ quả</th></tr></thead>
+        <tbody>
+          <tr><td>Thói quen &amp; nhật ký</td><td>Room (SQLCipher)</td><td>UI đọc bằng <code>Flow</code> nên đổi DB là UI tự cập nhật</td></tr>
+          <tr><td>Lịch sử sức khỏe theo ngày</td><td>Room, bảng <code>health_data_history</code></td><td>Do <code>HealthSyncWorker</code> ghi 6 giờ/lần; giữ 30 ngày</td></tr>
+          <tr><td>Số bước "hôm nay" (live)</td><td><code>SharedPreferences</code> <code>healthy_ai_step_counter</code></td><td>Cập nhật theo từng mẫu cảm biến, không đi qua Room</td></tr>
+          <tr><td>Giấc ngủ ước lượng</td><td><code>SharedPreferences</code> <code>healthy_ai_sleep_tracker</code></td><td>Cộng dồn mỗi 15 phút bởi worker</td></tr>
+          <tr><td>Thiết lập người dùng (khung giờ ngủ, đồng bộ, nguồn dữ liệu sức khỏe)</td><td>Room, bảng <code>app_settings</code></td><td>Khoá–giá trị ⇒ thêm thiết lập mới <strong>không cần migration</strong></td></tr>
+          <tr><td>Chi tiết pha giấc ngủ (Sâu/Nông/REM)</td><td>Health Connect (đọc trực tiếp, không lưu)</td><td>Không cần cột mới trong Room; đọc lại mỗi lần vào tab Phân tích</td></tr>
+          <tr><td>Phiên đăng nhập</td><td>FirebaseAuth (tự persist trên máy)</td><td>Mở lại app vào thẳng Home</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>9. Quy ước code xuyên suốt</h2>
+      <p>Bốn quy ước được áp dụng nhất quán ở mọi file; biết chúng thì đọc code không bị "bất ngờ".</p>
+
+      <h3>9.1. Không bao giờ nuốt <code>CancellationException</code></h3>
+      <p>
+        <code>kotlin.runCatching</code> bắt <em>mọi</em> <code>Throwable</code>, kể cả
+        <code>CancellationException</code>. Trong hàm <code>suspend</code>, điều đó biến việc huỷ coroutine
+        (rời màn hình, <code>viewModelScope</code> bị huỷ, WorkManager dừng worker) thành "lỗi nghiệp vụ":
+        người dùng thấy thông báo lỗi trong khi thao tác chỉ bị huỷ, và coroutine không kết thúc đúng.
+      </p>
+      <p>Dự án có hai biện pháp:</p>
+<pre><code><span class="c">// util/RunCatchingCancellable.kt — dùng thay runCatching ở MỌI chỗ bọc suspend/I-O</span>
+<span class="k">inline fun</span> &lt;T&gt; runCatchingCancellable(block: () -&gt; T): Result&lt;T&gt; = <span class="k">try</span> {
+    Result.success(block())
+} <span class="k">catch</span> (e: CancellationException) {
+    <span class="k">throw</span> e          <span class="c">// ném tiếp, KHÔNG biến thành Result.failure</span>
+} <span class="k">catch</span> (e: Throwable) {
+    Result.failure(e)
+}</code></pre>
+<pre><code><span class="c">// Với try/catch viết tay (đặc biệt trong HealthConnectDataSourceImpl):</span>
+<span class="k">try</span> {
+    <span class="k">val</span> response = client.aggregate(request)
+    response[StepsRecord.COUNT_TOTAL] ?: <span class="n">0L</span>
+} <span class="k">catch</span> (e: CancellationException) {
+    <span class="k">throw</span> e          <span class="c">// ⚠ phải đứng TRƯỚC catch (e: Exception)</span>
+} <span class="k">catch</span> (e: Exception) {
+    <span class="n">0L</span>               <span class="c">// lỗi thật thì coi như "chưa có dữ liệu"</span>
+}</code></pre>
+      <p class="small">Có 14 chỗ <code>catch (e: Exception)</code> trong hàm <code>suspend</code>/worker được sửa theo quy ước này, và 18 chỗ <code>runCatching</code> đổi sang <code>runCatchingCancellable</code>.</p>
+
+      <h3>9.2. Chuỗi hiển thị nằm ở <code>strings.xml</code></h3>
+      <p>
+        230 <code>&lt;string&gt;</code> trong <code>app/src/main/res/values/strings.xml</code>, đọc bằng
+        <code>stringResource(R.string.…)</code> (Compose), <code>context.getString(…)</code> (Glance widget,
+        worker thông báo, Toast). Nhãn 4 tab là <code>Screen.titleRes</code> (<code>@StringRes</code>),
+        bộ lọc màn Thói quen là enum <code>HabitFilter</code> (<code>labelRes</code> + <code>timeOfDay</code>).
+        Muốn thêm tiếng Anh: tạo <code>res/values-en/strings.xml</code>, không phải sửa Kotlin.
+      </p>
+      <p class="small">
+        Chưa đưa vào <code>strings.xml</code>: thông báo lỗi sinh trong ViewModel, nội dung gợi ý AI
+        (<code>SuggestionCatalog</code>), tên danh mục/buổi trong model, nhãn tuần <code>T2…CN</code>,
+        hàm định dạng số và dữ liệu mẫu trong <code>@Preview</code>.
+      </p>
+
+      <h3>9.3. Dữ liệu "hôm nay" luôn căn theo 00:00 của múi giờ thiết bị</h3>
+      <p>
+        Mọi mốc "hôm nay" dùng cùng một công thức (xem <code>HealthDataRepositoryImpl.startOfToday()</code>,
+        <code>HabitRepositoryImpl.startOfDayEpochMillis()</code>). Điều này khiến chỉ số tự "đọc lại từ đầu ngày":
+      </p>
+<pre><code><span class="k">private fun</span> startOfToday(): <span class="k">Long</span> = LocalDate.now()
+    .atStartOfDay(ZoneId.systemDefault())
+    .toInstant()
+    .toEpochMilli()</code></pre>
+      <p>
+        Nhờ vậy sang ngày mới, ô "Tim" hiện <code>-- bpm</code> thay vì số của hôm qua, và tiến độ thói quen
+        không bị "về 0 mỗi lần mở lại màn hình" (lỗi cũ: mốc được tính là <code>now - daysBack</code>).
+      </p>
+
+      <h3>9.4. Đọc lịch sử theo <strong>mốc thời gian</strong>, không theo số hàng</h3>
+      <p>
+        <code>health_data_history</code> có thể có nhiều hàng trong cùng một ngày. Cắt theo số hàng
+        (<code>LIMIT 30</code>) khiến luật "3 ngày liên tiếp" của Rule Engine <em>âm thầm không chạy</em>.
+        Vì vậy API chính là <code>getHealthHistorySince(fromTs)</code>; tầng dùng tự gom theo ngày.
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>API</th><th>Cắt theo</th><th>Trạng thái</th></tr></thead>
+        <tbody>
+          <tr><td><code>getHealthHistorySince(fromTs)</code></td><td>Mốc thời gian</td><td><span class="badge">Đang dùng</span> cho tab Phân tích và Rule Engine</td></tr>
+          <tr><td><code>getRecentHealthHistory(limit)</code></td><td>Số hàng</td><td><span class="badge amber">Dự phòng</span> không còn nơi dùng trong code sản phẩm</td></tr>
+          <tr><td><code>getRecentHealthHistoryFlow(limit)</code></td><td>Số hàng</td><td><span class="badge amber">Dự phòng</span> như trên</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>10. Luồng khởi động đầy đủ</h2>
+      <div class="diagram">
+<pre>①  Android tạo process
+     └─ HiltApplication.onCreate()
+          ├─ Hilt dựng đồ thị dependency (lazy — DB chỉ mở khi có ai đó cần)
+          └─ ReminderNotifications.ensureChannel()      ← kênh thông báo có ngay
+
+②  MainActivity.onCreate()
+     ├─ WorkManager.getInstance().schedule() × 4
+     │     HealthSyncWorker (6h) · SyncWorker (6h) · ReminderWorker (24h)
+     │     SleepTrackingWorker (15 phút)
+     ├─ intent là rationale của Health Connect?
+     │     ├─ có  → PrivacyPolicyScreen (bỏ qua cổng đăng nhập)
+     │     └─ không → tiếp bước ③
+     └─ enableEdgeToEdge()
+
+③  AppNavigation()
+     └─ AuthGateViewModel.sessionState
+          Loading ──► SignedOut ──┬─► "Bỏ qua" ──► Guest
+                                 └─ đăng nhập ──► SignedIn
+                                              │
+                                              ▼
+④  MainNavigation(): Scaffold + bottom bar + NavHost
+     startDestination = Screen.Home
+     ├─ HomeScreen      → HomeViewModel      (đọc Health Connect, cảm biến bước, giấc ngủ, khung giờ ngủ)
+     ├─ HabitsScreen    → HabitsViewModel    (Flow từ Room)
+     ├─ CameraScreen    → CameraViewModel    (Gemini)
+     └─ InsightsScreen  → InsightsViewModel  (Rule Engine + sinh lực + lịch sử 7 ngày)
+
+⑤  Lần đầu vào Home
+     └─ Room mở DB lần đầu
+          ├─ System.loadLibrary("sqlcipher")
+          ├─ DatabasePassphraseProvider.getOrCreate()  → Keystore
+          ├─ (nếu mới sinh khoá) LegacyDatabaseKeyMigration.rekeyLegacyDatabaseIfPresent()
+          └─ Room.databaseBuilder(...).addMigrations(*ALL).build()</pre>
+      </div>
+
+      <div class="callout tip">
+        <span class="callout__title">Đọc tiếp</span>
+        <p>
+          Cách bốn bảng Room được định nghĩa và nâng cấp không mất dữ liệu →
+          <a href="data.html">Tầng dữ liệu &amp; bảo mật</a>.
+          Các thuật toán nằm trong <code>domain/usecase/</code> →
+          <a href="logic-sensors.html">Thuật toán cảm biến</a> và <a href="logic-ai.html">Rule Engine &amp; AI</a>.
+        </p>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,6 +1,5 @@
 package com.healthyai.app.presentation.screen.habits
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.healthyai.app.domain.model.Habit
@@ -24,8 +23,8 @@ data class HabitWithProgress(
 )
 
 /**
- * Yêu cầu **mở sẵn hộp thoại ghi nhận** gửi từ màn Phân tích khi người dùng bấm nút hành động trong
- * thẻ gợi ý AI (mục 3 #14).
+ * Yêu cầu **mở sẵn hộp thoại ghi nhận** gửi từ màn khác khi người dùng bấm nút hành động trong thẻ gợi ý
+ * AI ở màn Phân tích (mục 3 #14), hoặc nút "Thêm vào nhật ký" ở màn Ghi chép bữa ăn (phụ lục C #22).
  */
 sealed interface LogRequest {
     /** Có thói quen đang hoạt động thuộc [category] → mở hộp thoại ghi nhận cho [habit]. */
@@ -35,7 +34,18 @@ sealed interface LogRequest {
     data class Missing(val category: HabitCategory) : LogRequest
 }
 
-/** Khoá SavedStateHandle mà màn Phân tích dùng để gửi danh mục cần ghi nhận sang màn Thói quen. */
+/**
+ * Khoá trong `SavedStateHandle` của destination Thói quen mà màn Phân tích / màn Ghi chép dùng để gửi
+ * danh mục cần ghi nhận sang.
+ *
+ * Người **đọc** khoá này là `AppNavigation` (chính chỗ có `NavBackStackEntry` đang hiện), rồi mới gọi
+ * [HabitsViewModel.onLogRequest]. Trước đây ViewModel tự nghe khoá này bằng `getStateFlow` —
+ * nhưng destination Thói quen được giữ trạng thái (`saveState`/`restoreState` ở bottom bar) nên
+ * `HabitsViewModel` **không** bị huỷ khi rời tab, trong khi `SavedStateHandle` là của **từng
+ * `NavBackStackEntry`**. Khi entry được dựng lại, ViewModel cũ vẫn nghe handle của entry cũ ⇒ giá trị
+ * mới ghi vào entry hiện tại **không bao giờ** tới được ViewModel (lỗi KB-45: "nhảy sang tab Thói quen
+ * mà không mở hộp thoại nào"). Đọc ở tầng composable thì luôn là entry đang hiện.
+ */
 const val KEY_LOG_CATEGORY = "logCategory"
 
 data class HabitsUiState(
@@ -61,8 +71,7 @@ data class HabitsUiState(
 class HabitsViewModel @Inject constructor(
     private val getTodayHabitsUseCase: GetTodayHabitsUseCase,
     private val logHabitUseCase: LogHabitUseCase,
-    private val habitRepository: HabitRepository, // Cần lấy logs để tính progress
-    savedStateHandle: SavedStateHandle
+    private val habitRepository: HabitRepository // Cần lấy logs để tính progress
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HabitsUiState())
@@ -70,7 +79,6 @@ class HabitsViewModel @Inject constructor(
 
     init {
         observeHabits()
-        observeLogRequests(savedStateHandle)
     }
 
     private fun observeHabits() {
@@ -105,34 +113,32 @@ class HabitsViewModel @Inject constructor(
     }
 
     /**
-     * Nhận yêu cầu ghi nhận do màn Phân tích gửi sang qua `SavedStateHandle` của chính destination
-     * này (mục 3 #14): thẻ gợi ý AI có nút "Ghi nhận uống nước", "Bắt đầu thiền"…
+     * Nhận yêu cầu ghi nhận từ màn khác (mục 3 #14 — nút trong thẻ gợi ý AI; phụ lục C #22 — nút
+     * "Thêm vào nhật ký" của màn Ghi chép bữa ăn).
      *
-     * Danh mục được đọc một lần rồi **xoá ngay** khỏi SavedStateHandle để không mở lại hộp thoại khi
-     * màn hình được tạo lại (xoay máy/process death). Sau đó tìm thói quen đang hoạt động thuộc danh
-     * mục đó: có → [LogRequest.Open], chưa có → [LogRequest.Missing] để UI nhắc tạo mới.
+     * [categoryName] là **tên enum** [HabitCategory] do màn gọi gửi sang. Tên không hợp lệ thì bỏ qua.
+     * Sau đó tìm thói quen đang hoạt động thuộc danh mục đó: có → [LogRequest.Open] để UI mở sẵn hộp
+     * thoại ghi nhận; chưa có → [LogRequest.Missing] để UI nhắc người dùng tạo mới.
+     *
+     * Ai gọi: `AppNavigation` — chính chỗ đọc được `SavedStateHandle` của `NavBackStackEntry` **đang
+     * hiện**. Không thể để ViewModel tự nghe handle đó: xem ghi chú ở [KEY_LOG_CATEGORY].
      */
-    private fun observeLogRequests(savedStateHandle: SavedStateHandle) {
-        savedStateHandle.getStateFlow<String?>(KEY_LOG_CATEGORY, null)
-            .filterNotNull()
-            .onEach { categoryName ->
-                savedStateHandle.remove<String>(KEY_LOG_CATEGORY)
+    fun onLogRequest(categoryName: String) {
+        val category = runCatching { HabitCategory.valueOf(categoryName) }.getOrNull()
+            ?: return // Tên danh mục không hợp lệ → bỏ qua
 
-                val category = runCatching { HabitCategory.valueOf(categoryName) }.getOrNull()
-                    ?: return@onEach // Tên danh mục không hợp lệ → bỏ qua
+        viewModelScope.launch {
+            val habit = habitRepository.getAllActiveHabits()
+                .first()
+                .firstOrNull { it.category == category }
 
-                val habit = habitRepository.getAllActiveHabits()
-                    .first()
-                    .firstOrNull { it.category == category }
-
-                _uiState.update {
-                    it.copy(
-                        logRequest = if (habit != null) LogRequest.Open(habit)
-                        else LogRequest.Missing(category)
-                    )
-                }
+            _uiState.update {
+                it.copy(
+                    logRequest = if (habit != null) LogRequest.Open(habit)
+                    else LogRequest.Missing(category)
+                )
             }
-            .launchIn(viewModelScope)
+        }
     }
 
     /** UI đã mở hộp thoại / hiện lời nhắc cho yêu cầu ghi nhận → xoá sự kiện một lần. */

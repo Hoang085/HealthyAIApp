@@ -3,6 +3,7 @@ package com.healthyai.app.data.repository
 import com.healthyai.app.data.local.dao.settings.SettingsDao
 import com.healthyai.app.data.local.entity.settings.SettingEntity
 import com.healthyai.app.domain.model.CloudSyncSettings
+import com.healthyai.app.domain.model.HealthConnectDataSettings
 import com.healthyai.app.domain.model.SleepSchedule
 import com.healthyai.app.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
@@ -90,6 +91,31 @@ class SettingsRepositoryImpl @Inject constructor(
     private fun List<SettingEntity>.valueOf(key: String): String? =
         firstOrNull { it.settingKey == key }?.settingValue
 
+    // ── Nguồn dữ liệu sức khỏe của Trang chủ (mặc định TẮT) ─────
+
+    override fun observeHealthConnectData(): Flow<HealthConnectDataSettings> =
+        settingsDao.observeAll().map { it.toHealthConnectDataSettings() }
+
+    override suspend fun getHealthConnectData(): HealthConnectDataSettings =
+        settingsDao.getAll().toHealthConnectDataSettings()
+
+    override suspend fun setHealthConnectDataEnabled(enabled: Boolean) {
+        settingsDao.putAll(
+            listOf(SettingEntity(KEY_HEALTH_CONNECT_DATA_ENABLED, enabled.toString()))
+        )
+    }
+
+    /**
+     * Đọc nguồn dữ liệu đang chọn từ bảng thiết lập.
+     *
+     * Thiếu khoá / giá trị hỏng đều rơi về **TẮT** (dùng dữ liệu đã lưu trong app) — chọn hướng an
+     * toàn, không tự đọc Health Connect khi người dùng chưa bật.
+     */
+    private fun List<SettingEntity>.toHealthConnectDataSettings(): HealthConnectDataSettings =
+        HealthConnectDataSettings(
+            enabled = valueOf(KEY_HEALTH_CONNECT_DATA_ENABLED)?.toBooleanStrictOrNull() ?: false
+        )
+
     companion object {
         /** Khoá trong bảng `app_settings`. */
         internal const val KEY_SLEEP_BEDTIME_MINUTES = "sleep_bedtime_minutes"
@@ -98,6 +124,9 @@ class SettingsRepositoryImpl @Inject constructor(
         /** Khoá thiết lập đồng bộ đám mây (mục 3 #31). */
         internal const val KEY_CLOUD_SYNC_ENABLED = "cloud_sync_enabled"
         internal const val KEY_CLOUD_SYNC_CONSENT_AT = "cloud_sync_consent_at"
+
+        /** Khoá thiết lập nguồn dữ liệu sức khỏe của thẻ "Tóm tắt sức khỏe". */
+        internal const val KEY_HEALTH_CONNECT_DATA_ENABLED = "health_connect_data_enabled"
 
         private const val MINUTES_PER_DAY = 24 * 60
     }

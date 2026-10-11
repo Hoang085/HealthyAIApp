@@ -43,10 +43,27 @@ import java.util.Locale
 fun HabitsScreen(
     onNavigateToAddHabit: () -> Unit,
     onNavigateToEditHabit: (Long) -> Unit,
+    /**
+     * Danh mục cần mở sẵn hộp thoại ghi nhận, do `AppNavigation` đọc từ `SavedStateHandle` của
+     * `NavBackStackEntry` **đang hiện** và truyền xuống (xem `KEY_LOG_CATEGORY`); `null` khi không có
+     * yêu cầu nào.
+     */
+    pendingLogCategory: String? = null,
+    /** Đã nhận yêu cầu → `AppNavigation` xoá khoá khỏi `SavedStateHandle` để không mở lại hộp thoại. */
+    onPendingLogCategoryConsumed: () -> Unit = {},
     viewModel: HabitsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Yêu cầu ghi nhận từ màn khác (mục 3 #14 — nút trong thẻ gợi ý AI; phụ lục C #22 — nút
+    // "Thêm vào nhật ký" của màn Ghi chép): chuyển danh mục cho ViewModel rồi báo đã nhận để khoá
+    // trong SavedStateHandle được xoá — nhờ vậy quay lại tab Thói quen lần sau không mở lại hộp thoại.
+    LaunchedEffect(pendingLogCategory) {
+        val category = pendingLogCategory ?: return@LaunchedEffect
+        viewModel.onLogRequest(category)
+        onPendingLogCategoryConsumed()
+    }
 
     // Phản hồi sau khi ghi nhận: `showLogSuccessFor` là sự kiện một lần → hiện Toast rồi xoá cờ,
     // nhờ vậy mỗi lần ghi (kể cả ghi lại cùng một thói quen) đều có thông báo.

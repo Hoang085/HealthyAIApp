@@ -3,6 +3,7 @@ package com.healthyai.app.data.repository
 import com.healthyai.app.data.local.dao.settings.SettingsDao
 import com.healthyai.app.data.local.entity.settings.SettingEntity
 import com.healthyai.app.domain.model.CloudSyncSettings
+import com.healthyai.app.domain.model.HealthConnectDataSettings
 import com.healthyai.app.domain.model.SleepSchedule
 import io.mockk.coEvery
 import io.mockk.coJustRun
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalTime
 
@@ -180,5 +182,46 @@ class SettingsRepositoryImplTest {
             CloudSyncSettings(enabled = true, consentAtMillis = 1_700_000_000_000L),
             repository.observeCloudSync().first()
         )
+    }
+
+    // ── Nguồn dữ liệu sức khỏe của Trang chủ (mặc định TẮT) ──────
+
+    @Test
+    fun `the health data source defaults to off when nothing was stored`() = runTest {
+        coEvery { settingsDao.getAll() } returns emptyList()
+
+        assertEquals(HealthConnectDataSettings(), repository.getHealthConnectData())
+    }
+
+    @Test
+    fun `corrupt health data source values fall back to off`() = runTest {
+        // Giá trị hỏng ⇒ TẮT (không tự đọc Health Connect khi chưa chắc người dùng đã bật).
+        coEvery { settingsDao.getAll() } returns listOf(
+            SettingEntity(SettingsRepositoryImpl.KEY_HEALTH_CONNECT_DATA_ENABLED, "co-le-nao-do")
+        )
+
+        assertEquals(HealthConnectDataSettings(), repository.getHealthConnectData())
+    }
+
+    @Test
+    fun `setting the health data source writes only the flag`() = runTest {
+        val saved = slot<List<SettingEntity>>()
+        coJustRun { settingsDao.putAll(capture(saved)) }
+
+        repository.setHealthConnectDataEnabled(true)
+
+        assertEquals(
+            listOf(SettingEntity(SettingsRepositoryImpl.KEY_HEALTH_CONNECT_DATA_ENABLED, "true")),
+            saved.captured
+        )
+    }
+
+    @Test
+    fun `observe emits the stored health data source`() = runTest {
+        every { settingsDao.observeAll() } returns flowOf(
+            listOf(SettingEntity(SettingsRepositoryImpl.KEY_HEALTH_CONNECT_DATA_ENABLED, "true"))
+        )
+
+        assertTrue(repository.observeHealthConnectData().first().enabled)
     }
 }

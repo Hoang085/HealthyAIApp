@@ -119,6 +119,7 @@ fun HomeScreen(
         onEditSleepSchedule = viewModel::openSleepScheduleEditor,
         onMeasureHeartRate = onMeasureHeartRate,
         onCloudSyncToggle = viewModel::setCloudSyncEnabled,
+        onHealthDataSourceToggle = viewModel::setHealthConnectDataEnabled,
         onOpenPrivacyPolicy = onOpenPrivacyPolicy
     )
 
@@ -201,6 +202,8 @@ fun HomeScreenContent(
     // Hai tham số dưới có giá trị mặc định để các `@Preview` trong file không phải khai báo lại;
     // `HomeScreen` (lối vào thật) luôn truyền đủ.
     onCloudSyncToggle: (Boolean) -> Unit = {},
+    /** Switch "Dùng dữ liệu Health Connect" → đổi nguồn số liệu của thẻ "Tóm tắt sức khỏe". */
+    onHealthDataSourceToggle: (Boolean) -> Unit = {},
     onOpenPrivacyPolicy: () -> Unit = {}
 ) {
     Scaffold(
@@ -216,6 +219,14 @@ fun HomeScreenContent(
         ) {
             item { GreetingHeader(userName = uiState.userName, onLogout = onLogout) }
             item { HealthSummaryCard(uiState = uiState, onMeasureHeartRate = onMeasureHeartRate) }
+
+            // Switch nguồn dữ liệu: BẬT = lấy số trực tiếp từ Health Connect, TẮT = dùng dữ liệu trong app.
+            item {
+                HealthDataSourceCard(
+                    settings = uiState.healthConnectData,
+                    onToggle = onHealthDataSourceToggle
+                )
+            }
 
             // Ngay dưới thẻ "Tóm tắt sức khỏe": chỗ người dùng đặt khung giờ ngủ mà app dùng để đo.
             item {

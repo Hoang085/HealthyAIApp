@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HealthyAI</string>
-    <string name="health_permissions_rationale">HealthyAI cần quyền truy cập dữ liệu sức khỏe của bạn để cung cấp gợi ý cá nhân hóa. Dữ liệu được lưu trữ cục bộ và mã hóa trên thiết bị của bạn.</string>
+    <string name="app_name">HealthMate</string>
+    <string name="health_permissions_rationale">HealthMate cần quyền truy cập dữ liệu sức khỏe của bạn để cung cấp gợi ý cá nhân hóa. Dữ liệu được lưu trữ cục bộ và mã hóa trên thiết bị của bạn.</string>
     <!-- Dòng hiện khi Health Connect có dữ liệu ngủ nhưng thiết bị không chia pha Sâu/Nông/REM (phụ lục C #25). -->
     <string name="insights_sleep_unstaged_total">Health Connect chỉ báo tổng thời gian ngủ (máy không chia pha Sâu/Nông/REM): %1$s trong 7 đêm gần nhất.</string>
     <string name="common_back">Quay lại</string>
@@ -106,29 +106,32 @@
     <string name="cloud_sync_description_off">Đang TẮT: nhật ký chỉ nằm trên máy bạn và được mã hoá. Bật nếu bạn muốn sao lưu nhật ký mới lên đám mây.</string>
     <string name="cloud_sync_guest_note">Bạn đang ở chế độ khách — cần đăng nhập thì nhật ký mới được sao lưu.</string>
     <string name="cloud_sync_open_privacy_policy">Xem chính sách bảo mật</string>
+    <string name="health_data_source_title">Dùng dữ liệu Health Connect</string>
+    <string name="health_data_source_description_on">Đang BẬT: thẻ \"Tóm tắt sức khỏe\" lấy số liệu trực tiếp từ Health Connect (có thể gồm cả dữ liệu của đồng hồ đeo tay).</string>
+    <string name="health_data_source_description_off">Đang TẮT: thẻ \"Tóm tắt sức khỏe\" dùng dữ liệu đã lưu trong app (bản chụp gần nhất và cảm biến tự đo của máy).</string>
     <string name="health_connect_update_title">Health Connect cần được cập nhật</string>
-    <string name="health_connect_update_description">Phiên bản Health Connect trên máy đã cũ nên HealthyAI chưa đọc được dữ liệu. Hãy cập nhật để xem bước chân, giấc ngủ và nhịp tim.</string>
+    <string name="health_connect_update_description">Phiên bản Health Connect trên máy đã cũ nên HealthMate chưa đọc được dữ liệu. Hãy cập nhật để xem bước chân, giấc ngủ và nhịp tim.</string>
     <string name="health_connect_update_action">Cập nhật Health Connect</string>
     <string name="health_connect_missing_title">Chưa cài Health Connect</string>
-    <string name="health_connect_missing_description">Cài Health Connect để HealthyAI đọc bước chân, giấc ngủ và nhịp tim. Hiện tại các chỉ số đang hiển thị 0.</string>
+    <string name="health_connect_missing_description">Cài Health Connect để HealthMate đọc bước chân, giấc ngủ và nhịp tim. Hiện tại các chỉ số đang hiển thị 0.</string>
     <string name="health_connect_missing_action">Cài Health Connect</string>
     <string name="health_connect_permission_title">Cấp quyền Health Connect</string>
-    <string name="health_connect_permission_description">HealthyAI cần quyền đọc Bước chân, Giấc ngủ, Nhịp tim và Calories để hiển thị chỉ số sức khỏe của bạn.</string>
+    <string name="health_connect_permission_description">HealthMate cần quyền đọc Bước chân, Giấc ngủ, Nhịp tim và Calories để hiển thị chỉ số sức khỏe của bạn.</string>
     <string name="health_connect_permission_action">Cấp quyền Health Connect</string>
     <string name="reminder_enable_title">Bật nhắc nhở hàng ngày</string>
-    <string name="reminder_enable_description">HealthyAI cần quyền thông báo để nhắc bạn cập nhật thói quen mỗi ngày. Bật lên để không bỏ lỡ thói quen nào!</string>
+    <string name="reminder_enable_description">HealthMate cần quyền thông báo để nhắc bạn cập nhật thói quen mỗi ngày. Bật lên để không bỏ lỡ thói quen nào!</string>
     <string name="reminder_enable_action">Bật thông báo</string>
     <string name="reminder_disabled_title">Thông báo đang bị tắt</string>
-    <string name="reminder_disabled_description">Thông báo nhắc nhở của HealthyAI đang bị tắt, nên bạn sẽ không nhận được nhắc nhở hàng ngày. Mở cài đặt thông báo để bật lại.</string>
+    <string name="reminder_disabled_description">Thông báo nhắc nhở của HealthMate đang bị tắt, nên bạn sẽ không nhận được nhắc nhở hàng ngày. Mở cài đặt thông báo để bật lại.</string>
     <string name="reminder_disabled_action">Mở cài đặt thông báo</string>
     <string name="sleep_schedule_title">Khung giờ ngủ</string>
-    <string name="sleep_schedule_current">HealthyAI chỉ đo giấc ngủ trong khung bạn đặt — hiện tại %1$s (%2$s). Thời gian điện thoại bất động ngoài khung này không được tính là đang ngủ.</string>
+    <string name="sleep_schedule_current">HealthMate chỉ đo giấc ngủ trong khung bạn đặt — hiện tại %1$s (%2$s). Thời gian điện thoại bất động ngoài khung này không được tính là đang ngủ.</string>
     <string name="sleep_schedule_action">Đổi khung giờ ngủ</string>
     <string name="sleep_schedule_dialog_message">App sẽ chỉ tính giấc ngủ trong khung này. Đặt giờ đi ngủ và giờ thức của bạn — ví dụ 23:00 và 07:00.</string>
     <string name="sleep_schedule_bedtime_label">Giờ đi ngủ</string>
     <string name="sleep_schedule_wake_label">Giờ thức</string>
     <string name="step_counter_title">Bật đếm bước chân</string>
-    <string name="step_counter_description">HealthyAI đọc số bước trực tiếp từ cảm biến đếm bước của điện thoại — không cần cài thêm ứng dụng sức khỏe nào. Số bước chỉ được đếm trong lúc HealthyAI đang mở hoặc còn chạy nền; đóng hẳn ứng dụng thì app không đếm tiếp (số đã đếm trong ngày vẫn được giữ).</string>
+    <string name="step_counter_description">HealthMate đọc số bước trực tiếp từ cảm biến đếm bước của điện thoại — không cần cài thêm ứng dụng sức khỏe nào. Số bước chỉ được đếm trong lúc HealthMate đang mở hoặc còn chạy nền; đóng hẳn ứng dụng thì app không đếm tiếp (số đã đếm trong ngày vẫn được giữ).</string>
     <string name="step_counter_action">Bật đếm bước chân</string>
     <string name="step_counter_manual_hint">Không thấy hộp thoại? Mở cài đặt quyền</string>
     <string name="insights_header_title">Phân tích AI</string>
@@ -210,7 +213,7 @@
     <string name="heart_rate_try_again">Thử lại</string>
     <string name="heart_rate_disclaimer">Kết quả đo bằng camera điện thoại chỉ mang tính tham khảo, không phải thiết bị y tế và không dùng để chẩn đoán. Hãy gặp bác sĩ nếu bạn thấy nhịp tim bất thường.</string>
     <string name="privacy_title">Chính sách bảo mật</string>
-    <string name="privacy_intro">HealthyAI hoạt động theo hướng riêng tư trước: dữ liệu của bạn nằm trên máy, và việc gửi dữ liệu đi chỉ xảy ra khi bạn chủ động yêu cầu — bật "Đồng bộ đám mây", hoặc bấm "Phân tích món ăn" ở màn Ghi chép bữa ăn.</string>
+    <string name="privacy_intro">HealthMate hoạt động theo hướng riêng tư trước: dữ liệu của bạn nằm trên máy, và việc gửi dữ liệu đi chỉ xảy ra khi bạn chủ động yêu cầu — bật "Đồng bộ đám mây", hoặc bấm "Phân tích món ăn" ở màn Ghi chép bữa ăn.</string>
     <string name="privacy_local_title">1. Dữ liệu lưu trên máy bạn</string>
     <string name="privacy_local_body">Thói quen, nhật ký ghi nhận và chỉ số sức khỏe (bước chân, giờ ngủ, nhịp tim) được lưu trong cơ sở dữ liệu Room trên chính thiết bị, mã hoá bằng SQLCipher; khoá mở cơ sở dữ liệu được giữ trong Android Keystore và không rời khỏi máy. Lịch sử chỉ số sức khỏe được giữ tối đa 30 ngày rồi tự dọn.</string>
     <string name="privacy_health_connect_body"> App chỉ ĐỌC dữ liệu bạn đã cho phép (bước chân, giấc ngủ, nhịp tim, calo) và tổng hợp ngay trên máy. Bạn có thể thu hồi quyền bất cứ lúc nào trong ứng dụng Health Connect hoặc trong Cài đặt của hệ thống.</string>
@@ -224,7 +227,7 @@
     <string name="privacy_rights_body">Bạn có thể thu hồi quyền Camera / Nhận diện hoạt động thể chất / Thông báo / Health Connect trong Cài đặt của hệ thống, và tắt Đồng bộ đám mây trong app. Xoá ứng dụng sẽ xoá toàn bộ dữ liệu lưu trên máy.</string>
     <string name="privacy_footer">Tài liệu này mô tả hành vi thật của phiên bản app đang cài. Khi app thay đổi cách xử lý dữ liệu, nội dung này sẽ được cập nhật theo.</string>
     <!-- ── Widget màn hình chính "Sức khỏe hôm nay" (Glance) ── -->
-    <string name="widget_brand">Healthy AI</string>
+    <string name="widget_brand">HealthMate</string>
     <string name="widget_today">Hôm nay</string>
     <string name="widget_steps_label">Bước chân</string>
     <string name="widget_sleep_label">Giấc ngủ</string>
@@ -233,6 +236,6 @@
     <string name="widget_label">Sức khỏe hôm nay</string>
     <string name="notification_channel_name">Nhắc nhở thói quen sức khỏe</string>
     <string name="notification_channel_description">Nhắc nhở hàng ngày cập nhật thói quen</string>
-    <string name="notification_title">HealthyAI 💪 Nhắc nhở thói quen</string>
+    <string name="notification_title">HealthMate 💪 Nhắc nhở thói quen</string>
     <string name="notification_text">Bạn đã cập nhật thói quen hôm nay chưa? Chỉ cần vài giây thôi!</string>
 </resources>

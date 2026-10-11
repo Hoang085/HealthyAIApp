@@ -47,7 +47,7 @@ class HabitRepositoryImpl @Inject constructor(
             .toEpochMilli()
 
     /**
-     * Ghi thói quen mới **hoặc** cập nhật thói quen đã có (`OnConflictStrategy.REPLACE`).
+     * Tạo thói quen mới.
      *
      * Không còn phải vẽ lại widget màn hình chính: widget nay hiển thị **chỉ số sức khỏe** (bước chân,
      * giấc ngủ, nhịp tim) chứ không hiển thị tiến độ thói quen nữa, nên thay đổi thói quen không làm nội
@@ -55,6 +55,16 @@ class HabitRepositoryImpl @Inject constructor(
      */
     override suspend fun insertHabit(habit: Habit): Long =
         habitDao.insertHabit(habit.toEntity())
+
+    /**
+     * Cập nhật thói quen đã có bằng `UPDATE` theo khoá chính.
+     *
+     * **Không** dùng lại `insertHabit` cho đường này: `@Insert(onConflict = REPLACE)` là DELETE + INSERT
+     * trong SQLite, mà `habit_logs` khai khoá ngoại `onDelete = CASCADE` → sửa mục tiêu sẽ xoá sạch log
+     * của thói quen và tiến độ trong ngày về 0 (lỗi KB-13: thẻ hiện "0 / 45 phút" thay vì "30 / 45").
+     */
+    override suspend fun updateHabit(habit: Habit) =
+        habitDao.updateHabit(habit.toEntity())
 
     /** Ghi nhận một lần thực hiện thói quen (bảng `habit_logs`) — widget không hiển thị dữ liệu này. */
     override suspend fun logHabit(log: HabitLog) {

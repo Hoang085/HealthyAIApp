@@ -4,6 +4,7 @@ import com.healthyai.app.data.healthconnect.HealthConnectDataSource
 import com.healthyai.app.data.local.dao.health.HealthDataDao
 import com.healthyai.app.data.local.entity.health.HealthDataEntity
 import com.healthyai.app.domain.model.HealthConnectStatus
+import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.SleepStageBreakdown
 import com.healthyai.app.domain.model.StepCounterStatus
 import com.healthyai.app.domain.repository.SleepTrackerRepository
@@ -71,6 +72,35 @@ class HealthDataRepositoryImplTest {
         assertEquals(7.5, result.sleepHours, 0.01)
         assertEquals(72.0, result.heartRate, 0.01)
         assertEquals(300.0, result.activeCalories, 0.01)
+    }
+
+    @Test
+    fun `getTodayStoredHealthData returns today's snapshot from the app database`() = runTest {
+        // Arrange — hàng của hôm nay đã ghi trong `health_data_history`
+        coEvery { healthDataDao.getLatestSince(any()) } returns HealthDataEntity(
+            id = 1L,
+            steps = 3_210L,
+            sleepHours = 7.25,
+            heartRate = 68.0,
+            activeCalories = 240.0,
+            recordedAt = System.currentTimeMillis()
+        )
+
+        // Act
+        val result = repository.getTodayStoredHealthData()
+
+        // Assert
+        assertEquals(3_210L, result.steps)
+        assertEquals(7.25, result.sleepHours, 0.01)
+        assertEquals(68.0, result.heartRate, 0.01)
+        assertEquals(240.0, result.activeCalories, 0.01)
+    }
+
+    @Test
+    fun `getTodayStoredHealthData returns empty data when nothing was stored today`() = runTest {
+        coEvery { healthDataDao.getLatestSince(any()) } returns null
+
+        assertEquals(HealthData(), repository.getTodayStoredHealthData())
     }
 
     @Test

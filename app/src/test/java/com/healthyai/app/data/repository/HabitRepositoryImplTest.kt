@@ -93,8 +93,7 @@ class HabitRepositoryImplTest {
         coVerify(exactly = 1) { habitDao.softDeleteHabit(7L) }
     }
 
-    /** Tạo/sửa thói quen (cùng đi qua `insertHabit`) vẫn ghi qua DAO và trả về id của hàng. */
-    @Test
+    /** Tạo/sửa thói quen (cùng đi qua `insertHabit`) vẫn ghi qua DAO và trả về id của hàng. */    @Test
     fun `insertHabit writes through the dao and returns the new id`() = runTest {
         coEvery { habitDao.insertHabit(any()) } returns 42L
 
@@ -110,6 +109,29 @@ class HabitRepositoryImplTest {
 
         assertEquals(42L, id)
         coVerify(exactly = 1) { habitDao.insertHabit(any()) }
+    }
+
+    /**
+     * Sửa thói quen phải đi qua `@Update` (`habitDao.updateHabit`), **không** qua `@Insert(REPLACE)`.
+     *
+     * `REPLACE` là DELETE + INSERT trong SQLite, mà `habit_logs` khai khoá ngoại `onDelete = CASCADE`
+     * → dùng nó cho đường sửa sẽ xoá sạch log của thói quen và tiến độ trong ngày về 0 (lỗi KB-13:
+     * đổi mục tiêu "Chạy bộ buổi sáng" 30 → 45 phút làm thẻ hiện "0 / 45" thay vì "30 / 45").
+     */
+    @Test
+    fun `updateHabit updates through the dao and never replaces the row`() = runTest {
+        repository.updateHabit(
+            Habit(
+                id = 5,
+                name = "Chạy bộ buổi sáng",
+                category = HabitCategory.EXERCISE,
+                targetValue = 45f,
+                unit = "phút"
+            )
+        )
+
+        coVerify(exactly = 1) { habitDao.updateHabit(any()) }
+        coVerify(exactly = 0) { habitDao.insertHabit(any()) }
     }
 
     /** Ghi nhận một lần thực hiện thói quen chỉ đi qua bảng `habit_logs`. */

@@ -86,6 +86,16 @@ interface HealthDataRepository {
     fun getRecentHealthHistoryFlow(limit: Int): Flow<List<HealthData>>
 
     /**
+     * Bản chụp dữ liệu sức khỏe **đã lưu trong app** cho **hôm nay** (`health_data_history`), trả
+     * [HealthData] rỗng khi hôm nay chưa có hàng nào.
+     *
+     * Đây là nguồn cho thẻ "Tóm tắt sức khỏe" khi người dùng **tắt** switch "Dùng dữ liệu Health
+     * Connect": các ô lấy số từ bản chụp app đã ghi (do `HealthSyncWorker` đồng bộ, hoặc lần đo nhịp tim
+     * bằng camera), không đọc Health Connect tại chỗ.
+     */
+    suspend fun getTodayStoredHealthData(): HealthData
+
+    /**
      * Flow **toàn bộ** hàng lịch sử sức khỏe ghi từ [fromTs] trở đi (mới nhất trước).
      *
      * Khác [getRecentHealthHistoryFlow] (cắt theo **số hàng**), truy vấn này cắt theo **mốc thời gian**

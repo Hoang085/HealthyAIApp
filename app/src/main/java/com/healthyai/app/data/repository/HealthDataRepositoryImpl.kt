@@ -191,6 +191,15 @@ class HealthDataRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * Bản chụp sức khỏe của **hôm nay** đã ghi trong `health_data_history` (hàng mới nhất được ghi từ
+     * đầu ngày), hoặc [HealthData] rỗng khi hôm nay chưa có hàng nào.
+     *
+     * Nguồn cho thẻ "Tóm tắt sức khỏe" khi người dùng **tắt** switch "Dùng dữ liệu Health Connect".
+     */
+    override suspend fun getTodayStoredHealthData(): HealthData =
+        healthDataDao.getLatestSince(startOfToday())?.toDomain() ?: HealthData()
+
     override fun getHealthHistorySince(fromTs: Long): Flow<List<HealthData>> =
         healthDataDao.getHealthDataSince(fromTs).map { list -> list.map { it.toDomain() } }
 

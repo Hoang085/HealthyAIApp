@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="logic-sensors.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thuật toán: bước chân · giấc ngủ · nhịp tim — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 4</div>
+      <h1>Thuật toán: bước chân · giấc ngủ · nhịp tim</h1>
+      <p class="page-lead">
+        Ba thuật toán "tự lực" của app — app tự đo mà không cần Health Connect hay thiết bị đeo.
+        Cả ba đều là <strong>hàm thuần Kotlin</strong> nằm ở <code>domain/usecase/</code>, không phụ thuộc
+        Android, nên chạy và kiểm thử được trên JVM. Trang này giải thích bài toán, công thức, hằng số và
+        các ca biên của từng thuật toán.
+      </p>
+
+      <div class="callout note">
+        <span class="callout__title">Khuôn mẫu chung của cả ba</span>
+        <p>
+          Mỗi thuật toán đều giải cùng một dạng bài: <em>"phần cứng cho tôi một con số thô — hãy biến nó
+          thành một chỉ số sức khỏe có nghĩa cho hôm nay"</em>. Cách giải cũng giống nhau:
+        </p>
+        <ol>
+          <li><strong>Tách phần đọc phần cứng khỏi phần toán.</strong> File <code>Math</code>/<code>Analyzer</code> nhận tham số thời gian (<code>nowMs</code>) và môi trường dưới dạng dữ liệu thuần, nên test truyền giá trị giả được.</li>
+          <li><strong>Lưu trạng thái giữa các lần đọc</strong> trong một <code>data class State</code> bất biến + một <code>Store</code> ghi xuống <code>SharedPreferences</code>.</li>
+          <li><strong>Xử lý tường minh các ca biên</strong>: sang ngày mới, app bị đóng, máy khởi động lại, mất tín hiệu, dữ liệu vô lý.</li>
+        </ol>
+      </div>
+
+      <h2>1. Đếm bước chân — <code>StepCounterMath</code></h2>
+      <p class="small"><code>domain/usecase/steps/StepCounterMath.kt</code> · trạng thái ở <code>data/local/steps/StepCounterStore.kt</code></p>
+
+      <h3>1.1. Bài toán</h3>
+      <p>
+        Cảm biến <code>TYPE_STEP_COUNTER</code> của Android trả về một con số
+        <strong>luỹ kế từ lúc máy khởi động</strong> — ví dụ <em>"12 345 bước kể từ khi bật máy"</em>. Nó
+        <strong>không</strong> cho biết "hôm nay đi được bao nhiêu". Ta cần quy đổi con số đó thành
+        "số bước hôm nay".
+      </p>
+
+      <div class="callout warn">
+        <span class="callout__title">Cái bẫy: vì sao không thể chỉ lấy hiệu số</span>
+        <p>
+          Con số luỹ kế <strong>có</strong> bao gồm cả những bước đi lúc app không mở (cảm biến đếm ở phần
+          cứng, vẫn chạy khi app bị đóng). Nếu lấy thẳng <code>cumulative − baseline</code> với baseline ghi
+          từ hôm qua, số bước sẽ <em>"tự nhảy"</em> thêm mỗi lần mở app — kể cả những bước đi khi người dùng
+          đã đóng hẳn ứng dụng.
+        </p>
+        <p>
+          Bản cũ còn <strong>suy diễn ngược</strong>: chưa có dữ liệu + máy khởi động trong hôm nay ⇒
+          <code>baseline = 0</code> (coi mọi bước từ lúc boot là của hôm nay); sang ngày mới ⇒
+          <strong>nội suy</strong> mốc 00:00. Kết quả: mở app là số bước nhảy một cục.
+        </p>
+        <p>
+          <strong>Luật hiện tại (đã chốt): chỉ tính phần quan sát được trong lúc app đang chạy.</strong>
+          Đây là một <em>lựa chọn thiết kế có ý thức</em>: số hiển thị nhỏ hơn số bước thật trong ngày nếu
+          người dùng đóng app nhiều lần — nhưng con số "không bao giờ nói dối" theo cách khó hiểu.
+        </p>
+      </div>
+
+      <h3>1.2. Khái niệm "phiên chạy"</h3>
+      <p>Chìa khoá để nhận biết "app có bị đóng rồi mở lại hay không" là <code>sessionId</code>:</p>
+<pre><code><span class="c">// data/local/steps/StepCounterStore.kt — StepCounterStore là @Singleton</span>
+<span class="k">private val</span> sessionId: String = UUID.randomUUID().toString()</code></pre>
+      <p>Vì giá trị này được sinh <strong>một lần cho mỗi tiến trình app</strong>, nó là dấu hiệu đáng tin:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tình huống</th><th><code>sessionId</code></th><th>Hệ quả</th></tr></thead>
+        <tbody>
+          <tr><td>App đang mở</td><td>Không đổi</td><td>Đếm tiếp bình thường</td></tr>
+          <tr><td>App còn nằm trong tác vụ (chạy nền)</td><td>Không đổi</td><td>Đếm tiếp bình thường</td></tr>
+          <tr><td>Vuốt khỏi tác vụ / tiến trình bị thu hồi</td><td><strong>Đổi</strong> ở lần mở sau</td><td>Đếm lại từ mẫu hiện tại; khoảng giữa <strong>không</strong> được cộng</td></tr>
+          <tr><td>Máy khởi động lại</td><td><strong>Đổi</strong> (tiến trình mới)</td><td>Xử lý như "phiên mới" + xử lý riêng việc bộ đếm reset về 0</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>1.3. Trạng thái lưu giữ</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Trường</th><th>ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td><code>dateIso</code></td><td>Ngày (<code>yyyy-MM-dd</code>) mà <code>baseline</code>/<code>offset</code> đang thuộc về</td></tr>
+          <tr><td><code>sessionId</code></td><td>Phiên app đã ghi ra trạng thái này. <strong>Chuỗi rỗng</strong> (dữ liệu bản cũ) được coi là <em>phiên khác</em> = hướng an toàn</td></tr>
+          <tr><td><code>baseline</code></td><td>Giá trị luỹ kế được coi là <strong>"0 bước của phiên này"</strong></td></tr>
+          <tr><td><code>offset</code></td><td>Số bước <strong>đã đếm được trong ngày</strong> trước <code>baseline</code> hiện tại (do phiên trước, hoặc do máy khởi động lại)</td></tr>
+          <tr><td><code>lastCumulative</code></td><td>Mẫu luỹ kế gần nhất — để phát hiện bộ đếm bị reset và để nội suy</td></tr>
+          <tr><td><code>lastSampleMs</code></td><td>Thời điểm mẫu gần nhất</td></tr>
+          <tr><td><code>todaySteps</code></td><td>Số bước hôm nay tính ở lần đọc gần nhất — để hiện ngay khi mở app</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>1.4. Công thức</h3>
+      <p>Chỉ một dòng, nhưng mọi thứ nằm ở cách tính <code>baseline</code> và <code>offset</code>:</p>
+<pre><code><span class="c">// Số bước hôm nay</span>
+todaySteps = max(0, offset + (cumulative − baseline))
+
+<span class="c">// Số bước ĐÃ ĐẾM ĐƯỢC trong ngày tính tới mẫu cuối của state (dùng khi baseline đổi):</span>
+carriedOverSteps = offset + max(0, lastCumulative − baseline)</code></pre>
+
+      <h3>1.5. Máy trạng thái — bốn nhánh <code>when</code></h3>
+      <p>Toàn bộ luật nằm trong <code>sample()</code>. Hai biến quyết định nhánh:</p>
+<pre><code><span class="k">val</span> newDay = state.dateIso != todayIso
+<span class="c">// Bộ đếm luỹ kế nhỏ hơn mẫu trước ⇒ máy (hoặc cảm biến) đã khởi động lại</span>
+<span class="k">val</span> counterReset = cumulative &lt; state.lastCumulative</code></pre>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nhánh</th><th>Điều kiện</th><th><code>baseline</code></th><th><code>offset</code></th><th>Diễn giải</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>①</td>
+            <td>Chưa có state (<code>null</code>)</td>
+            <td><code>cumulative</code></td>
+            <td><code>0</code></td>
+            <td>Lần chạy đầu: <strong>không</strong> suy diễn ngược về trước, bắt đầu đếm từ chính mẫu này</td>
+          </tr>
+          <tr>
+            <td>②</td>
+            <td><code>state.sessionId != sessionId</code></td>
+            <td><code>cumulative</code></td>
+            <td><code>if (newDay) 0 else carriedOverSteps</code></td>
+            <td>App đã bị đóng rồi mở lại: đếm lại từ mẫu hiện tại; <strong>giữ</strong> phần đã đếm trong ngày (nếu cùng ngày)</td>
+          </tr>
+          <tr>
+            <td>③</td>
+            <td>Cùng phiên <em>và</em> sang ngày mới</td>
+            <td><code>counterReset ? cumulative : interpolateAt(…00:00…)</code></td>
+            <td><code>0</code></td>
+            <td>App chạy xuyên nửa đêm: ước lượng mốc luỹ kế tại 00:00 rồi coi đó là "0 bước của ngày mới"</td>
+          </tr>
+          <tr>
+            <td>④</td>
+            <td>Cùng phiên, cùng ngày, <code>counterReset</code></td>
+            <td><code>cumulative</code></td>
+            <td><code>carriedOverSteps</code></td>
+            <td>Máy vừa khởi động lại: giữ phần đã đi, đếm tiếp từ 0 của bộ đếm</td>
+          </tr>
+          <tr>
+            <td>⑤</td>
+            <td>Còn lại</td>
+            <td><code>state.baseline</code></td>
+            <td><code>state.offset</code></td>
+            <td>Trường hợp thường: giữ nguyên, chỉ cập nhật <code>cumulative</code></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>1.6. Nội suy mốc 00:00</h3>
+      <p>
+        Khi app chạy xuyên nửa đêm, nó có thể đang ở nền và bị hệ thống "ngủ" qua 00:00 — không có mẫu nào
+        đúng lúc nửa đêm. Cách xử lý: nội suy tuyến tính giữa mẫu cuối ngày hôm trước và mẫu đầu tiên của
+        hôm nay (hai mẫu này <strong>thuộc cùng một phiên</strong> nên mới được phép giả định đường đi là tuyến tính).
+      </p>
+<pre><code><span class="k">private fun</span> interpolateAt(t0: Long, c0: Long, t1: Long, c1: Long, targetMs: Long): Long {
+    <span class="k">if</span> (t1 &lt;= t0 || c0 == c1) <span class="k">return</span> c1
+    <span class="k">val</span> clamped = targetMs.coerceIn(t0, t1)
+    <span class="k">val</span> estimate = c0 + ((c1 - c0).toDouble() * (clamped - t0).toDouble() / (t1 - t0).toDouble()).toLong()
+    <span class="c">// Luôn nằm trong [min(c0,c1), max(c0,c1)] để không sinh giá trị vô lý khi dữ liệu bất thường</span>
+    <span class="k">return</span> estimate.coerceIn(minOf(c0, c1), maxOf(c0, c1))
+}</code></pre>
+      <div class="callout note">
+        <span class="callout__title">Ví dụ số: nội suy lúc nửa đêm</span>
+        <p>
+          Mẫu cuối hôm qua: 23:50, luỹ kế <code>9 000</code>. Mẫu đầu hôm nay: 00:10, luỹ kế <code>9 100</code>.
+          Mốc 00:00 nằm giữa khoảng 20 phút, tức 10/20 = 50% đường đi:
+        </p>
+        <p><code>baseline = 9000 + 100 × 0.5 = 9 050</code></p>
+        <p>
+          Vậy <code>todaySteps = 0 + (9100 − 9050) = 50</code>. Đúng: nửa đêm tới 00:10 đi được khoảng
+          50 bước, không tính 9 000 bước của hôm qua vào hôm nay.
+        </p>
+      </div>
+
+      <h3>1.7. Hiển thị ngay khi mở app</h3>
+      <p>
+        Lúc mới mở app, cảm biến chưa kịp phát mẫu nào. Không được hiện số của hôm qua, cũng không nên hiện
+        trống — nên có một hàm riêng:
+      </p>
+<pre><code><span class="k">fun</span> storedTodaySteps(state: State?, todayIso: String): Long =
+    <span class="c">// Chỉ dùng giá trị đã lưu nếu nó thuộc ĐÚNG hôm nay</span>
+    <span class="k">if</span> (state != <span class="k">null</span> &amp;&amp; state.dateIso == todayIso) state.todaySteps <span class="k">else</span> <span class="n">0L</span></code></pre>
+
+      <h3>1.8. Chính sách ghi prefs (<code>StepCounterStore</code>)</h3>
+      <p>
+        Cảm biến có thể phát mẫu rất dày, nên không ghi từng mẫu. Có hai mức ưu tiên khác nhau:
+      </p>
+<pre><code><span class="k">private fun</span> writeState(previous: StepCounterMath.State?, state: StepCounterMath.State) {
+    <span class="k">val</span> milestoneChanged = previous == <span class="k">null</span> ||
+        previous.dateIso != state.dateIso ||          <span class="c">// sang ngày mới</span>
+        previous.sessionId != state.sessionId ||      <span class="c">// app được khởi động lại</span>
+        previous.baseline != state.baseline ||        <span class="c">// bộ đếm reset / nội suy</span>
+        previous.offset != state.offset
+    <span class="k">val</span> sampleIsFreshEnough = previous == <span class="k">null</span> ||
+        state.lastSampleMs - previous.lastSampleMs &gt;= SAMPLE_WRITE_INTERVAL_MS   <span class="c">// 15 giây</span>
+    <span class="k">if</span> (!milestoneChanged &amp;&amp; !sampleIsFreshEnough) <span class="k">return</span>
+
+    <span class="k">val</span> editor = prefs.edit().putString(KEY_DATE, state.dateIso) <span class="c">/* … */</span>
+
+    <span class="c">// Mốc quan trọng ⇒ ghi ĐỒNG BỘ để không mất mốc ngày khi tiến trình bị thu hồi;</span>
+    <span class="c">// chỉ có mẫu mới hơn ⇒ ghi bất đồng bộ cho rẻ.</span>
+    <span class="k">if</span> (milestoneChanged) editor.commit() <span class="k">else</span> editor.apply()
+}</code></pre>
+
+      <h3>1.9. Vòng đời listener</h3>
+      <p>
+        <code>HomeViewModel</code> đăng ký listener khi màn Trang chủ còn sống. <code>HomeViewModel</code>
+        <strong>không</strong> bị xoá khi app xuống nền, nên app ở nền mà còn trong tác vụ thì
+        <strong>vẫn đếm</strong>; app bị đóng hẳn thì dừng hẳn — khớp đúng luật "phiên chạy" ở trên.
+      </p>
+      <p>Có một chi tiết nhỏ nhưng đáng học trong repository:</p>
+<pre><code><span class="k">override fun</span> observeTodaySteps(): Flow&lt;Long&gt; = channelFlow {
+    <span class="c">// ① Hiện NGAY giá trị đã biết của hôm nay (0 nếu sang ngày mới) để UI không trống</span>
+    send(store.readStoredTodaySteps(LocalDate.now().toString()))
+
+    <span class="c">// ② Chưa đủ điều kiện (thiếu quyền / không có cảm biến) → dừng; UI hiện thẻ xin quyền</span>
+    <span class="k">if</span> (!getStatus().isReady) <span class="k">return</span>@channelFlow
+
+    <span class="c">// ③ Cảm biến phát mẫu → quy đổi và phát tiếp</span>
+    sensor.observeCumulativeSteps()
+        .catch { }        <span class="c">// lỗi cảm biến chỉ làm dừng cập nhật, KHÔNG được crash màn Trang chủ</span>
+        .collect { cumulative -&gt; send(store.onSample(cumulative)) }
+}.distinctUntilChanged()</code></pre>
+
+      <h3>1.10. Giới hạn đã biết</h3>
+      <ul>
+        <li>Emulator và một số máy rẻ tiền <strong>không có</strong> cảm biến đếm bước ⇒ app không hiện thẻ xin quyền; số bước lấy từ nguồn đang chọn (switch <strong>"Dùng dữ liệu Health Connect"</strong>: BẬT → Health Connect; TẮT (mặc định) → bản chụp trong app).</li>
+        <li>Vì chỉ đếm lúc app chạy, số hiển thị <strong>nhỏ hơn</strong> số bước thật trong ngày nếu người dùng đóng app nhiều lần. Đây là <em>chủ ý</em>, không phải lỗi.</li>
+        <li>Từ Android 10 cần quyền <code>ACTIVITY_RECOGNITION</code>; cơ chế phát hiện "máy có cảm biến" không phụ thuộc quyền đã mô tả ở <a href="data.html#91-androidstepcountersensor-typestepcounter">trang Dữ liệu</a>.</li>
+      </ul>
+
+      <h2>2. Ước lượng giấc ngủ — <code>SleepTrackerMath</code></h2>
+      <p class="small"><code>domain/usecase/sleep/SleepTrackerMath.kt</code> · cảm biến ở <code>data/sleep/AndroidSleepSensor.kt</code> · worker <code>worker/SleepTrackingWorker.kt</code></p>
+
+      <h3>2.1. Bài toán</h3>
+      <p>
+        Khác với bước chân, Android <strong>không có</strong> cảm biến "đang ngủ". App phải
+        <em>suy ra</em> giấc ngủ từ ba tín hiệu đọc được <strong>không cần quyền nào</strong>,
+        kết hợp với <strong>khung giờ ngủ do người dùng đặt</strong>.
+      </p>
+
+      <h3>2.2. Khung giờ ngủ — <code>SleepSchedule</code></h3>
+      <p>
+        Đây là quyết định thiết kế quan trọng: app <strong>không</strong> tự quyết định giờ ngủ nữa.
+        Trước đây app tự dùng khung 18:00 → 12:00 hôm sau, nên thời gian ngủ bị tính nhầm khi người dùng
+        ngủ muộn. Nay người dùng chọn <em>giờ đi ngủ</em> + <em>giờ thức</em> (mặc định
+        <strong>23:00 → 07:00</strong>), app chỉ làm phần đo.
+      </p>
+<pre><code><span class="k">data class</span> SleepSchedule(<span class="k">val</span> bedtime: LocalTime, <span class="k">val</span> wakeTime: LocalTime) {
+
+    <span class="c">/** Khung VẮT QUA nửa đêm — đúng khi giờ đi ngủ MUỘN HƠN giờ thức (23:00 → 07:00). */</span>
+    <span class="k">val</span> wrapsMidnight: Boolean <span class="k">get</span>() = bedtime &gt; wakeTime
+
+    <span class="c">/** Nửa mở: có giờ đi ngủ, KHÔNG có giờ thức (thức dậy đúng 07:00 thì 07:00 không còn là ngủ) */</span>
+    <span class="k">fun</span> contains(time: LocalTime): Boolean =
+        <span class="k">if</span> (wrapsMidnight) time &gt;= bedtime || time &lt; wakeTime
+        <span class="k">else</span>                time &gt;= bedtime &amp;&amp; time &lt; wakeTime
+
+    <span class="k">val</span> isValid: Boolean <span class="k">get</span>() = bedtime != wakeTime   <span class="c">// chỉ chặn khung rỗng 0 phút</span>
+
+    <span class="k">companion object</span> { <span class="k">val</span> DEFAULT = SleepSchedule(LocalTime.of(<span class="n">23</span>, <span class="n">0</span>), LocalTime.of(<span class="n">7</span>, <span class="n">0</span>)) }
+}</code></pre>
+      <p>
+        Cả hai dạng đều hợp lệ: khung vắt qua nửa đêm (23:00 → 07:00) và khung nằm gọn trong một ngày
+        (01:00 → 08:00). Chỉ chặn trường hợp hai mốc <strong>trùng nhau</strong> (khung rỗng) — bị chặn ngay
+        trong hộp thoại, không ghi vào DB.
+      </p>
+
+      <h3>2.3. Luật phân loại "đang ngủ"</h3>
+      <p>Bốn điều kiện, <strong>tất cả</strong> đều phải đúng:</p>
+<pre><code><span class="k">fun</span> isAsleep(environment: SleepEnvironment, nowMs: Long, zone: ZoneId, schedule: SleepSchedule): Boolean =
+    isInSleepWindow(nowMs, zone, schedule) &amp;&amp;      <span class="c">// ① đang trong khung giờ ngủ của người dùng</span>
+        !environment.screenInteractive &amp;&amp;          <span class="c">// ② màn hình tắt</span>
+        environment.lightLux &lt; DARK_LUX &amp;&amp;         <span class="c">// ③ phòng tối  (&lt; 5 lux)</span>
+        environment.maxMotionG &lt; STILL_MOTION_G    <span class="c">// ④ điện thoại bất động (&lt; 0.05 g lệch khỏi 1g)</span></code></pre>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Hằng số</th><th>Giá trị</th><th>Diễn giải</th></tr></thead>
+        <tbody>
+          <tr><td><code>DARK_LUX</code></td><td><code>5f</code></td><td>Dưới mức này coi là phòng tối. Để <em>thấp</em> nhằm tránh nhận nhầm phòng có đèn/TV là đang ngủ</td></tr>
+          <tr><td><code>STILL_MOTION_G</code></td><td><code>0.05f</code></td><td>Độ lệch gia tốc lớn nhất còn coi là "bất động"</td></tr>
+          <tr><td><code>MIN_SLEEP_MINUTES</code></td><td><code>45</code></td><td>Dưới ngưỡng này <strong>không</strong> coi là một giấc ngủ (lọc nhiễu: ngồi yên một lúc không phải ngủ)</td></tr>
+          <tr><td><code>MAX_SLEEP_MINUTES</code></td><td><code>720</code> (12 giờ)</td><td>Trần hợp lý — chặn dữ liệu vô lý khi cảm biến bị kẹt hoặc điện thoại bị bỏ quên</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>2.4. "Đêm" được đặt tên thế nào — <code>nightIsoOf</code></h3>
+      <p>
+        Đây là phần tinh tế nhất. Một <strong>"đêm" <code>D</code></strong> là khoảng
+        <code>[giờ đi ngủ hôm D−1, giờ thức hôm D)</code> và được <strong>gọi tên theo ngày thức dậy</strong>
+        <code>D</code>.
+      </p>
+<pre><code><span class="k">fun</span> nightIsoOf(nowMs: Long, zone: ZoneId, schedule: SleepSchedule): String {
+    <span class="k">val</span> local = Instant.ofEpochMilli(nowMs).atZone(zone)
+    <span class="k">val</span> date = <span class="k">if</span> (schedule.wrapsMidnight &amp;&amp; local.toLocalTime() &gt;= schedule.bedtime) {
+        local.toLocalDate().plusDays(<span class="n">1</span>)     <span class="c">// từ giờ đi ngủ trở đi → đêm mới, thuộc ngày mai (ngày thức dậy)</span>
+    } <span class="k">else</span> {
+        local.toLocalDate()                     <span class="c">// trước giờ đi ngủ → vẫn là đêm vừa kết thúc sáng nay</span>
+    }
+    <span class="k">return</span> date.toString()
+}</code></pre>
+      <div class="callout tip">
+        <span class="callout__title">Vì sao "khoá đêm chỉ nhảy tại giờ đi ngủ" lại quan trọng</span>
+        <p>
+          Khoá đêm <strong>chỉ đổi một lần mỗi ngày</strong> — vào lúc <em>giờ đi ngủ</em>. Nhờ vậy suốt
+          ngày (sau giờ thức tới trước giờ đi ngủ), khoá vẫn là <em>đêm vừa kết thúc</em> và số giờ ngủ của
+          đêm đó <strong>không bị xoá</strong>.
+        </p>
+        <p>
+          Nếu làm ngược lại (đổi khoá tại giờ thức), số giờ ngủ sẽ bị reset về 0 mỗi sáng và người dùng
+          không bao giờ thấy kết quả của đêm vừa qua.
+        </p>
+      </div>
+
+      <h3>2.5. Cộng dồn — chỉ tính giữa hai mẫu "đang ngủ" liên tiếp</h3>
+<pre><code><span class="k">fun</span> sample(state: State?, nowMs: Long, asleepNow: Boolean, zone: ZoneId, schedule: SleepSchedule): Result {
+    <span class="k">val</span> night = nightIsoOf(nowMs, zone, schedule)
+    <span class="k">val</span> previous = state?.takeIf { it.nightIso == night }    <span class="c">// bỏ state nếu đã sang đêm mới</span>
+
+    <span class="c">// Đêm cũ khép lại ở mẫu này → trả về để tầng lưu trữ giữ lại cho màn Trang chủ</span>
+    <span class="k">val</span> archived = <span class="k">if</span> (state != <span class="k">null</span> &amp;&amp; previous == <span class="k">null</span> &amp;&amp; state.sleepMillis &gt; <span class="n">0L</span>)
+        NightTotal(state.nightIso, state.sleepMillis) <span class="k">else</span> <span class="k">null</span>
+
+    <span class="c">// ⭐ Chỉ cộng phần thời gian nằm giữa HAI MẪU "ĐANG NGỦ" LIÊN TIẾP</span>
+    <span class="k">val</span> carriedMillis = <span class="k">if</span> (previous != <span class="k">null</span> &amp;&amp; previous.lastWasAsleep &amp;&amp; asleepNow)
+        (nowMs - previous.lastSampleMs).coerceAtLeast(<span class="n">0L</span>) <span class="k">else</span> <span class="n">0L</span>
+
+    <span class="k">val</span> totalMillis = ((previous?.sleepMillis ?: <span class="n">0L</span>) + carriedMillis)
+        .coerceIn(<span class="n">0L</span>, MAX_SLEEP_MINUTES * MILLIS_PER_MINUTE)
+    <span class="c">/* … */</span>
+}</code></pre>
+      <div class="callout tip">
+        <span class="callout__title">Vì sao dùng "cả hai mẫu đều ngủ" thay vì "mẫu này ngủ thì cộng khoảng vừa rồi"</span>
+        <p>
+          WorkManager có thể bị <strong>hoãn trong chế độ Doze</strong> (ban đêm máy không sạc, đứng yên) ⇒
+          khoảng cách giữa hai mẫu có thể là <em>vài giờ</em>. Việc cộng <strong>toàn bộ</strong> khoảng giữa
+          hai mẫu "đang ngủ" liên tiếp khiến khoảng bị hoãn <strong>không mất</strong> thời gian ngủ.
+        </p>
+        <p>
+          Nhưng điều kiện "cả hai đều ngủ" lại rất cần thiết: nếu người dùng <em>thức</em> giữa đêm (mẫu
+          đánh thức), khoảng đó <strong>không</strong> được cộng. Nếu bỏ điều kiện này, mọi khoảng thức
+          giữa đêm đều bị tính thành ngủ.
+        </p>
+      </div>
+
+      <h3>2.6. Không để ô "Ngủ" nhảy về 0 vào buổi tối — <code>displaySleepMinutes</code></h3>
+      <p>Bài toán giao diện: lúc 23:05 đêm mới vừa bắt đầu, số ngủ đang là 0. Hiện <code>0h</code> sẽ khiến
+         người dùng tưởng app mất dữ liệu. Nhưng cũng <em>không</em> được lấy số của đêm cũ hơn nữa ra thay.</p>
+<pre><code><span class="k">fun</span> displaySleepMinutes(state, archived, nowMs, zone, schedule): Long {
+    <span class="k">val</span> currentNight = nightIsoOf(nowMs, zone, schedule)
+    <span class="k">val</span> ongoing = storedSleepMinutes(state, currentNight)
+
+    <span class="c">// ① Ngoài khung ngủ (sau giờ thức, trước giờ đi ngủ): đêm đang xét CHÍNH LÀ đêm vừa kết thúc</span>
+    <span class="c">//    sáng nay → hiển thị thẳng, kể cả khi dưới ngưỡng (thức trắng thì phải hiện 0).</span>
+    <span class="k">if</span> (!isInSleepWindow(nowMs, zone, schedule)) <span class="k">return</span> ongoing
+
+    <span class="c">// ② Trong khung ngủ và đã đủ ngưỡng → hiện số đang cộng dồn</span>
+    <span class="k">if</span> (ongoing &gt;= MIN_SLEEP_MINUTES) <span class="k">return</span> ongoing
+
+    <span class="c">// ③ Trong khung ngủ nhưng đêm mới vừa bắt đầu: hiện ĐÊM VỪA KẾT THÚC</span>
+    <span class="k">val</span> finishedNight = LocalDate.parse(currentNight).minusDays(<span class="n">1</span>).toString()
+    <span class="k">val</span> finished = storedSleepMinutes(state, finishedNight).takeIf { it &gt; <span class="n">0L</span> }
+        ?: archived?.takeIf { it.nightIso == finishedNight }?.sleepMinutes
+
+    <span class="k">return</span> <span class="k">if</span> (finished != <span class="k">null</span> &amp;&amp; finished &gt;= MIN_SLEEP_MINUTES) finished <span class="k">else</span> ongoing
+}</code></pre>
+      <p>
+        Nguyên tắc: <strong>không bao giờ</strong> hiện số của một đêm cũ hơn đêm vừa qua; nhưng đêm mới chưa
+        đủ dài thì vẫn giữ số của đêm vừa qua. Đêm cũ được giữ trong prefs dưới hai khoá
+        <code>previous_night</code> / <code>previous_sleep_millis</code> (xem <code>SleepTrackerStore</code>).
+      </p>
+
+      <h3>2.7. Đổi sang số giờ để hiển thị</h3>
+<pre><code><span class="k">fun</span> toSleepHours(minutes: Long): Double {
+    <span class="k">if</span> (minutes &lt; MIN_SLEEP_MINUTES) <span class="k">return</span> <span class="n">0.0</span>          <span class="c">// lọc nhiễu: dưới 45 phút không phải giấc ngủ</span>
+    <span class="k">return</span> Math.round(minutes / <span class="n">60.0</span> * <span class="n">10.0</span>) / <span class="n">10.0</span>   <span class="c">// làm tròn 1 chữ số thập phân</span>
+}</code></pre>
+      <p class="small">
+        Làm tròn 1 chữ số thập phân để tránh sai lệch khi UI đổi giờ → phút. Con số này cũng được ghi vào
+        <code>health_data_history</code> mỗi lần <code>HealthSyncWorker</code> chạy, nên tab Phân tích dùng được.
+      </p>
+
+      <h3>2.8. Ví dụ số đầy đủ</h3>
+      <div class="diagram">
+<pre>Khung giờ ngủ: 23:00 → 07:00  (wrapsMidnight = true)
+
+ 21:00  nightIsoOf = HÔM NAY        (21:00 &lt; 23:00)
+        → khoá vẫn là đêm vừa kết thúc sáng nay; số của đêm đó còn nguyên
+
+ 23:30  nightIsoOf = NGÀY MAI       (23:30 &gt;= 23:00 → khoá NHẢY)
+        màn hình tắt, 1 lux, 0.01g → isAsleep = TRUE
+        state trước đó (đêm hôm nay) có số > 0 → ARCHIVED
+
+ 23:45  vẫn ngủ → carriedMillis = 15 phút             tổng đêm mới = 15'
+
+ 02:00  người dùng thức, bật màn hình → asleepNow = FALSE
+        carriedMillis = 0  (vì asleepNow = false)      tổng = 15'
+
+ 02:15  lại ngủ → carriedMillis = 15 phút              tổng = 30'
+
+ 05:30  máy bị Doze, worker không chạy trong 3 giờ 15'
+ 08:45  mẫu tiếp theo vẫn "đang ngủ" → cộng TOÀN BỘ 3h15' = 195 phút
+        ⚠ nhưng coerceIn(0, 720') và thực tế 08:45 đã ra khỏi khung
+        → isAsleep = FALSE ở mẫu này ⇒ carriedMillis = 0
+
+ 09:00  ngoài khung ngủ → displaySleepMinutes = ongoing (đêm vừa kết thúc sáng nay)
+        nếu ongoing ≥ 45' → hiện số đó; nếu &lt; 45' → hiện 0h (thức trắng thì phải hiện 0)
+
+ 23:30  (tối hôm sau) khoá nhảy sang ngày kia; ongoing = 0 &lt; 45'
+        → hiện ARCHIVED = số của đêm vừa kết thúc  ✅ không nhảy về 0</pre>
+      </div>
+
+      <h3>2.9. Vì sao cần một worker riêng</h3>
+      <p>
+        Bước chân có <code>TYPE_STEP_COUNTER</code> đếm ở phần cứng nên số không mất khi app đóng. Giấc ngủ
+        thì <strong>không có cảm biến sẵn</strong> — app phải tự lấy mẫu. <code>SleepTrackingWorker</code>
+        chạy <strong>15 phút/lần</strong> (khoảng định kỳ nhỏ nhất WorkManager cho phép) và chỉ nghe cảm biến
+        trong <strong>3 giây</strong> rồi gỡ listener ⇒ <strong>không cần foreground service</strong>,
+        không tốn pin suốt đêm. Job chạy cả khi app đóng.
+      </p>
+      <p class="small">Chi tiết lịch chạy và ràng buộc pin ở <a href="background.html#2-chi-tiet-tung-worker">trang Chạy nền</a>.</p>
+
+      <h3>2.10. Giới hạn đã biết</h3>
+      <ul>
+        <li>Đây là <strong>ước lượng từ điện thoại</strong>, không thay được thiết bị chuyên dụng. Nếu điện thoại bị bỏ quên ở nơi tối và bất động <em>trong khung giờ ngủ</em> (ví dụ trong túi khi đang ở ngoài), khoảng đó bị tính là ngủ — <strong>chọn khung giờ sát thực tế giúp giảm hẳn</strong> loại sai số này.</li>
+        <li>Máy không có cảm biến ánh sáng thì app vẫn hoạt động (coi như "tối") nhưng chỉ dựa vào hai tín hiệu còn lại.</li>
+        <li>Thức dậy <strong>muộn hơn giờ thức đã đặt</strong> thì phần sau giờ thức không được tính.</li>
+        <li>Cần số liệu chính xác theo pha Sâu/Nông/REM thì phải dùng đồng hồ đeo tay — app vẫn ưu tiên Health Connect khi có dữ liệu đó.</li>
+      </ul>
+
+      <h2>3. Tổng hợp hai thuật toán "trạng thái"</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Bước chân</th><th>Giấc ngủ</th></tr></thead>
+        <tbody>
+          <tr><td>Nguồn</td><td>Cảm biến phần cứng <code>TYPE_STEP_COUNTER</code></td><td>Suy luận từ ánh sáng + gia tốc + màn hình</td></tr>
+          <tr><td>Ai lấy mẫu</td><td><code>HomeViewModel</code> (app đang chạy / ở nền trong tác vụ)</td><td><code>SleepTrackingWorker</code> 15 phút/lần, kể cả khi app đóng</td></tr>
+          <tr><td>Đơn vị khoá trạng thái</td><td>Ngày + <strong>phiên chạy</strong> của tiến trình</td><td><strong>Đêm</strong> (ngày thức dậy)</td></tr>
+          <tr><td>Luật cộng dồn</td><td>Cộng liên tục trong phiên; bỏ qua khoảng app không chạy</td><td>Cộng khoảng giữa hai mẫu <em>đều</em> "đang ngủ"</td></tr>
+          <tr><td>Xử lý ca biên</td><td>Sang ngày mới (nội suy 00:00), app đóng, máy restart (bộ đếm về 0)</td><td>Thức giữa đêm, Doze hoãn worker, đêm mới chưa đủ dài</td></tr>
+          <tr><td>Lọc nhiễu</td><td><code>coerceAtLeast(0)</code>, chặn suy diễn ngược</td><td>&lt; 45 phút = không phải giấc ngủ; &gt; 12 giờ = cắt bớt</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>4. Đo nhịp tim bằng camera — phép đo PPG</h2>
+      <p class="small"><code>domain/usecase/heartrate/PpgAnalyzer.kt</code> + <code>HeartRateMath.kt</code> · đọc khung hình ở <code>data/heartrate/CameraPpgAnalyzer.kt</code> · UI ở <code>presentation/screen/heartrate/</code></p>
+
+      <h3>4.1. Nguyên lý vật lý</h3>
+      <p>
+        PPG (<em>photoplethysmography</em>) — đèn flash chiếu sáng <strong>xuyên qua mô ngón tay</strong>;
+        mỗi khi tim đập, một đợt máu dồn về đầu ngón tay làm <strong>lượng ánh sáng phản xạ thay đổi rất nhẹ</strong>.
+        Camera ghi lại sự thay đổi đó ở kênh đỏ, và chu kỳ đổi màu <strong>chính là nhịp tim</strong>.
+      </p>
+      <p>
+        Thách thức: tín hiệu AC (phần thay đổi) chỉ chiếm một tỉ lệ rất nhỏ so với mức DC (nền sáng), và
+        camera chỉ cho ~30 khung/giây ⇒ độ phân giải thời gian thô ~33 ms. Toàn bộ thuật toán là để vượt
+        qua hai hạn chế đó.
+      </p>
+
+      <h3>4.2. Pipeline bốn bước</h3>
+      <div class="flow">
+        <span class="flow__step">① Bỏ DC<br><span class="small">trung bình trượt ~1 giây</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">② Lọc mượt EMA<br><span class="small">α = 0,5</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">③ Tìm đỉnh mạch<br><span class="small">ngưỡng thích ứng + chống dội + nội suy parabol</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">④ Tự tương quan<br><span class="small">kiểm tra tính chu kỳ</span></span>
+      </div>
+      <div class="flow">
+        <span class="flow__step">⑤ Chốt nhịp<br><span class="small">trung vị các khoảng RR</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step">⑥ Chất lượng<br><span class="small">min(chu kỳ, độ đều)</span></span>
+      </div>
+
+      <h3>4.3. Bước ① — Bỏ thành phần một chiều (DC)</h3>
+      <p>
+        Tính trung bình trượt của giá trị đỏ trong cửa sổ ~<strong>1 giây</strong>
+        (<code>DC_WINDOW_MS = 1000</code>), rồi lấy tín hiệu AC = giá trị tức thời − trung bình đó.
+        Phần còn lại chính là "từng đợt máu dồn về đầu ngón tay".
+      </p>
+<pre><code>dcWindow.addLast(Sample(timestampMs, red))
+dcSum += red
+<span class="k">while</span> (dcWindow.size &gt; <span class="n">1</span> &amp;&amp; timestampMs - dcWindow.first().timestampMs &gt; DC_WINDOW_MS) {
+    dcSum -= dcWindow.removeFirst().value
+}
+<span class="k">val</span> dc = dcSum / dcWindow.size
+<span class="k">val</span> ac = red - dc          <span class="c">// ← tín hiệu mạch đập</span></code></pre>
+      <div class="callout note">
+        <span class="callout__title">Vì sao trung bình trượt "đối xứng" lại quan trọng</span>
+        <p>
+          Dùng trung bình trượt <em>căn giữa</em> nên phép lọc <strong>không làm lệch mốc thời gian của các
+          đỉnh</strong>. Đó là điều kiện để có thể tìm đỉnh trên tín hiệu AC mà vẫn giữ đúng khoảng cách
+          giữa hai nhịp.
+        </p>
+      </div>
+
+      <h3>4.4. Bước ② — Lọc mượt bằng EMA</h3>
+<pre><code><span class="k">val</span> smoothed = <span class="k">if</span> (smoothingStarted) {
+    smoothedAc + AC_SMOOTHING_ALPHA * (ac - smoothedAc)    <span class="c">// AC_SMOOTHING_ALPHA = 0.5</span>
+} <span class="k">else</span> {
+    smoothingStarted = <span class="k">true</span>
+    ac
+}
+smoothedAc = smoothed</code></pre>
+      <div class="callout tip">
+        <span class="callout__title">Vì sao EMA (trung bình động hàm mũ) mà không phải bộ lọc khác</span>
+        <p>
+          EMA có <strong>độ trễ không đổi</strong>: mọi đỉnh đều bị dịch đi <em>đúng một khoảng như nhau</em>,
+          nên <strong>khoảng cách giữa hai nhịp không bị lệch</strong> — đây là tính chất quyết định, vì thứ
+          ta cần đo chính là khoảng cách đó. (Bộ lọc phi tuyến sẽ làm méo khoảng cách, dẫn tới sai bpm.)
+        </p>
+        <p>
+          Đổi lại, nhiễu tần số cao bị giảm khoảng một nửa: với <code>α = 0,5</code>, EMA chỉ giữ khoảng
+          <code>α/(2−α) = 1/3</code> phương sai của nhiễu trắng (giảm độ lệch chuẩn ~42%). Nhờ vậy rung tay
+          không còn sinh ra đỉnh giả giữa hai nhịp.
+        </p>
+      </div>
+
+      <h3>4.5. Bước ③ — Tìm đỉnh mạch</h3>
+      <p>Ba cơ chế phối hợp, mỗi cơ chế chống một loại lỗi cụ thể:</p>
+
+      <h4>(a) Ngưỡng thích ứng theo nhiễu</h4>
+<pre><code><span class="c">// Ngưỡng đỉnh phải cao hơn TRUNG BÌNH 2 giây gần nhất ít nhất 1,2 lần ĐỘ LỆCH CHUẨN của chính nó</span>
+<span class="k">val</span> (mean, deviation) = acStatistics()
+<span class="k">if</span> (deviation &lt;= <span class="n">0.0</span>) <span class="k">return</span>
+<span class="k">val</span> threshold = mean + PEAK_SNR_RATIO * deviation        <span class="c">// PEAK_SNR_RATIO = 1.2</span></code></pre>
+      <div class="callout note">
+        <span class="callout__title">Vì sao KHÔNG dùng <code>min + tỉ lệ × biên độ</code></span>
+        <p>
+          Biên độ <code>(max − min)</code> bị <strong>chính nhiễu kéo rộng ra</strong> ⇒ ngưỡng tụt xuống
+          ⇒ nhiễu lại tạo thêm đỉnh giả ⇒ nhịp đo ra bị "nhanh" giả tạo khi tay rung.
+          Lấy ngưỡng theo <em>độ lệch chuẩn</em> thì tín hiệu yếu (biên độ nhỏ) tự động bị đòi hỏi khắt khe
+          hơn, còn tín hiệu mạnh vẫn dễ vượt ngưỡng.
+        </p>
+        <p class="small">
+          Ghi chú kỹ thuật: KDoc ở đầu <code>PpgAnalyzer</code> còn mô tả ngưỡng cũ là
+          <em>"45% biên độ của 2 giây gần nhất"</em>. <strong>Code mới là nguồn đúng</strong> —
+          <code>mean + 1.2σ</code> — và chính comment trong <code>detectPeak()</code> giải thích vì sao đổi.
+        </p>
+      </div>
+
+      <h4>(b) Chống dội (arming)</h4>
+<pre><code><span class="c">// Đã rơi xuống dưới mức trung bình ⇒ lại được phép nhận nhịp tiếp theo</span>
+<span class="k">if</span> (peak.value &lt; mean) armed = <span class="k">true</span>
+<span class="k">if</span> (!armed) <span class="k">return</span>
+
+<span class="k">val</span> isLocalMaximum = peak.value &gt; previous.value &amp;&amp; peak.value &gt; next.value
+<span class="k">if</span> (!isLocalMaximum) <span class="k">return</span>
+<span class="k">if</span> (peak.value &lt; threshold) <span class="k">return</span>
+<span class="c">/* … */</span>
+armed = <span class="k">false</span>          <span class="c">// nhận nhịp rồi thì khoá lại, chờ tín hiệu rơi xuống</span></code></pre>
+      <p>
+        Sau mỗi nhịp, tín hiệu phải <strong>rơi xuống dưới mức trung bình</strong> rồi mới được tìm đỉnh mới.
+        Không có bước này thì nhiễu (rung tay) tạo thêm đỉnh giả giữa hai nhịp, làm nhịp đo được bị
+        "nhanh" giả tạo.
+      </p>
+
+      <h4>(c) Nội suy parabol đỉnh</h4>
+<pre><code><span class="k">fun</span> parabolicPeakOffset(previous: Double, peak: Double, next: Double): Double {
+    <span class="k">val</span> denominator = previous - <span class="n">2.0</span> * peak + next
+    <span class="k">if</span> (denominator == <span class="n">0.0</span>) <span class="k">return</span> <span class="n">0.0</span>
+    <span class="k">return</span> (<span class="n">0.5</span> * (previous - next) / denominator).coerceIn(-<span class="n">1.0</span>, <span class="n">1.0</span>)
+}
+
+<span class="c">// Dùng trong detectPeak():</span>
+<span class="k">val</span> offset = HeartRateMath.parabolicPeakOffset(previous.value, peak.value, next.value)
+<span class="k">val</span> frameMs = (next.timestampMs - peak.timestampMs).toDouble()
+registerBeat(peak.timestampMs + offset * frameMs)   <span class="c">// mốc thời gian đỉnh đã hiệu chỉnh</span></code></pre>
+      <p>
+        Camera chỉ cho ~30 khung/giây. Nếu chỉ lấy mốc thời gian của khung hình có giá trị cao nhất thì mỗi
+        nhịp bị làm tròn tới <strong>±33 ms</strong> — đủ để sai vài bpm. Nội suy đỉnh (kỹ thuật chuẩn khi
+        xử lý tín hiệu rời rạc) cho mốc thời gian chính xác hơn nhiều. Kết quả luôn nằm trong
+        <code>−1..1</code>: đỉnh lệch sang trái/phải nhiều nhất là nửa chu kỳ lấy mẫu.
+      </p>
+      <p>Khi ghi nhận một nhịp, khoảng RR được kiểm tra hợp lệ và giữ trong cửa sổ trượt 5 phần tử:</p>
+<pre><code><span class="k">private fun</span> registerBeat(timestampMs: Double) {
+    <span class="k">val</span> previous = lastPeakTimestampMs
+    lastPeakTimestampMs = timestampMs
+    beats += <span class="n">1</span>
+
+    <span class="k">if</span> (previous == <span class="k">null</span>) <span class="k">return</span>
+    <span class="k">val</span> interval = timestampMs - previous
+    <span class="k">if</span> (!HeartRateMath.isValidInterval(interval)) <span class="k">return</span>     <span class="c">// ngoài 300…1500 ms → bỏ</span>
+    intervals.addLast(interval)
+    <span class="k">while</span> (intervals.size &gt; HeartRateMath.INTERVAL_WINDOW) intervals.removeFirst()   <span class="c">// giữ 5</span>
+}</code></pre>
+
+      <h3>4.6. Bước ④ — Tự tương quan: phân biệt "mạch đập" với "nhiễu"</h3>
+      <p>
+        Đây là bước trả lời câu hỏi: <em>"chuỗi đổi màu này có lặp lại đều đặn không, hay chỉ là nhiễu?"</em>
+        Tín hiệu thật cho <strong>tự tương quan cao</strong> ở bước trễ đúng bằng một chu kỳ tim; nhiễu thì
+        gần như <strong>không tương quan</strong> ở mọi bước trễ.
+      </p>
+<pre><code><span class="c">// Các khung hình không cách đều nhau tuyệt đối → lấy lại mẫu trên lưới thời gian ĐỀU nhau</span>
+<span class="k">val</span> step = span / (recent.size - <span class="n">1</span>)
+<span class="k">val</span> series = resample(step, count, nowMs)          <span class="c">// nội suy tuyến tính</span>
+
+<span class="k">val</span> mean = series.average()
+<span class="k">var</span> energy = <span class="n">0.0</span>
+<span class="k">for</span> (i <span class="k">in</span> series.indices) { series[i] -= mean; energy += series[i] * series[i] }
+<span class="k">if</span> (energy &lt;= <span class="n">0.0</span>) <span class="k">return</span>
+
+<span class="c">// Chỉ quét các bước trễ ứng với nhịp 40–200 bpm</span>
+<span class="k">val</span> minLag = (HeartRateMath.MIN_INTERVAL_MS / step).roundToInt().coerceAtLeast(<span class="n">1</span>)   <span class="c">// 300 ms</span>
+<span class="k">val</span> maxLag = (HeartRateMath.MAX_INTERVAL_MS / step).roundToInt().coerceAtMost(count - <span class="n">2</span>)  <span class="c">// 1500 ms</span>
+
+<span class="k">var</span> bestLag = minLag; <span class="k">var</span> best = Double.NEGATIVE_INFINITY
+<span class="k">for</span> (lag <span class="k">in</span> minLag..maxLag) {
+    <span class="k">val</span> correlation = correlation(series, lag, energy)
+    <span class="k">if</span> (correlation &gt; best) { best = correlation; bestLag = lag }
+}
+
+<span class="k">if</span> (best &lt;= <span class="n">0.0</span>) <span class="k">return</span>
+periodicity = best.coerceIn(<span class="n">0.0</span>, <span class="n">1.0</span>).toFloat()
+
+<span class="c">// Chỉ dùng ước lượng từ tự tương quan khi chu kỳ đã đủ rõ</span>
+<span class="k">if</span> (periodicity &gt;= HeartRateMath.MIN_PERIODICITY) {       <span class="c">// 0.4</span>
+    correlationBpm = HeartRateMath.bpmOf(bestLag * step).roundToInt()
+}</code></pre>
+<pre><code><span class="c">/** Tự tương quan CHUẨN HOÁ ở bước trễ lag: Σxᵢ·xᵢ₋ₗₐg / Σxᵢ²  (nằm trong −1..1) */</span>
+<span class="k">private fun</span> correlation(series: DoubleArray, lag: Int, energy: Double): Double {
+    <span class="k">var</span> sum = <span class="n">0.0</span>
+    <span class="k">for</span> (i <span class="k">in</span> lag until series.size) sum += series[i] * series[i - lag]
+    <span class="k">return</span> sum / energy
+}</code></pre>
+      <div class="callout tip">
+        <span class="callout__title">Vì sao tự tương quan là thước đo đáng tin</span>
+        <p>
+          Giá trị này <strong>không phụ thuộc biên độ</strong> (đã chuẩn hoá theo năng lượng tín hiệu).
+          Điều đó rất quan trọng vì <strong>máy ảnh tự chỉnh phơi sáng</strong>: khi hình sáng hơn thì cả DC
+          lẫn AC cùng lớn lên, biên độ tuyệt đối thay đổi — nhưng "tính chu kỳ" thì không.
+        </p>
+      </div>
+      <p>Cửa sổ dùng cho bước này là ~8 giây (<code>RECENT_WINDOW_MS = 8000</code>), đủ chứa 5–10 nhịp. Để tiết kiệm CPU, tính lại mỗi 5 khung hình (≈6 lần/giây).</p>
+
+      <h3>4.7. Chốt nhịp và tính chất lượng</h3>
+<pre><code><span class="c">// Nhịp suy từ TRUNG VỊ các khoảng RR, sau khi loại ngoại lệ lệch > 25% so với trung vị</span>
+<span class="c">// (ngoại lệ thường là nhịp bị nhận hai lần hoặc bỏ sót một nhịp)</span>
+<span class="k">private fun</span> estimateBpm(): Int? {
+    <span class="k">if</span> (intervals.size &lt; HeartRateMath.MIN_INTERVALS) <span class="k">return</span> <span class="k">null</span>       <span class="c">// cần ≥ 5 khoảng</span>
+    <span class="k">val</span> center = HeartRateMath.median(intervals)
+    <span class="k">if</span> (center &lt;= <span class="n">0.0</span>) <span class="k">return</span> <span class="k">null</span>
+
+    <span class="k">val</span> tolerance = center * <span class="n">0.25</span>                                    <span class="c">// OUTLIER_TOLERANCE</span>
+    <span class="k">val</span> cleaned = intervals.filter { abs(it - center) &lt;= tolerance }
+    <span class="k">val</span> used = <span class="k">if</span> (cleaned.size &gt;= <span class="n">3</span>) cleaned <span class="k">else</span> intervals.toList()   <span class="c">// lọc quá tay thì dùng lại bản gốc</span>
+
+    <span class="k">return</span> HeartRateMath.bpmOf(HeartRateMath.median(used)).roundToInt()
+}</code></pre>
+<pre><code><span class="c">// Chất lượng = sự kết hợp của TÍNH CHU KỲ và ĐỘ ĐỀU của nhịp</span>
+<span class="k">val</span> regularity = HeartRateMath.intervalRegularity(intervals)
+<span class="k">val</span> quality = <span class="k">if</span> (intervals.size &gt;= HeartRateMath.MIN_INTERVALS) minOf(periodicity, regularity)
+              <span class="k">else</span> periodicity
+<span class="k">val</span> bpm = estimateBpm() ?: correlationBpm        <span class="c">// chưa đủ khoảng RR → dùng ước lượng tự tương quan</span></code></pre>
+      <p>Độ "đều" của nhịp dùng <strong>MAD</strong> (độ lệch tuyệt đối trung vị) thay vì độ lệch chuẩn:</p>
+<pre><code><span class="k">fun</span> intervalRegularity(intervals: List&lt;Double&gt;): Float {
+    <span class="k">if</span> (intervals.size &lt; MIN_INTERVALS) <span class="k">return</span> <span class="n">0f</span>          <span class="c">// chưa có cơ sở nói về độ đều</span>
+    <span class="k">val</span> center = median(intervals)
+    <span class="k">if</span> (center &lt;= <span class="n">0.0</span>) <span class="k">return</span> <span class="n">0f</span>
+    <span class="k">val</span> dispersion = medianAbsoluteDeviation(intervals) / center
+    <span class="k">return</span> (<span class="n">1.0</span> - dispersion / MAX_DISPERSION).coerceIn(<span class="n">0.0</span>, <span class="n">1.0</span>).toFloat()   <span class="c">// MAX_DISPERSION = 0.15</span>
+}</code></pre>
+      <p>
+        MAD chịu được ngoại lệ tốt hơn độ lệch chuẩn — phù hợp khi chỉ có vài khoảng RR và có thể lẫn một
+        nhịp nhận sai. Kết quả: <code>1</code> = các nhịp cách nhau đều tăm tắp; <code>0</code> = lệch từ
+        15% trở lên.
+      </p>
+      <div class="callout tip">
+        <span class="callout__title">Cả hai thành phần của "quality" đều không phụ thuộc biên độ</span>
+        <p>
+          <code>periodicity</code> (tự tương quan chuẩn hoá) và <code>regularity</code> (MAD/trung vị — tỉ lệ
+          tương đối) đều <strong>không</strong> phụ thuộc độ sáng tuyệt đối. Vì vậy camera tự chỉnh phơi
+          sáng <em>không làm sai</em> điểm chất lượng. Đây là lý do chọn chúng thay vì "biên độ tín hiệu".
+        </p>
+      </div>
+
+      <h3>4.8. Các chỉ số "thô" chỉ để hướng dẫn người dùng</h3>
+      <p>Ba chỉ số không tham gia tính nhịp tim, chỉ dùng để nói cho người dùng biết đang đo đúng cách chưa:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Chỉ số</th><th>Công thức / ngưỡng</th><th>Dùng để</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>fingerDetected</code></td>
+            <td><code>dc &gt;= MIN_FINGER_RED</code> (<code>80.0</code>)</td>
+            <td>Phát hiện ngón tay đã che camera + đèn flash. <strong>Heuristic</strong>: ngưỡng tuyệt đối thay đổi theo thiết bị, nên <em>không</em> dùng để tính nhịp</td>
+          </tr>
+          <tr>
+            <td><code>signalStrength</code></td>
+            <td><code>(AC/DC − 0.0002) / (0.002 − 0.0002)</code>, kẹp 0..1</td>
+            <td>Thanh "Tín hiệu" (Mạnh / Trung bình / Yếu). Dùng <strong>tỉ lệ</strong> AC/DC chứ không dùng biên độ tuyệt đối vì camera tự chỉnh phơi sáng</td>
+          </tr>
+          <tr>
+            <td><code>waveform</code></td>
+            <td>Dạng sóng AC ~8 giây, chuẩn hoá <code>−1..1</code>, tối đa 150 điểm</td>
+            <td>Vẽ đường mạch đập cho người dùng thấy app đang "nghe" được</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Đặc biệt: khi <strong>mất ngón tay giữa chừng</strong>, hàm <code>forgetSignal()</code> xoá
+        <em>toàn bộ</em> trạng thái — kể cả dạng sóng và tính chu kỳ, không chỉ các khoảng RR:
+      </p>
+<pre><code><span class="k">private fun</span> forgetSignal() {
+    pending.clear(); recent.clear(); intervals.clear()
+    lastPeakTimestampMs = <span class="k">null</span>
+    beats = <span class="n">0</span>
+    periodicity = <span class="n">0f</span>
+    correlationBpm = <span class="k">null</span>
+    armed = <span class="k">true</span>
+}
+<span class="c">// Lý do (theo KDoc): khi không còn ngón tay thì mọi số liệu cũ — kể cả "nhịp ước lượng" —</span>
+<span class="c">// đều không còn đúng. Giữ lại sẽ khiến màn đo hiện một con số cũ mà người dùng tưởng là số đang đo.</span></code></pre>
+
+      <h3>4.9. Điều kiện "đã đủ để chốt"</h3>
+<pre><code><span class="k">ready</span> = elapsedMs &gt;= HeartRateMath.MIN_MEASURE_MS &amp;&amp;        <span class="c">// ≥ 15 giây</span>
+        intervals.size &gt;= HeartRateMath.MIN_INTERVALS &amp;&amp;    <span class="c">// ≥ 5 khoảng RR</span>
+        bpm != <span class="k">null</span> &amp;&amp;
+        quality &gt;= HeartRateMath.MIN_QUALITY                 <span class="c">// ≥ 0.5</span></code></pre>
+      <p>Vòng đời một lần đo trong <code>HeartRateViewModel</code>:</p>
+<pre><code><span class="k">fun</span> onPpgSample(red: Double, timestampMs: Long) {
+    <span class="k">if</span> (_uiState.value.phase != HeartRatePhase.MEASURING) <span class="k">return</span>    <span class="c">// chỉ phân tích khi đang đo</span>
+
+    <span class="k">val</span> progress = analyzer.addSample(red, timestampMs)
+    <span class="k">if</span> (progress.ready || progress.elapsedMs &gt;= HeartRateMath.MAX_MEASURE_MS) {   <span class="c">// 30 giây</span>
+        finish(progress)
+        <span class="k">return</span>
+    }
+    <span class="c">/* … cập nhật state để UI vẽ số nhịp, dạng sóng, thanh tín hiệu … */</span>
+}
+
+<span class="k">private fun</span> finish(progress: PpgProgress) {
+    analyzer.reset()
+    <span class="k">val</span> bpm = progress.bpm
+    <span class="k">val</span> reliable = bpm != <span class="k">null</span> &amp;&amp; progress.quality &gt;= HeartRateMath.MIN_QUALITY
+    <span class="k">if</span> (!reliable) {
+        <span class="c">// ⭐ Không hiện và không lưu một con số sai — đây là số liệu sức khỏe</span>
+        _uiState.value = HeartRateUiState(phase = FINISHED, error = CANNOT_READ_ERROR)
+        <span class="k">return</span>
+    }
+    <span class="c">/* … chốt kết quả rồi tự động lưu vào health_data_history … */</span>
+}</code></pre>
+      <p>Ba chặng của màn đo và câu hướng dẫn tương ứng:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th><code>HeartRatePhase</code></th><th><code>HeartRateGuidance</code></th><th>Điều kiện</th></tr></thead>
+        <tbody>
+          <tr><td><code>IDLE</code></td><td><code>READY_TO_START</code></td><td>Chưa bấm "Bắt đầu đo" — đang ở thẻ hướng dẫn 3 bước</td></tr>
+          <tr><td><code>MEASURING</code></td><td><code>PLACE_FINGER</code></td><td><code>!fingerDetected</code></td></tr>
+          <tr><td><code>MEASURING</code></td><td><code>WEAK_SIGNAL</code></td><td><code>signalStrength &lt; 0,35</code> — nhắc ấn vừa phải và giữ yên</td></tr>
+          <tr><td><code>MEASURING</code></td><td><code>MEASURING</code></td><td><code>elapsedMs &lt; 15 giây</code></td></tr>
+          <tr><td><code>MEASURING</code></td><td><code>ALMOST_DONE</code></td><td>Đã đủ 15 giây nhưng tín hiệu chưa đủ rõ — đang cố thêm cho tới hạn 30 giây</td></tr>
+          <tr><td><code>FINISHED</code></td><td><code>READY_TO_START</code></td><td>Đã có kết quả (hoặc đã cố hết thời gian mà không đọc được nhịp)</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">
+        Ngưỡng tín hiệu dùng <strong>chung một hằng số</strong> (<code>MIN_SIGNAL_STRENGTH = 0.35f</code>) cho
+        cả thanh "Tín hiệu" và câu hướng dẫn — nhờ vậy màu thanh và lời nhắc không bao giờ nói ngược nhau.
+      </p>
+
+      <h3>4.10. Bảng hằng số đầy đủ</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Hằng số</th><th>Giá trị</th><th>ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td colspan="3"><strong>Giới hạn nhịp tim hợp lý</strong></td></tr>
+          <tr><td><code>MIN_BPM</code> / <code>MAX_BPM</code></td><td>40 / 200</td><td>Ngoài khoảng này là nhiễu/nhận sai</td></tr>
+          <tr><td><code>MIN_INTERVAL_MS</code></td><td>300</td><td>Khoảng ngắn nhất giữa hai nhịp (= 200 bpm); gần hơn là cùng một nhịp</td></tr>
+          <tr><td><code>MAX_INTERVAL_MS</code></td><td>1500</td><td>Khoảng dài nhất (= 40 bpm); xa hơn là đã bỏ sót nhịp ở giữa</td></tr>
+          <tr><td colspan="3"><strong>Thời lượng và số liệu tối thiểu</strong></td></tr>
+          <tr><td><code>MIN_MEASURE_MS</code></td><td>15 000</td><td>Đo ít nhất ngần này mới đủ nhịp để kết luận</td></tr>
+          <tr><td><code>MAX_MEASURE_MS</code></td><td>30 000</td><td>Quá thời gian này mà không ra kết quả thì dừng và báo chưa đọc được</td></tr>
+          <tr><td><code>MIN_INTERVALS</code></td><td>5</td><td>Số khoảng RR tối thiểu ⇒ 6 nhịp liên tiếp (<code>MIN_BEATS</code>)</td></tr>
+          <tr><td><code>INTERVAL_WINDOW</code></td><td>5</td><td>Cửa sổ trượt để lấy trung vị</td></tr>
+          <tr><td colspan="3"><strong>Ngưỡng chất lượng</strong></td></tr>
+          <tr><td><code>MIN_PERIODICITY</code></td><td>0.4</td><td>Tự tương quan tối thiểu để coi là "có mạch đập thật"</td></tr>
+          <tr><td><code>MIN_QUALITY</code></td><td>0.5</td><td>Chất lượng tối thiểu để tự chốt kết quả</td></tr>
+          <tr><td><code>MAX_DISPERSION</code></td><td>0.15</td><td>MAD/trung vị từ mức này trở lên = nhịp không đều (chất lượng 0)</td></tr>
+          <tr><td colspan="3"><strong>Ngưỡng tín hiệu thô (chỉ để nhắc người dùng)</strong></td></tr>
+          <tr><td><code>MIN_FINGER_RED</code></td><td>80.0</td><td>Giá trị đỏ trung bình coi như ngón tay đã che camera</td></tr>
+          <tr><td><code>MIN_AC_DC_RATIO</code></td><td>0.0002</td><td>Dưới mức này = tín hiệu quá yếu</td></tr>
+          <tr><td><code>GOOD_AC_DC_RATIO</code></td><td>0.002</td><td>Từ mức này = tín hiệu mạnh</td></tr>
+          <tr><td><code>RED_FROM_V</code></td><td>1.402</td><td>Hệ số YUV→RGB (BT.601) cho kênh đỏ</td></tr>
+          <tr><td colspan="3"><strong>Tham số cửa sổ trong <code>PpgAnalyzer</code></strong></td></tr>
+          <tr><td><code>DC_WINDOW_MS</code></td><td>1000</td><td>Cửa sổ trung bình trượt để bỏ DC (~1 giây ở 30 fps)</td></tr>
+          <tr><td><code>AC_WINDOW_MS</code></td><td>2000</td><td>Cửa sổ tính ngưỡng đỉnh thích ứng</td></tr>
+          <tr><td><code>AC_SMOOTHING_ALPHA</code></td><td>0.5</td><td>Hệ số làm mượt EMA</td></tr>
+          <tr><td><code>RECENT_WINDOW_MS</code></td><td>8000</td><td>Cửa sổ tự tương quan (~8 giây, đủ 5–10 nhịp)</td></tr>
+          <tr><td><code>PEAK_LOOKAHEAD</code></td><td>2</td><td>Số mẫu mỗi bên khi xét đỉnh cục bộ (cửa sổ 5 mẫu)</td></tr>
+          <tr><td><code>PEAK_SNR_RATIO</code></td><td>1.2</td><td>Đỉnh phải cao hơn trung bình ngần này lần độ lệch chuẩn</td></tr>
+          <tr><td><code>PERIODICITY_EVERY_SAMPLES</code></td><td>5</td><td>Tính lại tính chu kỳ mỗi 5 khung hình (≈6 lần/giây)</td></tr>
+          <tr><td><code>MIN_PERIODICITY_WINDOW_MS</code></td><td>4000</td><td>Chưa đủ thời lượng này thì chưa tính tự tương quan</td></tr>
+          <tr><td><code>MIN_RECENT_SAMPLES</code></td><td>60</td><td>Số mẫu tối thiểu trong cửa sổ tự tương quan</td></tr>
+          <tr><td><code>MAX_CORRELATION_SAMPLES</code></td><td>400</td><td>Trần số điểm đưa vào tự tương quan (chặn chi phí ở 60 fps)</td></tr>
+          <tr><td><code>WAVEFORM_POINTS</code></td><td>150</td><td>Số điểm tối đa của dạng sóng đưa lên giao diện</td></tr>
+          <tr><td><code>OUTLIER_TOLERANCE</code></td><td>0.25</td><td>Khoảng RR lệch quá tỉ lệ này so với trung vị = ngoại lệ</td></tr>
+          <tr><td><code>MIN_CLEANED_INTERVALS</code></td><td>3</td><td>Sau khi loại ngoại lệ còn ít nhất ngần này mới dùng danh sách đã lọc</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>4.11. Ví dụ số</h3>
+      <div class="callout note">
+        <span class="callout__title">Một nhịp ở 30 khung/giây</span>
+        <p>
+          Giả sử tín hiệu AC lên đỉnh ở ba khung liên tiếp với giá trị
+          <code>previous = 3.0</code>, <code>peak = 4.0</code>, <code>next = 3.2</code>, khoảng cách khung
+          <code>frameMs ≈ 33.3 ms</code>.
+        </p>
+        <p>
+          <code>denominator = 3.0 − 2×4.0 + 3.2 = −1.8</code><br>
+          <code>offset = 0.5 × (3.0 − 3.2) / (−1.8) = 0.0556</code>
+        </p>
+        <p>
+          Nghĩa là đỉnh thật nằm lệch <strong>+5,6% chu kỳ lấy mẫu</strong> về phía khung sau, tức khoảng
+          <code>+1.85 ms</code> so với mốc khung hình. Nhỏ, nhưng nếu bỏ qua thì ở nhịp nhanh, sai số
+          ±33 ms có thể làm bpm lệch vài đơn vị.
+        </p>
+        <p>
+          Với khoảng RR đo được ≈ <code>780 ms</code>: <code>bpm = 60 000 / 780 ≈ 76,9</code> →
+          hiển thị <strong>77 bpm</strong>, phân loại <code>NORMAL</code> (60–100).
+        </p>
+      </div>
+
+      <h3>4.12. Giới hạn đã biết</h3>
+      <div class="callout warn">
+        <span class="callout__title">Đây là ước lượng, không phải thiết bị y tế</span>
+        <ul>
+          <li>Tay rung, ấn ngón tay <strong>quá mạnh</strong> (chặn dòng máu), che hờ camera, ánh sáng phòng nhấp nháy hoặc thiếu đèn flash đều làm sai kết quả.</li>
+          <li>Nhịp tim thật sự <strong>loạn nhịp</strong> cũng sẽ bị app từ chối kết luận — app đòi hỏi nhịp <em>đều</em> (xem <code>intervalRegularity</code>). Đây là đánh đổi có ý thức: thà không kết luận còn hơn kết luận sai.</li>
+          <li>Máy không có đèn flash (ví dụ emulator) vẫn vào được nhưng app <strong>cảnh báo trước</strong> là kết quả kém chính xác.</li>
+          <li>Quyền dùng chung <code>CAMERA</code> với màn Ghi chép bữa ăn; chưa cấp thì màn đo hiện thẻ "Cần quyền Camera".</li>
+        </ul>
+      </div>
+
+      <h2>5. Kết quả đo đi đâu?</h2>
+      <p>
+        Khi chốt được nhịp, <code>SaveMeasuredHeartRateUseCase</code> ghi vào bảng
+        <code>health_data_history</code> (cột <code>heartRate</code> <strong>đã có sẵn</strong> — không cần
+        migration) theo đúng luật gộp của <code>HealthSyncWorker</code>: chưa có hàng của hôm nay thì thêm
+        mới, đã có thì <strong>chỉ thay nhịp tim</strong>, giữ nguyên bước chân / giờ ngủ / calo.
+      </p>
+      <p>Nhờ vậy số vừa đo:</p>
+      <ul>
+        <li>hiện ngay ở ô <strong>"Tim"</strong> trên màn Trang chủ khi <strong>nguồn đang chọn không có số</strong> (switch "Dùng dữ liệu Health Connect": BẬT → Health Connect; TẮT (mặc định) → bản chụp trong app), và</li>
+        <li>được <strong>Rule Engine ở tab Phân tích</strong> dùng cho gợi ý/cảnh báo về nhịp tim.</li>
+      </ul>
+      <p class="small">
+        Xem <a href="logic-ai.html#3-habitruleengine">ngưỡng nhịp tim của Rule Engine</a> và
+        <a href="ui.html#6-man-do-nhip-tim-heartratescreen">màn đo nhịp tim</a>.
+      </p>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>
