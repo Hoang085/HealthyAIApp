@@ -12,13 +12,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-/**
- * Test hàm thuần [VitalityScoreMath] — chạy trên JVM với **ngày/múi giờ cố định** nên tất định.
- *
- * Công thức: mỗi ngày trong 7 ngày gần nhất có điểm = tỉ lệ thói quen đạt mục tiêu (trọng số 0.4) +
- * giờ ngủ / 8h (0.3) + bước chân / 8000 (0.3), rồi chuẩn hoá lại theo các thành phần **thật sự có
- * nguồn trên máy**; điểm cuối là trung bình các ngày (ngày thiếu dữ liệu đóng góp 0).
- */
+/** Test hàm thuần [VitalityScoreMath] (ngày/múi giờ cố định nên tất định). */
 class VitalityScoreMathTest {
 
     private val zone = ZoneOffset.UTC
@@ -90,8 +84,7 @@ class VitalityScoreMathTest {
 
     @Test
     fun `habits only renormalize the weights`() {
-        // Chỉ có thành phần thói quen (máy không có bước chân/giờ ngủ) → điểm = tỉ lệ hoàn thành,
-        // KHÔNG bị kéo xuống vì thiếu hai thành phần kia.
+        // Chỉ có thành phần thói quen → điểm = tỉ lệ hoàn thành, không bị kéo xuống vì thiếu hai thành phần kia.
         val logs = (6 downTo 0).map { logAt(today.minusDays(it.toLong()), value = 8f) }
 
         val score = VitalityScoreMath.compute(listOf(sleepHabit), logs, emptyList(), today, zone)
@@ -120,8 +113,7 @@ class VitalityScoreMathTest {
 
     @Test
     fun `a missing day counts as zero for that component`() {
-        // 7 ngày bước chân đủ mục tiêu, nhưng chỉ 1 ngày có giờ ngủ đủ 8h → thành phần ngủ chỉ đóng
-        // góp 1/7.
+        // 7 ngày bước chân đủ mục tiêu, nhưng chỉ 1 ngày có giờ ngủ đủ 8h → thành phần ngủ đóng góp 1/7.
         val history = (6 downTo 0).map { daysAgo ->
             if (daysAgo == 0) {
                 rowAt(daysAgo = daysAgo, steps = 8_000L, sleepHours = 8.0)
@@ -136,7 +128,7 @@ class VitalityScoreMathTest {
         assertEquals(57, score)
     }
 
-    // ── hasObservations ────────────────────────────────────────
+    // hasObservations
 
     @Test
     fun `hasObservations is true when there is a habit log in the window`() {
@@ -150,7 +142,7 @@ class VitalityScoreMathTest {
         assertFalse(VitalityScoreMath.hasObservations(emptyList(), emptyList(), today, zone))
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
     private fun logAt(date: LocalDate, value: Float) = HabitLog(
         habitId = 1L,

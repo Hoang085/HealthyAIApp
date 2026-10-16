@@ -18,12 +18,7 @@ import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.presentation.ui.component.InfoActionCard
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
-/**
- * Thẻ hướng dẫn người dùng khi app chưa đọc được dữ liệu sức khỏe:
- * cấp quyền đọc Health Connect, cài mới, hoặc cập nhật Health Connect.
- *
- * Người gọi chỉ nên hiển thị thẻ này khi `HomeUiState.showHealthConnectCard == true`.
- */
+/** Thẻ hướng dẫn cấp quyền / cài / cập nhật Health Connect khi app chưa đọc được dữ liệu; chỉ hiện khi showHealthConnectCard == true. */
 @Composable
 fun HealthConnectPermissionCard(
     status: HealthConnectStatus,

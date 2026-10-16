@@ -7,13 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho **cổng riêng tư** [CloudSyncPolicy] (mục 3 #31).
- *
- * Đây là một chỗ duy nhất quyết định log nào được phép rời khỏi thiết bị, nên các test ở đây chốt:
- * mặc định (chưa bật) **không** tải gì, thiếu mốc đồng ý cũng **không** tải gì, và khi đã bật thì
- * **chỉ** log tạo sau mốc đồng ý mới được tải — không bao giờ đẩy lịch sử cũ lên đám mây.
- */
+/** Unit test cho [CloudSyncPolicy] — nơi duy nhất quyết định log nào được tải lên đám mây. */
 class CloudSyncPolicyTest {
 
     private val oldLog = log(loggedAt = 1_000L, id = 1L)
@@ -50,8 +44,7 @@ class CloudSyncPolicyTest {
 
     @Test
     fun `logs created before consent are never uploaded even when they are dirty`() {
-        // Mô phỏng đúng lỗi gốc: người dùng ghi nhật ký ở chế độ khách (isDirty = true) rồi đăng nhập
-        // và bật đồng bộ — lịch sử cũ KHÔNG được đẩy lên.
+        // Lỗi gốc: ghi nhật ký ở chế độ khách rồi đăng nhập và bật đồng bộ — lịch sử cũ KHÔNG được đẩy lên.
         val guestHistory = listOf(
             log(loggedAt = 100L, id = 10L),
             log(loggedAt = 200L, id = 11L)

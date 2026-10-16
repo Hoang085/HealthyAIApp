@@ -3,31 +3,13 @@ package com.healthyai.app.domain.usecase
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.SuggestionPriority
 
-/**
- * Kho **mẹo cải thiện sức khỏe** theo từng danh mục thói quen — "chất liệu" cho feed gợi ý ở tab
- * Phân tích.
- *
- * Thay cho kiểu cũ (mỗi điều kiện chỉ có **một** thẻ cảnh báo cố định, lặp mãi cho tới khi người dùng
- * xử lý xong), mỗi danh mục nay có **nhiều mẹo** và [HabitRuleEngine] chọn **một mẹo xoay vòng theo
- * ngày** — nên feed luôn đổi mới, đa dạng, và mang tính "gợi ý liên quan" thay vì ép buộc.
- *
- * Hai nhóm mẹo cho mỗi danh mục:
- * - [TipFocus.CONCERN] — dùng khi dữ liệu cho thấy danh mục đó đang có vấn đề (ngủ ít, uống thiếu
- *   nước, ít vận động…); nội dung vẫn tích cực, chỉ nhấn vào một hành động cụ thể dễ làm.
- * - [TipFocus.GENERAL] — dùng khi danh mục đó đang ổn (hoặc chưa đủ dữ liệu để kết luận); nội dung
- *   là lời khuyên duy trì/nâng cao.
- *
- * Hàm thuần Kotlin (không phụ thuộc Android) nên test được trên JVM.
- */
+/** Kho mẹo cải thiện sức khỏe theo danh mục thói quen — nguồn cho feed gợi ý ở tab Phân tích. */
 object SuggestionCatalog {
 
     /** Nhóm mẹo: nhắm vào vấn đề đang có, hay khuyên duy trì/nâng cao. */
     enum class TipFocus { CONCERN, GENERAL }
 
-    /**
-     * Một mẹo: nội dung hiển thị + danh mục + mức ưu tiên (dùng cho màu thẻ) + nhãn nút hành động
-     * (`null` khi mẹo chỉ để đọc).
-     */
+    /** Một mẹo: nội dung + danh mục + mức ưu tiên (màu thẻ) + nhãn nút hành động (null nếu chỉ để đọc). */
     data class Tip(
         val focus: TipFocus,
         val category: HabitCategory,
@@ -40,12 +22,12 @@ object SuggestionCatalog {
     /** Các danh mục có kho mẹo (giữ đúng thứ tự khai báo của [HabitCategory]). */
     val categories: List<HabitCategory> = HabitCategory.entries.toList()
 
-    /** Mẹo cho danh mục **đang có vấn đề**; rơi về [generalTips] nếu danh mục chưa có mẹo CONCERN. */
+    /** Mẹo cho danh mục đang có vấn đề; rơi về [generalTips] nếu chưa có mẹo CONCERN. */
     fun concernTips(category: HabitCategory): List<Tip> =
         (tips[category].orEmpty().filter { it.focus == TipFocus.CONCERN })
             .ifEmpty { generalTips(category) }
 
-    /** Mẹo **duy trì / nâng cao** cho danh mục đang ổn. */
+    /** Mẹo duy trì/nâng cao cho danh mục đang ổn. */
     fun generalTips(category: HabitCategory): List<Tip> =
         tips[category].orEmpty().filter { it.focus == TipFocus.GENERAL }
 

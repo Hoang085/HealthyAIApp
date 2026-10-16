@@ -24,8 +24,6 @@
     <string name="auth_password_label">Mật khẩu</string>
     <string name="auth_tab_register">Tạo tài khoản</string>
     <string name="auth_tab_sign_in">Đăng nhập</string>
-    <string name="auth_subtitle_register">Đăng ký để đồng bộ thói quen lên Firebase</string>
-    <string name="auth_subtitle_sign_in">Đăng nhập để đồng bộ thói quen lên Firebase</string>
     <string name="auth_hide_password">Ẩn mật khẩu</string>
     <string name="auth_show_password">Hiện mật khẩu</string>
     <string name="auth_button_register">Đăng ký</string>
@@ -33,7 +31,6 @@
     <string name="auth_switch_to_sign_in">Đã có tài khoản? Đăng nhập</string>
     <string name="auth_switch_to_register">Chưa có tài khoản? Đăng ký</string>
     <string name="auth_skip_guest">Bỏ qua, dùng ở chế độ khách</string>
-    <string name="auth_guest_note">Chế độ khách: thói quen và dữ liệu Health Connect vẫn hoạt động bình thường, chỉ dữ liệu đồng bộ Firebase là không chạy.</string>
     <string name="auth_tagline">Theo dõi &amp; cải thiện thói quen sức khỏe</string>
     <string name="auth_dismiss_error">Đóng thông báo lỗi</string>
     <string name="camera_title">Ghi chép bữa ăn</string>
@@ -105,7 +102,6 @@
     <string name="cloud_sync_description_on">Nhật ký thói quen tạo từ lúc bật sẽ được sao lưu lên đám mây (Firestore). Dữ liệu trên máy vẫn được giữ và mã hoá.</string>
     <string name="cloud_sync_description_off">Đang TẮT: nhật ký chỉ nằm trên máy bạn và được mã hoá. Bật nếu bạn muốn sao lưu nhật ký mới lên đám mây.</string>
     <string name="cloud_sync_guest_note">Bạn đang ở chế độ khách — cần đăng nhập thì nhật ký mới được sao lưu.</string>
-    <string name="cloud_sync_open_privacy_policy">Xem chính sách bảo mật</string>
     <string name="health_data_source_title">Dùng dữ liệu Health Connect</string>
     <string name="health_data_source_description_on">Đang BẬT: thẻ \"Tóm tắt sức khỏe\" lấy số liệu trực tiếp từ Health Connect (có thể gồm cả dữ liệu của đồng hồ đeo tay).</string>
     <string name="health_data_source_description_off">Đang TẮT: thẻ \"Tóm tắt sức khỏe\" dùng dữ liệu đã lưu trong app (bản chụp gần nhất và cảm biến tự đo của máy).</string>
@@ -213,19 +209,19 @@
     <string name="heart_rate_try_again">Thử lại</string>
     <string name="heart_rate_disclaimer">Kết quả đo bằng camera điện thoại chỉ mang tính tham khảo, không phải thiết bị y tế và không dùng để chẩn đoán. Hãy gặp bác sĩ nếu bạn thấy nhịp tim bất thường.</string>
     <string name="privacy_title">Chính sách bảo mật</string>
-    <string name="privacy_intro">HealthMate hoạt động theo hướng riêng tư trước: dữ liệu của bạn nằm trên máy, và việc gửi dữ liệu đi chỉ xảy ra khi bạn chủ động yêu cầu — bật "Đồng bộ đám mây", hoặc bấm "Phân tích món ăn" ở màn Ghi chép bữa ăn.</string>
-    <string name="privacy_local_title">1. Dữ liệu lưu trên máy bạn</string>
-    <string name="privacy_local_body">Thói quen, nhật ký ghi nhận và chỉ số sức khỏe (bước chân, giờ ngủ, nhịp tim) được lưu trong cơ sở dữ liệu Room trên chính thiết bị, mã hoá bằng SQLCipher; khoá mở cơ sở dữ liệu được giữ trong Android Keystore và không rời khỏi máy. Lịch sử chỉ số sức khỏe được giữ tối đa 30 ngày rồi tự dọn.</string>
-    <string name="privacy_health_connect_body"> App chỉ ĐỌC dữ liệu bạn đã cho phép (bước chân, giấc ngủ, nhịp tim, calo) và tổng hợp ngay trên máy. Bạn có thể thu hồi quyền bất cứ lúc nào trong ứng dụng Health Connect hoặc trong Cài đặt của hệ thống.</string>
+    <string name="privacy_intro">Mình viết phần này cho đồ án môn học nên cố trình bày thật đơn giản và đúng với những gì app đang làm. Nói gọn một câu: dữ liệu của bạn nằm trên máy trước, chỉ được gửi đi khi chính bạn bật "Đồng bộ đám mây" hoặc bấm "Phân tích món ăn".</string>
+    <string name="privacy_local_title">1. Dữ liệu nằm trên máy bạn</string>
+    <string name="privacy_local_body">Thói quen, nhật ký ghi nhận và các chỉ số sức khỏe (bước chân, giờ ngủ, nhịp tim) được lưu trong database Room ngay trên điện thoại và có mã hoá bằng SQLCipher; khoá mở database nằm trong Android Keystore, không được gửi đi đâu cả. Lịch sử chỉ số sức khỏe mình chỉ giữ tối đa 30 ngày rồi tự xoá cho nhẹ máy.</string>
+    <string name="privacy_health_connect_body"> App chỉ ĐỌC những dữ liệu bạn đã cho phép (bước chân, giấc ngủ, nhịp tim, calo) rồi tổng hợp lại ngay trên máy, không ghi thêm gì vào Health Connect. Muốn dừng thì bạn thu hồi quyền trong app Health Connect hoặc trong Cài đặt của hệ thống là app hết đọc được.</string>
     <string name="privacy_camera_title">3. Camera và ảnh món ăn</string>
-    <string name="privacy_camera_body">Camera chỉ được dùng khi bạn mở màn "Ghi chép bữa ăn" hoặc "Đo nhịp tim". Riêng phần phân tích món ăn: khi bạn bấm "Phân tích món ăn" (hoặc chọn ảnh từ thư viện), ảnh bạn chụp/chọn sẽ được gửi tới Google Gemini để nhận diện tên món và phân tích lợi ích/điều nên lưu ý cho cơ thể; không bấm phân tích thì app không gửi ảnh đi đâu cả và bạn vẫn dùng được phần còn lại của màn Ghi chép. Kết quả đo nhịp tim chỉ là ước lượng từ camera, không phải thiết bị y tế.</string>
+    <string name="privacy_camera_body">Camera chỉ mở khi bạn vào màn "Ghi chép bữa ăn" hoặc "Đo nhịp tim". Riêng phần phân tích món ăn: khi bạn bấm "Phân tích món ăn" (hoặc chọn ảnh từ thư viện), tấm ảnh đó được gửi cho Google Gemini để đoán tên món và nói xem món có lợi hay cần lưu ý gì cho cơ thể. Không bấm phân tích thì ảnh không đi đâu hết và bạn vẫn dùng được các phần khác. Kết quả đo nhịp tim chỉ là con số ước lượng từ camera, không phải thiết bị y tế.</string>
     <string name="privacy_cloud_title">4. Đồng bộ đám mây (tuỳ chọn — mặc định TẮT)</string>
-    <string name="privacy_cloud_body">Khi bạn bật "Đồng bộ đám mây" ở màn Trang chủ, các bản ghi nhật ký thói quen tạo sau thời điểm bật (tên thói quen, danh mục, giá trị, đơn vị, mục tiêu, thời điểm, ghi chú) sẽ được tải lên Firebase Firestore, gắn với tài khoản của bạn. Nhật ký đã ghi trước đó không bị tải lên. Tắt công tắc để NGỪNG tải lên.</string>
-    <string name="privacy_no_sale_title">5. Chúng tôi không bán dữ liệu của bạn</string>
-    <string name="privacy_no_sale_body">App không dùng dữ liệu sức khỏe cho quảng cáo và không chia sẻ cho bên thứ ba ngoài Firebase khi bạn đã bật đồng bộ. Mọi phân tích AI khác (gợi ý BLOOM AI, chỉ số sinh lực) chạy trên thiết bị bằng luật thuần Kotlin, không gửi dữ liệu đi để phân tích; riêng ảnh món ăn bạn chủ động đưa vào phân tích thì được gửi tới Google Gemini (mục 3 ở trên).</string>
-    <string name="privacy_rights_title">6. Quyền của bạn</string>
-    <string name="privacy_rights_body">Bạn có thể thu hồi quyền Camera / Nhận diện hoạt động thể chất / Thông báo / Health Connect trong Cài đặt của hệ thống, và tắt Đồng bộ đám mây trong app. Xoá ứng dụng sẽ xoá toàn bộ dữ liệu lưu trên máy.</string>
-    <string name="privacy_footer">Tài liệu này mô tả hành vi thật của phiên bản app đang cài. Khi app thay đổi cách xử lý dữ liệu, nội dung này sẽ được cập nhật theo.</string>
+    <string name="privacy_cloud_body">Khi bạn tự bật "Đồng bộ đám mây" ở màn Trang chủ, những bản ghi nhật ký thói quen tạo ra sau lúc bật (tên thói quen, danh mục, giá trị, đơn vị, mục tiêu, thời điểm, ghi chú) mới được tải lên Firebase Firestore và gắn với tài khoản của bạn. Nhật ký ghi trước đó không bị tải lên. Muốn dừng thì gạt công tắc về TẮT.</string>
+    <string name="privacy_no_sale_title">5. Mình không bán dữ liệu của bạn</string>
+    <string name="privacy_no_sale_body">App không lấy dữ liệu sức khỏe để chạy quảng cáo và không đưa cho bên thứ ba nào khác, ngoài Firebase khi bạn đã bật đồng bộ. Các phần phân tích còn lại (gợi ý BLOOM AI, chỉ số sinh lực) chạy ngay trên máy bằng luật Kotlin nên không gửi dữ liệu đi; chỉ có ảnh món ăn mà bạn chủ động đưa vào phân tích là được gửi tới Google Gemini (nói ở mục 3).</string>
+    <string name="privacy_rights_title">6. Bạn có thể làm gì</string>
+    <string name="privacy_rights_body">Bạn thu hồi quyền Camera / Nhận diện hoạt động thể chất / Thông báo / Health Connect trong Cài đặt của hệ thống, và tắt Đồng bộ đám mây ngay trong app. Gỡ app khỏi máy thì toàn bộ dữ liệu lưu cục bộ cũng bị xoá theo.</string>
+    <string name="privacy_footer">Mình viết mục này dựa trên đúng những gì app đang làm. Nếu sau này app đổi cách xử lý dữ liệu thì phần này sẽ được sửa lại cho khớp.</string>
     <!-- ── Widget màn hình chính "Sức khỏe hôm nay" (Glance) ── -->
     <string name="widget_brand">HealthMate</string>
     <string name="widget_today">Hôm nay</string>

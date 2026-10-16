@@ -6,16 +6,7 @@ import kotlin.math.exp
 /** Một khung hình giả lập: giá trị đỏ trung bình và mốc thời gian của khung hình. */
 internal data class PpgFrame(val red: Double, val timestampMs: Long)
 
-/**
- * Sinh tín hiệu PPG giả lập cho unit test.
- *
- * Không thể cắm ngón tay vào unit test, nên tín hiệu được dựng theo **đúng vật lý của phép đo**: một
- * nền đỏ lớn (DC — ánh sáng đèn flash xuyên qua mô ngón tay) cộng một **đỉnh tâm thu nhọn** mỗi chu kỳ
- * tim cùng một gợn dicrotic nhỏ hơn. Đỉnh tâm thu rộng ~55 ms và **không co lại theo nhịp tim** —
- * đúng như mạch đập thật, nhờ vậy phép thử vẫn khó như thật ở nhịp nhanh.
- *
- * Khung hình được phát ở 30 hình/giây — tốc độ thường dùng của `ImageAnalysis`.
- */
+/** Sinh tín hiệu PPG giả lập cho unit test: nền DC lớn + đỉnh tâm thu (~55 ms) + gợn dicrotic, phát ở 30 hình/giây. */
 internal object PpgTestSignal {
 
     /** Số ms giữa hai khung hình ở 30 hình/giây. */
@@ -27,18 +18,13 @@ internal object PpgTestSignal {
     /** Mức nền đỏ khi ngón tay đã che camera + đèn flash đang sáng. */
     const val FINGER_DC = 200.0
 
-    /** Mức nền khi **không** có ngón tay che (chỉ còn ánh sáng phòng). */
+    /** Mức nền khi không có ngón tay che (chỉ còn ánh sáng phòng). */
     const val DARK_DC = 20.0
 
     /** Biên độ đỉnh tâm thu thường dùng: ~0,6% của [FINGER_DC] — cỡ tín hiệu thật. */
     const val SYSTOLIC_AMPLITUDE = 1.2
 
-    /**
-     * Các khung hình của một đoạn đo.
-     *
-     * @param bpm `null` = không có mạch đập (chỉ có nền + nhiễu) — dùng để kiểm tra khả năng từ chối.
-     * @param noise Độ lệch chuẩn của nhiễu cộng thêm (rung tay, nhiễu cảm biến).
-     */
+    /** Các khung hình của một đoạn đo; `bpm = null` = không có mạch đập (chỉ nền + nhiễu). */
     fun frames(
         durationMs: Long,
         bpm: Double?,

@@ -5,10 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Test cho [SleepStageBreakdown] — hai mức chi tiết dữ liệu giấc ngủ từ Health Connect
- * (phụ lục C #25): máy có chia pha (Sâu/Nông/REM) và máy chỉ báo tổng thời lượng ngủ.
- */
+/** Test cho [SleepStageBreakdown] — hai mức chi tiết dữ liệu giấc ngủ từ Health Connect: máy chia pha (Sâu/Nông/REM) và máy chỉ báo tổng thời lượng. */
 class SleepStageBreakdownTest {
 
     @Test
@@ -26,7 +23,7 @@ class SleepStageBreakdownTest {
 
     @Test
     fun `a device that only reports total sleep still has data`() {
-        // Máy chỉ báo STAGE_TYPE_SLEEPING: không có pha nào, nhưng KHÔNG được coi là "không có dữ liệu"
+        // Máy chỉ báo STAGE_TYPE_SLEEPING: không có pha nào nhưng KHÔNG được coi là "không có dữ liệu"
         val breakdown = SleepStageBreakdown(unstagedMinutes = 420)
 
         assertEquals(0, breakdown.totalMinutes)

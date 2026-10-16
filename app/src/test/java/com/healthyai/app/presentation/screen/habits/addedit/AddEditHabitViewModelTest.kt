@@ -31,20 +31,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho luồng xóa thói quen (**xóa mềm**) của màn Sửa thói quen.
- *
- * Trước đây bấm icon thùng rác là xóa ngay (không xác nhận) và ViewModel dùng chung cờ `isSaved`
- * với lưu thói quen. Test này chốt lại: chỉ xóa khi có `habitId`, xóa ở chế độ thêm mới là no-op,
- * xóa xong bật cờ `isDeleted` (để UI hiện phản hồi), và bấm xóa lần hai không gọi lại repository.
- *
- * Ngoài ra test còn chốt định dạng ô **"Mục tiêu hàng ngày"** khi mở màn Sửa: số nguyên hiển thị
- * không có đuôi `.0` (`2000`, không phải `2000.0`) nhưng vẫn giữ phần thập phân khi cần (`7.5`), và
- * **chống trùng tên** (mục 3 #13): tạo/sửa thành tên đã có (không phân biệt hoa/thường, bỏ khoảng
- * trắng thừa) → báo "Tên thói quen đã tồn tại" và **không** ghi vào DB; giữ nguyên tên cũ của chính
- * thói quen đang sửa vẫn hợp lệ. Cuối cùng là **chống double-submit** (phụ lục C #12): bấm lưu 2 lần
- * liên tiếp chỉ ghi DB 1 lần và cờ `isSaving` luôn được nhả ra.
- */
+/** Unit test cho luồng xóa thói quen (xóa mềm), chống trùng tên và chống double-submit ở màn Sửa thói quen. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AddEditHabitViewModelTest {
 
@@ -147,7 +134,7 @@ class AddEditHabitViewModelTest {
         coVerify(exactly = 0) { deleteHabitUseCase(any()) }
     }
 
-    // ── Ô "Mục tiêu hàng ngày" hiển thị số sạch (mục 3, #11) ────
+    // Ô "Mục tiêu hàng ngày" hiển thị số sạch
 
     @Test
     fun `editing a habit with a whole target drops the decimal tail`() = runTest {
@@ -187,7 +174,7 @@ class AddEditHabitViewModelTest {
         assertTrue(viewModel.uiState.value.isSaved)
     }
 
-    // ── Chống trùng tên thói quen (mục 3, #13) ────
+    // Chống trùng tên thói quen
 
     @Test
     fun `creating a habit with a name that already exists is rejected`() = runTest {
@@ -273,7 +260,7 @@ class AddEditHabitViewModelTest {
         coVerify(exactly = 0) { updateHabitUseCase(any()) }
     }
 
-    // ── Chống double-submit khi lưu (phụ lục C #12) ────
+    // Chống double-submit khi lưu
 
     @Test
     fun `double tapping save only creates one habit`() = runTest {
@@ -318,7 +305,7 @@ class AddEditHabitViewModelTest {
         assertFalse(state.isSaved)
     }
 
-    // ── Tần suất chỉ còn "Hàng ngày" (mục 3 #30) ────
+    // Tần suất chỉ còn "Hàng ngày"
 
     @Test
     fun `an old habit stored as weekly is saved back as daily`() = runTest {

@@ -218,12 +218,7 @@ fun AddEditHabitScreen(
                 }
             }
 
-            // Tần suất — hiện chỉ hỗ trợ "Hàng ngày" (mục 3 #30).
-            //
-            // Logic tính tiến độ hôm nay, "Sự nhất quán hàng tuần" và "Chỉ số sinh lực" đều xét theo
-            // NGÀY cho mọi thói quen, nên trước đây chọn "Hàng tuần"/"Hàng tháng" chỉ đổi nhãn mà
-            // không thay đổi hành vi gì. Bỏ hai lựa chọn đó để không gây hiểu nhầm; khi nào có logic
-            // theo chu kỳ thì mở lại cùng với việc xử lý ở các use case.
+            // Chỉ hỗ trợ "Hàng ngày": logic tiến độ xét theo NGÀY, chọn tuần/tháng chỉ đổi nhãn vô nghĩa.
             Text(stringResource(R.string.habit_frequency_label), fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Row(
                 modifier = Modifier

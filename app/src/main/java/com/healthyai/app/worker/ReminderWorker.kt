@@ -10,10 +10,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
 
-/**
- * ReminderWorker — Gửi thông báo nhắc nhở hàng ngày.
- * Hilt Worker: có thể inject bất kỳ dependency nào qua @AssistedInject.
- */
+/** Gửi thông báo nhắc nhở hàng ngày. */
 @HiltWorker
 class ReminderWorker @AssistedInject constructor(
     @Assisted private val context: Context,
@@ -40,8 +37,7 @@ class ReminderWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        // Kênh đã được tạo lúc app khởi động (`HiltApplication.onCreate`); gọi lại cho chắc trong trường
-        // hợp app chỉ chạy nền. Hàm này idempotent nên không tạo kênh trùng.
+        // Kênh đã tạo lúc app khởi động; gọi lại cho chắc khi app chỉ chạy nền (hàm idempotent).
         ReminderNotifications.ensureChannel(context)
         showNotification()
         return Result.success()

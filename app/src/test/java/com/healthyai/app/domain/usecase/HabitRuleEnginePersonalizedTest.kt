@@ -9,15 +9,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Test cho nhánh đọc **dữ liệu sức khỏe cứng** của [HabitRuleEngine] (phụ lục C #16).
- *
- * `health_data_history` ghi 1 hàng cho mỗi lần sync (6 giờ/lần) chứ không phải 1 hàng/ngày, nên các
- * test ở đây dựng dữ liệu theo **ngày** (mốc 12:00 mỗi ngày) và kiểm tra rule gom theo ngày.
- *
- * Sau bản cải tiến feed gợi ý, "phát hiện xu hướng" được quan sát qua việc engine **chọn mẹo nhóm
- * CONCERN** cho danh mục tương ứng (thay vì dựng một thẻ cảnh báo cố định).
- */
+/** Test nhánh đọc dữ liệu sức khỏe cứng của [HabitRuleEngine], dựng dữ liệu theo ngày. */
 class HabitRuleEnginePersonalizedTest {
 
     private val engine = HabitRuleEngine()
@@ -37,8 +29,7 @@ class HabitRuleEnginePersonalizedTest {
 
     @Test
     fun `rows from the same day never flag sleep`() {
-        // 3 lần sync trong CÙNG một ngày (6h/12h/18h) đều ngủ < 6 giờ.
-        // Trước bản sửa #16, 3 hàng này bị hiểu nhầm là "3 ngày liên tiếp".
+        // 3 lần sync cùng một ngày (6h/12h/18h) đều ngủ < 6 giờ — từng bị hiểu nhầm là 3 ngày liên tiếp.
         val history = listOf(
             healthRow(daysAgo = 0, sleepHours = 5.0, hourOfDay = 6),
             healthRow(daysAgo = 0, sleepHours = 5.0, hourOfDay = 12),
@@ -87,8 +78,7 @@ class HabitRuleEnginePersonalizedTest {
 
     @Test
     fun `heart rate average ignores rows without heart rate data`() {
-        // 2 ngày có nhịp tim 60 bpm + 5 ngày chỉ có bước chân → trung bình phải là 60, KHÔNG bị kéo
-        // xuống bởi các hàng 0.
+        // 2 ngày nhịp tim 60 bpm + 5 ngày chỉ có bước chân → trung bình phải là 60, không bị kéo xuống bởi hàng 0.
         val history = listOf(
             healthRow(daysAgo = 0, steps = 5_000L, heartRate = 60.0),
             healthRow(daysAgo = 1, steps = 5_000L, heartRate = 60.0)
@@ -99,7 +89,7 @@ class HabitRuleEnginePersonalizedTest {
         assertFalse(suggestions.isConcernTipFor(HabitCategory.MINDFULNESS))
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
     private fun List<Suggestion>.isConcernTipFor(category: HabitCategory): Boolean =
         any { suggestion ->

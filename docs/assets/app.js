@@ -18,7 +18,8 @@
     { path: "ui.html",           icon: "📱", title: "Giao diện & điều hướng",     short: "Giao diện" },
     { path: "background.html",   icon: "⚙️", title: "Chạy nền & phân quyền",     short: "Chạy nền" },
     { path: "testing.html",      icon: "🧪", title: "Kiểm thử & chất lượng",      short: "Kiểm thử" },
-    { path: "files.html",        icon: "🗂️", title: "Bản đồ mã nguồn",            short: "Bản đồ mã nguồn" }
+    { path: "files.html",        icon: "🗂️", title: "Bản đồ mã nguồn",            short: "Bản đồ mã nguồn" },
+    { path: "classes.html",      icon: "📚", title: "Danh mục lớp & trách nhiệm", short: "Danh mục lớp" }
   ];
 
   var current = document.documentElement.getAttribute("data-page") || "index.html";

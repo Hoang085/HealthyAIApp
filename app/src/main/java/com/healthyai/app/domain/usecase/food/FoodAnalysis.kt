@@ -2,22 +2,10 @@ package com.healthyai.app.domain.usecase.food
 
 import com.healthyai.app.domain.model.FoodInsight
 
-/**
- * Luật **thuần Kotlin** của tính năng "phân tích món ăn bằng AI" (mục 3 #42).
- *
- * Gồm hai việc, cả hai đều **không** phụ thuộc Android/HTTP nên unit test JVM kiểm tra được toàn bộ:
- *
- * 1. [buildPrompt] — dựng câu lệnh gửi cho Gemini. Prompt là **hợp đồng** với model, nên nó được viết
- *    ở một chỗ duy nhất và có test chốt lại những ràng buộc quan trọng: ưu tiên **món Việt/Á**, phủ cả
- *    **trái cây/đồ uống/đồ ăn vặt**, chỉ trả **thông tin tham khảo** và **không** chẩn đoán/chữa bệnh.
- * 2. [toInsight] — **làm sạch** dữ liệu AI trả về trước khi đưa lên UI: cắt độ dài, bỏ mục rỗng, giới
- *    hạn số gạch đầu dòng. Model là nguồn **không tin cậy hoàn toàn**: nó có thể trả 8 gạch đầu dòng,
- *    một gạch dài 400 ký tự, hoặc nhét cả câu văn vào ô emoji — những thứ đó sẽ phá vỡ layout thẻ kết
- *    quả nếu hiển thị thẳng.
- */
+/** Luật thuần Kotlin cho tính năng "phân tích món ăn bằng AI": dựng prompt và làm sạch phản hồi model. */
 object FoodAnalysis {
 
-    /** Số gạch đầu dòng tối đa cho **mỗi** mục ("Có lợi" và "Nên lưu ý"). */
+    /** Số gạch đầu dòng tối đa cho mỗi mục ("Có lợi" và "Nên lưu ý"). */
     const val MAX_BULLETS = 3
 
     /** Độ dài tối đa của một gạch đầu dòng — dài hơn thì cắt, để thẻ kết quả không thành một trang văn. */
@@ -32,16 +20,7 @@ object FoodAnalysis {
     /** Emoji dài hơn mức này gần như chắc chắn là văn bản bị đặt nhầm ô → bỏ, dùng mặc định. */
     private const val MAX_EMOJI_LENGTH = 8
 
-    /**
-     * Câu lệnh gửi kèm ảnh cho Gemini.
-     *
-     * Viết bằng tiếng Việt (để model trả lời tiếng Việt) và **rất cụ thể** vì đầu ra được ép theo
-     * `responseSchema` ở tầng dữ liệu — prompt chỉ cần nói rõ *nội dung* mong muốn:
-     * - ưu tiên gọi đúng tên món Việt Nam/châu Á (người dùng app là người Việt);
-     * - nếu không chắc thì ghi kèm "(có thể)" thay vì đoán bừa một món Tây (đây chính là lỗi cũ
-     *   "đĩa cơm → pizza" nhưng ở phía model);
-     * - lợi ích/lưu ý phải ngắn, cụ thể, và **không** được chẩn đoán hay nói tới thuốc/chữa bệnh.
-     */
+    /** Câu lệnh tiếng Việt gửi Gemini; đầu ra bị ép theo responseSchema nên chỉ cần nêu rõ nội dung mong muốn. */
     fun buildPrompt(): String = """
         Bạn là chuyên gia dinh dưỡng. Hãy xem ảnh và trả lời bằng TIẾNG VIỆT.
 
@@ -62,15 +41,7 @@ object FoodAnalysis {
            thuốc. Chỉ nêu thông tin dinh dưỡng tham khảo, ngắn gọn, dễ hiểu.
     """.trimIndent()
 
-    /**
-     * Làm sạch phản hồi của AI thành [FoodInsight] hiển thị được.
-     *
-     * Nhận từng trường **rời** (thay vì nguyên chuỗi JSON) để tầng dữ liệu tự lo việc parse, còn luật
-     * hiển thị nằm ở đây và test được bằng JVM mà không cần HTTP.
-     *
-     * @return [FoodInsight] rỗng (coi như "chưa nhận diện được") khi AI nói ảnh không có đồ ăn, **hoặc**
-     *   khi AI nói có nhưng không nêu được tên món.
-     */
+    /** Làm sạch phản hồi AI thành FoodInsight; trả rỗng khi ảnh không có đồ ăn hoặc thiếu tên món. */
     fun toInsight(
         isFood: Boolean,
         dishName: String?,
@@ -98,10 +69,7 @@ object FoodAnalysis {
         return if (trimmed.isEmpty() || trimmed.length > MAX_EMOJI_LENGTH) DEFAULT_EMOJI else trimmed
     }
 
-    /**
-     * Chuẩn hoá một danh sách gạch đầu dòng: cắt khoảng trắng, **bỏ mục rỗng**, cắt độ dài, bỏ mục
-     * trùng nhau, rồi giới hạn còn [MAX_BULLETS].
-     */
+    /** Chuẩn hoá gạch đầu dòng: cắt khoảng trắng, bỏ mục rỗng, cắt độ dài, bỏ trùng, giới hạn MAX_BULLETS. */
     private fun sanitizeBullets(bullets: List<String>?): List<String> =
         bullets.orEmpty()
             .map { it.trim().take(MAX_BULLET_LENGTH) }

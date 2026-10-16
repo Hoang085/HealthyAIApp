@@ -9,9 +9,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * UI State cho màn hình Core Tracking.
- */
+/** UI State cho màn hình Core Tracking. */
 data class TrackingUiState(
     val healthData: HealthData = HealthData(),
     val isRefreshing: Boolean = false,
@@ -19,10 +17,7 @@ data class TrackingUiState(
     val lastUpdated: Long = System.currentTimeMillis()
 )
 
-/**
- * ViewModel quản lý trạng thái dữ liệu sức khỏe cốt lõi (Core Tracking).
- * Sử dụng StateFlow để tích hợp mượt mà với Jetpack Compose.
- */
+/** ViewModel quản lý trạng thái dữ liệu sức khỏe cốt lõi (Core Tracking) qua StateFlow. */
 @HiltViewModel
 class CoreTrackingViewModel @Inject constructor(
     private val getHealthDataUseCase: GetHealthDataUseCase
@@ -35,9 +30,7 @@ class CoreTrackingViewModel @Inject constructor(
         refreshData()
     }
 
-    /**
-     * Làm mới dữ liệu từ Health Connect.
-     */
+    /** Làm mới dữ liệu từ Health Connect. */
     fun refreshData() {
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
@@ -64,9 +57,7 @@ class CoreTrackingViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Xóa thông báo lỗi.
-     */
+    /** Xoá thông báo lỗi. */
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }

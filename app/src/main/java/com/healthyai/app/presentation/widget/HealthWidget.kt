@@ -62,11 +62,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 
-/**
- * Màu dùng chung của widget. Mọi màu đều là `ColorProvider(sáng, tối)` dựng từ palette của app
- * (`ui/theme/Color.kt`) — widget **không** dùng `GlanceTheme` vì mặc định của nó là màu động của hệ
- * thống (tông tím trên Android 12+), lệch hẳn bản sắc xanh của app.
- */
+/** Màu dùng chung của widget; không dùng GlanceTheme vì mặc định là màu động (tím) lệch bản sắc app. */
 private val Content = ColorProvider(WidgetContentLight, WidgetContentDark)
 
 /** Chữ phụ: nhãn "Hôm nay". */
@@ -77,25 +73,7 @@ private val StepsAccent = ColorProvider(WidgetStepsLight, WidgetStepsDark)
 private val SleepAccent = ColorProvider(WidgetSleepLight, WidgetSleepDark)
 private val HeartAccent = ColorProvider(WidgetHeartLight, WidgetHeartDark)
 
-/**
- * Widget màn hình chính **"Sức khỏe hôm nay"**: ba chỉ số của ngày hôm nay — **bước chân, giấc ngủ,
- * nhịp tim** — mỗi chỉ số một cột với icon riêng, số đo cỡ lớn và nhãn nhỏ bên dưới.
- *
- * Thay cho widget "Tiến độ thói quen" trước đây (thanh tiến độ + danh sách tối đa 3 thói quen): bố cục
- * đó chật vì phải nhồi cả tiêu đề, dòng `x/y`, thanh tiến độ và các dòng `✓ Tên thói quen  2.0L / 2.0L`
- * trong khung 150×140dp; màu sắc lại lấy từ `GlanceTheme` — mặc định là **màu động** của hệ thống, nên
- * trên Android 12+ widget hiện ra tông tím lệch hẳn bản sắc xanh của app.
- *
- * Vài quyết định đáng chú ý:
- *
- * - **Không dùng `GlanceTheme`** (nên cũng không cần bọc `GlanceTheme { }`): mọi màu đều là
- *   `ColorProvider(sáng, tối)` dựng theo palette của app ở `ui/theme/Color.kt`, nhờ vậy widget và
- *   trong app trông như cùng một sản phẩm.
- * - **[sizeMode] = [SizeMode.Exact]**: Glance vẽ lại widget theo **đúng kích thước hiện tại** thay vì
- *   vẽ ở khung mặc định rồi để launcher kéo giãn, nên khi người dùng kéo rộng ra thì ba cột nở ra theo.
- *   Khung nhỏ nhất vẫn do `minWidth` trong `health_widget_info.xml` chặn, nên ba cột luôn đủ chỗ.
- * - **Bấm vào widget mở app** ([MainActivity]) — giữ nguyên hành vi của widget cũ.
- */
+/** Widget "Sức khỏe hôm nay": ba chỉ số bước chân, giấc ngủ, nhịp tim; bấm để mở app. */
 class HealthWidget : GlanceAppWidget() {
 
     override val sizeMode: SizeMode = SizeMode.Exact
@@ -115,10 +93,7 @@ class HealthWidget : GlanceAppWidget() {
             HealthWidgetEntryPoint::class.java
         )
 
-        // Đọc dữ liệu **một lần** lúc vẽ: Glance (khung RemoteViews) không có cơ chế quan sát Flow, nên
-        // số liệu luôn là "bản chụp" tại thời điểm vẽ. Widget được vẽ lại theo `updatePeriodMillis`
-        // (30 phút) và ngay khi dữ liệu sức khỏe đổi — `HealthDataRepositoryImpl` →
-        // `HealthWidgetRefresher` → `HealthWidget().updateAll(context)`.
+        // Đọc dữ liệu một lần lúc vẽ: Glance không quan sát Flow nên số liệu là bản chụp tại thời điểm vẽ.
         val summary = readSummary(entryPoint)
 
         provideContent {
@@ -126,18 +101,7 @@ class HealthWidget : GlanceAppWidget() {
         }
     }
 
-    /**
-     * Ghép ba chỉ số từ các nguồn mà app đang có; **thứ tự ưu tiên nằm trong [TodayHealthSummary.build]**
-     * để widget và thẻ "Tóm tắt sức khỏe" ở màn Trang chủ không bao giờ nói hai số khác nhau.
-     *
-     * Bước chân đọc với timeout [StepCounterRepository.NO_WAIT_MS]: widget chỉ cần **giá trị đã lưu**,
-     * không chờ mẫu cảm biến mới — chờ một mẫu có thể mất tới 2 giây (`DEFAULT_READ_TIMEOUT_MS`) và làm
-     * chậm cả lần vẽ widget.
-     *
-     * Không phép đọc nào ném lỗi ra ngoài (`GetHealthDataUseCase`, `GetLatestRecordedHeartRateUseCase`
-     * đã tự bọc, phần giấc ngủ bọc bằng `runCatchingCancellable`) nên widget không thể trắng vì lỗi dữ
-     * liệu — cùng tinh thần với `HealthWidgetRefresher.refresh()` không bao giờ ném.
-     */
+    /** Ghép ba chỉ số; thứ tự ưu tiên nằm trong TodayHealthSummary.build nên khớp thẻ Tóm tắt sức khỏe. */
     private suspend fun readSummary(entryPoint: HealthWidgetEntryPoint): TodayHealthSummary {
         val stepCounter = entryPoint.stepCounterRepository()
         val stepCounterStatus = stepCounter.getStatus()
@@ -171,8 +135,7 @@ class HealthWidget : GlanceAppWidget() {
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(day = WidgetSurfaceLight, night = WidgetSurfaceDark)
-                // Bo góc do chính widget vẽ, không phụ thuộc `system_app_widget_background_radius`
-                // (chỉ có từ Android 12) nên trên Android 11 trở xuống vẫn là thẻ bo góc.
+                // Bo góc do widget tự vẽ để Android 11 trở xuống vẫn là thẻ bo góc.
                 .cornerRadius(24.dp)
                 .padding(horizontal = 18.dp, vertical = 14.dp)
                 .clickable(actionStartActivity<MainActivity>()),
@@ -190,8 +153,7 @@ class HealthWidget : GlanceAppWidget() {
             )
             Spacer(modifier = GlanceModifier.height(12.dp))
 
-            // Ba cột chia đều bề ngang. Không cần bố cục thay thế cho khung hẹp vì `minWidth` của
-            // `health_widget_info.xml` (250dp) đã chặn người dùng kéo widget nhỏ hơn mức ba cột cần.
+            // Ba cột chia đều bề ngang; minWidth (250dp) trong health_widget_info.xml chặn khung hẹp.
             Row(
                 modifier = GlanceModifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Vertical.CenterVertically
@@ -266,8 +228,7 @@ class HealthWidget : GlanceAppWidget() {
         ) {
             Image(
                 provider = ImageProvider(iconRes),
-                // Icon chỉ để nhận diện chỉ số — nhãn chữ ngay dưới đã nói đủ nghĩa nên không đặt
-                // `contentDescription`, tránh trình đọc màn hình đọc lặp.
+                // Icon chỉ để nhận diện; không đặt contentDescription vì nhãn chữ bên dưới đã đủ nghĩa.
                 contentDescription = null,
                 modifier = GlanceModifier.size(22.dp)
             )

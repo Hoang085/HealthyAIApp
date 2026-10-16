@@ -6,8 +6,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// TODO: Có thể thay FontFamily.Default bằng Google Fonts (e.g., Inter, Outfit)
-// để typography chuyên nghiệp hơn. Thêm dependency: implementation("androidx.compose.ui:ui-text-google-fonts")
+// TODO: có thể thay FontFamily.Default bằng Google Fonts (Inter, Outfit) cho typography chuyên nghiệp hơn.
 val Typography = Typography(
     displayLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp),
     headlineLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 32.sp, lineHeight = 40.sp),

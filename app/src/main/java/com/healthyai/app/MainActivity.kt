@@ -15,10 +15,7 @@ import com.healthyai.app.worker.SleepTrackingWorker
 import com.healthyai.app.worker.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 
-/**
- * Màn hình duy nhất (Single Activity Architecture).
- * Toàn bộ UI được xây dựng bằng Jetpack Compose bên trong.
- */
+/** Màn hình duy nhất (Single Activity Architecture), toàn bộ UI dựng bằng Jetpack Compose. */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -32,9 +29,7 @@ class MainActivity : ComponentActivity() {
         ReminderWorker.schedule(workManager)
         SleepTrackingWorker.schedule(workManager)
 
-        // Health Connect gọi app để hiển thị chính sách bảo mật (rationale) trước khi xin quyền.
-        // Màn này KHÔNG được nằm sau cổng đăng nhập, nếu không Health Connect sẽ thấy app hiện
-        // màn Đăng nhập và từ chối duyệt (mục 3 #31).
+        // Màn rationale của Health Connect phải nằm ngoài cổng đăng nhập, nếu không Health Connect sẽ từ chối duyệt.
         val showPrivacyRationale = intent.isHealthPermissionsRationale()
 
         enableEdgeToEdge()
@@ -49,13 +44,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Intent này có phải yêu cầu hiển thị chính sách bảo mật của Health Connect không.
-     *
-     * Hai hành động khớp với hai `intent-filter` trong `AndroidManifest.xml`:
-     * `ACTION_SHOW_PERMISSIONS_RATIONALE` (Android < 14) và `ACTION_VIEW_PERMISSION_USAGE` (Android 14+,
-     * qua `activity-alias` cùng trỏ vào MainActivity).
-     */
+    /** Intent này có phải yêu cầu hiển thị rationale của Health Connect không. */
     private fun Intent.isHealthPermissionsRationale(): Boolean =
         action == ACTION_SHOW_PERMISSIONS_RATIONALE || action == ACTION_VIEW_PERMISSION_USAGE
 

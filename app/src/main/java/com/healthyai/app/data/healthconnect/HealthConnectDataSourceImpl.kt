@@ -22,14 +22,7 @@ import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * HealthConnectDataSourceImpl — Implementation của HealthConnectDataSource.
- *
- * ⚠️ **Quy ước chung của file này (phụ lục C #39):** mọi `try/catch` đều phải
- * `catch (e: CancellationException) { throw e }` **trước** `catch (e: Exception)`. Nếu nuốt
- * `CancellationException`, việc huỷ coroutine (đổi màn hình, `viewModelScope` bị huỷ, WorkManager
- * dừng worker) sẽ bị biến thành "không có dữ liệu"/`0` và coroutine không kết thúc đúng.
- */
+/** Implementation của HealthConnectDataSource; mọi try/catch phải rethrow CancellationException trước catch Exception để không nuốt việc huỷ coroutine. */
 @Singleton
 class HealthConnectDataSourceImpl @Inject constructor(
     @ApplicationContext private val context: Context
@@ -63,9 +56,7 @@ class HealthConnectDataSourceImpl @Inject constructor(
         }
     }
 
-    /** 
-     * Đọc tổng số bước chân từ đầu ngày hôm nay.
-     */
+    /** Đọc tổng số bước chân từ đầu ngày hôm nay. */
     override suspend fun getTodaySteps(): Long {
         val startOfDay = LocalDate.now()
             .atStartOfDay(ZoneId.systemDefault()).toInstant()
@@ -86,9 +77,7 @@ class HealthConnectDataSourceImpl @Inject constructor(
         }
     }
 
-    /** 
-     * Đọc tổng thời gian ngủ từ chiều tối qua đến hiện tại.
-     */
+    /** Đọc tổng thời gian ngủ từ chiều tối qua đến hiện tại. */
     override suspend fun getTodaySleepHours(): Double {
         val now = Instant.now()
         val startOfYesterday = LocalDate.now().minusDays(1)
@@ -111,12 +100,7 @@ class HealthConnectDataSourceImpl @Inject constructor(
         }
     }
 
-    /**
-     * Đọc nhịp tim **trung bình của ngày hôm nay** (00:00 → hiện tại).
-     *
-     * Mốc thời gian được căn theo đầu ngày giống [getTodaySteps] nên chỉ số này cũng "đọc lại từ đầu
-     * ngày": 00:05 hôm nay sẽ **không** còn tính số đo của tối hôm qua như khi lấy 1 giờ gần nhất.
-     */
+    /** Đọc nhịp tim trung bình ngày hôm nay (00:00 → hiện tại); căn theo đầu ngày nên không còn dính số của tối hôm qua. */
     override suspend fun getTodayHeartRate(): Double {
         val startOfDay = LocalDate.now()
             .atStartOfDay(ZoneId.systemDefault()).toInstant()
@@ -137,9 +121,7 @@ class HealthConnectDataSourceImpl @Inject constructor(
         }
     }
 
-    /**
-     * Đọc tổng calories tiêu thụ trong ngày hôm nay.
-     */
+    /** Đọc tổng calories tiêu thụ trong ngày hôm nay. */
     override suspend fun getTodayActiveCalories(): Double {
         val startOfDay = LocalDate.now()
             .atStartOfDay(ZoneId.systemDefault()).toInstant()
@@ -160,15 +142,7 @@ class HealthConnectDataSourceImpl @Inject constructor(
         }
     }
 
-    /**
-     * Đọc toàn bộ phiên ngủ trong khoảng thời gian, cộng dồn **thời lượng theo từng pha** và **thời
-     * lượng của những phiên không chia pha**.
-     *
-     * Máy/ứng dụng sức khỏe chỉ báo `STAGE_TYPE_SLEEPING` (không chia Sâu/Nông/REM) **không còn** cho
-     * kết quả rỗng: thời lượng của phiên đó vào [SleepStageBreakdown.unstagedMinutes] để thẻ giấc ngủ
-     * vẫn hiển thị được số liệu thật (phụ lục C #25). Phiên ngủ có chia pha chỉ tính theo pha để không
-     * cộng trùng cùng một khoảng thời gian hai lần.
-     */
+    /** Đọc phiên ngủ trong khoảng, cộng theo từng pha và theo phiên không chia pha (vào unstagedMinutes) để không cộng trùng. */
     override suspend fun getSleepStageBreakdown(start: Instant, end: Instant): SleepStageBreakdown {
         return try {
             val response = client.readRecords(
@@ -204,8 +178,7 @@ class HealthConnectDataSourceImpl @Inject constructor(
                 }
 
                 if (!sessionHasStages) {
-                    // Phiên ngủ không chia pha (STAGE_TYPE_SLEEPING/UNKNOWN/…): dùng chính khoảng thời
-                    // gian của phiên làm thời lượng ngủ.
+                    // Phiên không chia pha (SLEEPING/UNKNOWN…): dùng chính khoảng thời gian của phiên làm thời lượng ngủ.
                     unstagedMinutes += Duration.between(session.startTime, session.endTime)
                         .toMinutes()
                         .coerceAtLeast(0L)
@@ -226,12 +199,7 @@ class HealthConnectDataSourceImpl @Inject constructor(
     }
 }
 
-/**
- * Dịch mã trạng thái của `HealthConnectClient.getSdkStatus()` sang enum của domain.
- *
- * Tách riêng để test được trên JVM (không cần Context/thiết bị):
- * `SDK_AVAILABLE = 3`, `SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED = 2`, `SDK_UNAVAILABLE = 1`.
- */
+/** Dịch mã trạng thái của getSdkStatus() sang enum domain; tách riêng để test được trên JVM. */
 internal fun sdkStatusToHealthConnectStatus(sdkStatus: Int): HealthConnectStatus = when (sdkStatus) {
     HealthConnectClient.SDK_AVAILABLE -> HealthConnectStatus.AVAILABLE
     HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> HealthConnectStatus.UPDATE_REQUIRED

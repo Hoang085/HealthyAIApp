@@ -46,14 +46,7 @@ import org.junit.Before
 import org.junit.Test
 import java.time.LocalTime
 
-/**
- * Unit test cho trạng thái hoàn thành của thói quen trên màn Home và cho luồng
- * xin quyền Health Connect / quyền thông báo.
- *
- * Trước đây `HomeScreen` gọi `HabitItem(habit, isCompleted = false)` nên Home **không bao giờ**
- * hiển thị thói quen đã đạt mục tiêu. Test này chốt lại hành vi đúng: hoàn thành được suy ra
- * từ tổng giá trị log **trong ngày** so với `Habit.targetValue`.
- */
+/** Unit test cho trạng thái hoàn thành thói quen trên màn Home và luồng xin quyền Health Connect / thông báo. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
 
@@ -181,7 +174,7 @@ class HomeViewModelTest {
         assertFalse(habits.first { it.habit.id == 2L }.isCompleted)
     }
 
-    // ── Xin quyền Health Connect ────────────────────────────────
+    // Xin quyền Health Connect
 
     @Test
     fun `missing permissions show the permission card without a red error banner`() = runTest {
@@ -320,7 +313,7 @@ class HomeViewModelTest {
         coVerify(exactly = 2) { getHealthDataUseCase() }
     }
 
-    // ── Xin quyền thông báo nhắc nhở ─────────────────────────────
+    // Xin quyền thông báo nhắc nhở
 
     @Test
     fun `blocked notifications show the reminder card`() = runTest {
@@ -402,7 +395,7 @@ class HomeViewModelTest {
         assertFalse(viewModel.uiState.value.showReminderNotificationCard)
     }
 
-    // ── Đếm bước bằng cảm biến của máy ─────────────────────────
+    // Đếm bước bằng cảm biến của máy
 
     @Test
     fun `sensor steps are used when the app has no stored steps`() = runTest {
@@ -561,7 +554,7 @@ class HomeViewModelTest {
         assertEquals(800L, state.sensorSteps)
     }
 
-    // ── Tự ước lượng giờ ngủ bằng cảm biến của máy ─────────────
+    // Tự ước lượng giờ ngủ bằng cảm biến của máy
 
     @Test
     fun `device sleep estimate is used when the app has no stored sleep data`() = runTest {
@@ -664,7 +657,7 @@ class HomeViewModelTest {
         assertEquals(7.2, viewModel.uiState.value.sensorSleepHours, 0.001)
     }
 
-    // ── Nhịp tim ghi trên máy (đo bằng camera) ────────────────
+    // Nhịp tim ghi trên máy (đo bằng camera)
 
     @Test
     fun `the heart rate recorded on the device is shown when the app has no stored heart rate`() = runTest {
@@ -714,9 +707,7 @@ class HomeViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
-        // Sang ngày mới: cả Health Connect lẫn nhịp tim ghi trong ngày đều chưa có số nào.
-        // Số của hôm qua KHÔNG được hiện lại (getLatestRecordedHeartRate chỉ đọc hàng của hôm nay),
-        // nên UI hiện "-- bpm" thay vì một nhịp tim cũ.
+        // Sang ngày mới: chỉ đọc số của hôm nay nên UI hiện "-- bpm", không hiện nhịp tim cũ
         coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 0.0))
         givenRecordedHeartRate(bpm = 0.0)
 
@@ -747,7 +738,7 @@ class HomeViewModelTest {
         assertEquals(76.0, state.displayHeartRate, 0.001)
     }
 
-    // ── Khung giờ ngủ do người dùng đặt ────────────────────────
+    // Khung giờ ngủ do người dùng đặt
 
     @Test
     fun `the default window is 23 to 7 when the user has not set anything`() = runTest {
@@ -874,7 +865,7 @@ class HomeViewModelTest {
         coVerify(exactly = 0) { settingsRepository.setSleepSchedule(any()) }
     }
 
-    // ── Lời chào: tên thật, không hard-code (phụ lục C #30) ─────
+    // Lời chào: tên thật, không hard-code
 
     @Test
     fun `greeting name comes from the signed in user`() = runTest {
@@ -902,9 +893,9 @@ class HomeViewModelTest {
         assertNull("Chế độ khách không hiện tên nào (không còn 'Alex' cứng)", viewModel.uiState.value.userName)
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
-    // ── Đồng bộ đám mây (mục 3 #31) ───────────────────────────
+    // Đồng bộ đám mây
 
     @Test
     fun `cloud sync is off by default`() = runTest {
@@ -950,7 +941,7 @@ class HomeViewModelTest {
         coVerify(exactly = 1) { settingsRepository.setCloudSyncEnabled(true, any()) }
     }
 
-    // ── Nguồn dữ liệu sức khỏe của Trang chủ (switch) ──────────
+    // Nguồn dữ liệu sức khỏe của Trang chủ (switch)
 
     @Test
     fun `the health connect source is off by default`() = runTest {
@@ -1116,10 +1107,7 @@ class HomeViewModelTest {
         coEvery { getStoredHealthDataUseCase() } returns data
     }
 
-    /**
-     * Đổi nguồn dữ liệu như thể DB đã đổi: Flow phát lại và `getHealthConnectData()` trả giá trị mới.
-     * Gọi TRƯỚC `createViewModel()` để áp dụng cho lần nạp đầu.
-     */
+    /** Đổi nguồn dữ liệu như thể DB đã đổi; gọi TRƯỚC `createViewModel()` để áp dụng cho lần nạp đầu. */
     private fun givenHealthConnectData(enabled: Boolean) {
         healthConnectDataFlow.value = HealthConnectDataSettings(enabled = enabled)
     }

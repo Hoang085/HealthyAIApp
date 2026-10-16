@@ -11,13 +11,7 @@ import javax.inject.Singleton
 
 private const val TAG = "HealthWidgetRefresher"
 
-/**
- * Bản triển khai thật của [HealthWidgetRefresher] bằng Glance.
- *
- * `updateAll()` vẽ lại **tất cả** widget "Sức khỏe hôm nay" đang có trên màn hình chính; mỗi lần vẽ sẽ
- * chạy lại `HealthWidget.provideGlance()` nên số liệu được đọc mới. Nếu người dùng chưa thêm widget nào
- * thì `updateAll()` không làm gì (danh sách `GlanceId` rỗng).
- */
+/** Triển khai [HealthWidgetRefresher] bằng Glance: `updateAll()` vẽ lại mọi widget đang có. */
 @Singleton
 class HealthWidgetRefresherImpl @Inject constructor(
     @ApplicationContext private val context: Context

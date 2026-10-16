@@ -32,10 +32,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/**
- * AppModule — Bind interface với implementation.
- * Hilt sẽ tự inject đúng implementation khi code yêu cầu interface.
- */
+/** Bind interface với implementation — Hilt tự inject impl khi code yêu cầu interface. */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class AppModule {
@@ -62,9 +59,7 @@ abstract class AppModule {
         impl: NotificationPermissionRepositoryImpl
     ): NotificationPermissionRepository
 
-    /**
-     * Đếm bước bằng cảm biến của máy (nguồn "tự lực" của app, không cần Health Connect).
-     */
+    /** Đếm bước bằng cảm biến của máy (không cần Health Connect). */
     @Binds
     @Singleton
     abstract fun bindStepCounterSensor(impl: AndroidStepCounterSensor): StepCounterSensor
@@ -73,10 +68,7 @@ abstract class AppModule {
     @Singleton
     abstract fun bindStepCounterRepository(impl: StepCounterRepositoryImpl): StepCounterRepository
 
-    /**
-     * Tự tính giờ ngủ bằng cảm biến của máy (nguồn "tự lực" thứ hai, không cần Health Connect và
-     * không cần quyền nào).
-     */
+    /** Tự tính giờ ngủ bằng cảm biến của máy (không cần Health Connect, không cần quyền). */
     @Binds
     @Singleton
     abstract fun bindSleepSensor(impl: AndroidSleepSensor): SleepSensor
@@ -85,29 +77,17 @@ abstract class AppModule {
     @Singleton
     abstract fun bindSleepTrackerRepository(impl: SleepTrackerRepositoryImpl): SleepTrackerRepository
 
-    /**
-     * Thiết lập của người dùng (bảng `app_settings`) — hiện có khung giờ ngủ.
-     */
+    /** Thiết lập người dùng (bảng `app_settings`) — hiện có khung giờ ngủ. */
     @Binds
     @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
 
-    /**
-     * Widget màn hình chính "Sức khỏe hôm nay": Domain gọi [HealthWidgetRefresher.refresh] mỗi khi app
-     * ghi dữ liệu sức khỏe (đồng bộ xong / vừa đo nhịp tim), implementation thật (Glance `updateAll`)
-     * nằm ở tầng Presentation.
-     */
+    /** Widget "Sức khỏe hôm nay": Domain gọi [HealthWidgetRefresher.refresh] khi ghi dữ liệu sức khỏe, impl Glance ở Presentation. */
     @Binds
     @Singleton
     abstract fun bindHealthWidgetRefresher(impl: HealthWidgetRefresherImpl): HealthWidgetRefresher
 
-    /**
-     * AI phân tích món ăn ở màn "Ghi chép bữa ăn" (mục 3 #42).
-     *
-     * Thay ML Kit Image Labeling cũ: ML Kit chỉ gán **nhãn ảnh chung** tiếng Anh nên không trả lời được
-     * "đây là món gì" (nguồn của lỗi *"chụp đĩa cơm mà ra pizza"*). Impl mới gọi Gemini để lấy đúng
-     * tên món kèm lợi ích/điều nên lưu ý; việc gửi ảnh đi chỉ xảy ra khi người dùng đã bật opt-in.
-     */
+    /** AI phân tích món ăn: dùng Gemini thay ML Kit (ML Kit chỉ gán nhãn chung, hay đoán sai món); chỉ gửi ảnh khi người dùng opt-in. */
     @Binds
     @Singleton
     abstract fun bindFoodInsightSource(impl: GeminiFoodInsightSource): FoodInsightSource

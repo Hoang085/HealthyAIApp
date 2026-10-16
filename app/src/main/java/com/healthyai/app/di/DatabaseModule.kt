@@ -20,9 +20,7 @@ import dagger.hilt.components.SingletonComponent
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import javax.inject.Singleton
 
-/**
- * DatabaseModule — Cung cấp Room Database được mã hóa bởi SQLCipher.
- */
+/** Cung cấp Room Database được mã hoá bởi SQLCipher. */
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
@@ -30,20 +28,17 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        // sqlcipher-android KHÔNG tự nạp native lib — phải gọi tường minh 1 lần
-        // trước khi mở database (an toàn khi gọi lặp lại nhiều lần).
+        // sqlcipher-android không tự nạp native lib — phải System.loadLibrary("sqlcipher") 1 lần trước khi mở DB (gọi lặp an toàn).
         System.loadLibrary("sqlcipher")
 
-        // Passphrase KHÔNG còn hard-code (mục 3 #17 / phụ lục C #13): sinh ngẫu nhiên 32 byte ở
-        // lần chạy đầu rồi bọc bằng khoá AES-256 trong Android Keystore; các lần sau đọc lại khoá cũ.
+        // Passphrase sinh ngẫu nhiên 32 byte, bọc bằng khoá AES-256 trong Android Keystore; các lần sau đọc lại (không hard-code).
         val passphrase = DatabasePassphraseProvider(
             vault = SharedPreferencesPassphraseVault(context),
             cipher = AndroidKeystorePassphraseCipher()
         ).getOrCreate()
 
         if (passphrase.newlyCreated) {
-            // Máy vừa có passphrase mới ⇒ mọi file DB còn sót lại là của bản cũ (khoá hard-code).
-            // Rekey sang khoá mới để không mất dữ liệu thói quen/nhật ký của người dùng.
+            // Có passphrase mới ⇒ file DB cũ dùng khoá hard-code; rekey sang khoá mới để không mất dữ liệu.
             LegacyDatabaseKeyMigration.rekeyLegacyDatabaseIfPresent(
                 context = context,
                 databaseName = AppDatabase.DATABASE_NAME,
@@ -51,8 +46,7 @@ object DatabaseModule {
             )
         }
 
-        // sqlcipher-android 4.x không còn SQLiteDatabase.getBytes() công khai —
-        // truyền thẳng byte[] như hướng dẫn chính thức của Zetetic.
+        // sqlcipher-android 4.x bỏ SQLiteDatabase.getBytes() công khai — truyền thẳng byte[] như hướng dẫn Zetetic.
         val factory = SupportOpenHelperFactory(passphrase.bytes)
 
         return Room.databaseBuilder(
@@ -60,9 +54,8 @@ object DatabaseModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .openHelperFactory(factory)             // SQLCipher AES-256 encryption
-            // Phụ lục C #14: KHÔNG dùng fallbackToDestructiveMigration() nữa — nâng version schema
-            // sẽ chạy Migration giữ nguyên dữ liệu thay vì xoá sạch bảng.
+            .openHelperFactory(factory)             // mã hoá SQLCipher AES-256
+            // Không dùng fallbackToDestructiveMigration(): nâng version schema chạy Migration giữ dữ liệu thay vì xoá sạch bảng.
             .addMigrations(*DatabaseMigrations.ALL.toTypedArray())
             .build()
     }

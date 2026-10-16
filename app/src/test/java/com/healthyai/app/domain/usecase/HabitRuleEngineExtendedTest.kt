@@ -9,13 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Test cho nhánh phân tích **theo đơn vị của chính thói quen** (phụ lục C #17) và cho việc **không còn
- * thẻ cảnh báo cố định** sau bản cải tiến feed gợi ý.
- *
- * Đơn vị "bước" dùng ngưỡng 5000/8000 bước/ngày; đơn vị khác (phút, km, calo…) so theo **tỉ lệ
- * `value / targetValueAtTime`** — nên "Chạy bộ 30 phút" ghi 10 phút không còn bị đọc thành "10 bước".
- */
+/** Test nhánh phân tích theo đơn vị của chính thói quen và việc không còn thẻ cảnh báo cố định. */
 class HabitRuleEngineExtendedTest {
 
     private val engine = HabitRuleEngine()
@@ -74,7 +68,7 @@ class HabitRuleEngineExtendedTest {
         assertTrue(suggestions.none { it.priority == SuggestionPriority.CRITICAL })
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
     private fun List<Suggestion>.isConcernTipFor(category: HabitCategory): Boolean =
         any { suggestion ->
@@ -88,7 +82,7 @@ class HabitRuleEngineExtendedTest {
                 SuggestionCatalog.generalTips(category).any { it.title == suggestion.title }
         }
 
-    /** Thói quen vận động đo bằng **phút** (Data set A: "Chạy bộ — 30 phút"). */
+    /** Thói quen vận động đo bằng phút. */
     private fun runHabit() = Habit(
         id = 4L,
         name = "Chạy bộ",

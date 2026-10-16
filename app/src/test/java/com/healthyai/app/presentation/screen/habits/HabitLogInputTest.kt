@@ -3,13 +3,7 @@ package com.healthyai.app.presentation.screen.habits
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Unit test cho [parseLogValue] — đọc giá trị ô "Số lượng" của hộp thoại ghi nhận (mục 3, #12).
- *
- * Trước đây UI dùng thẳng `toFloatOrNull()?.let { … }` nên nhập rỗng / chữ sẽ **im lặng**: hộp
- * thoại đóng, không có log nào được ghi và người dùng không biết vì sao. Test này chốt lại: trường
- * hợp đó phải trả về thông báo lỗi để UI hiện dưới ô nhập.
- */
+/** Unit test cho [parseLogValue]: đọc giá trị ô "Số lượng" của hộp thoại ghi nhận. */
 class HabitLogInputTest {
 
     @Test
@@ -45,7 +39,7 @@ class HabitLogInputTest {
 
     @Test
     fun `zero and negative values are rejected`() {
-        // Phụ lục C #11: ghi số âm/0 sẽ làm tiến độ trong ngày bị giảm hoặc vô nghĩa
+        // Ghi số âm/0 sẽ làm tiến độ trong ngày bị giảm hoặc vô nghĩa
         assertEquals(LogValueResult.Invalid("Số lượng phải lớn hơn 0"), parseLogValue("0"))
         assertEquals(LogValueResult.Invalid("Số lượng phải lớn hơn 0"), parseLogValue("0.0"))
         assertEquals(LogValueResult.Invalid("Số lượng phải lớn hơn 0"), parseLogValue("-100"))

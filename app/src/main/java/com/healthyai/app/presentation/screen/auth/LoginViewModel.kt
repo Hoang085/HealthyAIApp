@@ -61,12 +61,7 @@ class LoginViewModel @Inject constructor(
 
     fun dismissError() = _uiState.update { it.copy(error = null) }
 
-    /**
-     * Gửi yêu cầu đăng nhập / đăng ký.
-     *
-     * Khi thành công, không cần điều hướng ở đây: `AuthGateViewModel` đang quan sát
-     * `AuthRepository.authState` nên màn Home sẽ tự hiện ra.
-     */
+    /** Gửi đăng nhập / đăng ký; không cần điều hướng vì AuthGateViewModel theo dõi authState. */
     fun submit() {
         val state = _uiState.value
         if (state.isSubmitting) return // Chống double-submit
@@ -105,10 +100,7 @@ class LoginViewModel @Inject constructor(
     }
 }
 
-/**
- * Dịch lỗi của Firebase Auth sang thông báo tiếng Việt hiển thị trên màn hình.
- * Các trường hợp không nhận diện được thì giữ nguyên mô tả gốc để còn debug.
- */
+/** Dịch lỗi Firebase Auth sang tiếng Việt; lỗi lạ giữ nguyên mô tả gốc để debug. */
 internal fun mapAuthError(throwable: Throwable): String = when (throwable) {
     // FirebaseAuthWeakPasswordException là lớp con của InvalidCredentialsException → phải xét trước.
     is FirebaseAuthWeakPasswordException ->

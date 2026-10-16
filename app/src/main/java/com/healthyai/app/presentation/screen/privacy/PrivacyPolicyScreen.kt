@@ -26,22 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.healthyai.app.R
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
-/**
- * Màn **"Chính sách bảo mật"** — nói đúng những gì app thực sự làm với dữ liệu (mục 3 #31).
- *
- * Màn này phục vụ **ba** lối vào:
- * 1. Người dùng bấm **"Xem chính sách bảo mật"** ở thẻ **"AI & quyền riêng tư"** trên tab Phân tích AI
- *    (mục 3 #43 — trước đây nút này nằm ở màn Ghi chép bữa ăn cạnh công tắc AI).
- * 2. Người dùng bấm **"Xem chính sách bảo mật"** ở thẻ "Đồng bộ đám mây" trên màn Trang chủ.
- * 3. **Health Connect yêu cầu** app hiển thị chính sách khi hệ thống gửi
- *    `ACTION_SHOW_PERMISSIONS_RATIONALE` / `ACTION_VIEW_PERMISSION_USAGE` — xem `MainActivity`. Đây là
- *    điều kiện để app được duyệt trên Play khi dùng dữ liệu sức khỏe, nên màn **không** nằm sau cổng
- *    đăng nhập.
- *
- * Nội dung bám theo code: dữ liệu lưu cục bộ trong Room **mã hoá SQLCipher** (khoá trong Android
- * Keystore), Health Connect chỉ **đọc** khi người dùng cấp quyền, ảnh món ăn được gửi tới **Google
- * Gemini** khi người dùng bấm phân tích (mục 3 #42), và đồng bộ đám mây là **tuỳ chọn, mặc định TẮT**.
- */
+/** Màn "Chính sách bảo mật": mở từ tab Phân tích AI và từ yêu cầu hiển thị rationale của Health Connect (nên không nằm sau cổng đăng nhập). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrivacyPolicyScreen(onBack: () -> Unit) {

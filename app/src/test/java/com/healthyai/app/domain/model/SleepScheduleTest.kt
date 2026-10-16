@@ -6,10 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalTime
 
-/**
- * Unit test cho [SleepSchedule] — khung giờ ngủ do người dùng đặt: khung nào "chứa" một thời điểm, khung
- * có vắt qua nửa đêm hay không, và độ dài khung.
- */
+/** Unit test cho [SleepSchedule] — khung giờ ngủ do người dùng đặt: chứa thời điểm, vắt qua nửa đêm, độ dài khung. */
 class SleepScheduleTest {
 
     private val night = SleepSchedule(LocalTime.of(23, 0), LocalTime.of(7, 0))

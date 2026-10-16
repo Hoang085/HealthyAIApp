@@ -11,18 +11,12 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Test cho rule **xu hướng ít vận động theo số bước chân** và cho hai **lưới an toàn** đi kèm:
- *
- * `health_data_history` nay được app tự ghi (bước chân lấy từ Health Connect **hoặc** cảm biến của máy),
- * nên có những hàng chỉ có bước chân và `sleepHours = 0` / `heartRate = 0`. Các hàng đó phải được hiểu là
- * **"chưa có dữ liệu"** — nếu không, AI sẽ kéo trung bình nhịp tim xuống sai.
- */
+/** Test rule xu hướng ít vận động theo bước chân; hàng chỉ có bước chân hoặc chỉ có ngủ là "chưa có dữ liệu". */
 class HabitRuleEngineStepTrendTest {
 
     private val engine = HabitRuleEngine()
 
-    // ── Rule: mấy ngày liền đi bộ rất ít ────────────────────────
+    // Rule: mấy ngày liền đi bộ rất ít
 
     @Test
     fun `three consecutive low step days flag exercise`() {
@@ -102,7 +96,7 @@ class HabitRuleEngineStepTrendTest {
         assertEquals(HabitCategory.EXERCISE, suggestions.first().category)
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
     private fun List<Suggestion>.isConcernTipFor(category: HabitCategory): Boolean =
         any { suggestion ->

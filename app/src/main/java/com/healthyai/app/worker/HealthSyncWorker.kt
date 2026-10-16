@@ -9,10 +9,7 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
-/**
- * HealthSyncWorker — Đồng bộ dữ liệu từ Health Connect định kỳ.
- * Tuân thủ các hạn chế về pin và tài nguyên của hệ thống.
- */
+/** Đồng bộ dữ liệu từ Health Connect định kỳ, tôn trọng giới hạn pin/tài nguyên. */
 @HiltWorker
 class HealthSyncWorker @AssistedInject constructor(
     @Assisted context: Context,
@@ -35,14 +32,11 @@ class HealthSyncWorker @AssistedInject constructor(
             if (syncResult.isSuccess) {
                 Result.success()
             } else {
-                // Đồng bộ thất bại thật (đọc cảm biến/ghi DB lỗi) → trả `retry` để WorkManager dùng
-                // backoff đã đặt thay vì luôn "thành công" khiến backoff không bao giờ chạy
-                // (phụ lục C #43).
+                // Thất bại thật → retry để WorkManager dùng backoff đã đặt (tránh backoff không bao giờ chạy).
                 retryOrFail()
             }
         } catch (e: CancellationException) {
-            // WorkManager dừng worker = huỷ coroutine → phải ném tiếp, KHÔNG được biến thành
-            // "thử lại/thất bại" (phụ lục C #39).
+            // Worker bị dừng = huỷ coroutine → ném tiếp, không biến thành "thử lại/thất bại".
             throw e
         } catch (e: Exception) {
             android.util.Log.e("HealthSyncWorker", "Periodic sync threw: ${e.message}")
@@ -60,13 +54,7 @@ class HealthSyncWorker @AssistedInject constructor(
         /** Số lần thử tối đa trước khi báo thất bại hẳn. */
         private const val MAX_ATTEMPTS = 3
 
-        /**
-         * Lên lịch chạy định kỳ mỗi 6 giờ.
-         * Chú ý Battery Restrictions:
-         * - Chỉ chạy khi Pin không thấp (setRequiresBatteryNotLow).
-         * - Chỉ chạy khi thiết bị đang sạc (tùy chọn, ở đây chọn không thấp là đủ).
-         * - Hệ thống có thể delay task nếu đang ở chế độ Doze.
-         */
+        /** Lên lịch mỗi 6 giờ; chỉ chạy khi pin không thấp, hệ thống có thể hoãn trong Doze. */
         fun schedule(workManager: WorkManager) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.NOT_REQUIRED) // Health Connect là offline

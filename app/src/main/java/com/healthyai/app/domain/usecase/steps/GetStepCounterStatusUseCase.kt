@@ -4,11 +4,7 @@ import com.healthyai.app.domain.model.StepCounterStatus
 import com.healthyai.app.domain.repository.StepCounterRepository
 import javax.inject.Inject
 
-/**
- * Đọc trạng thái đếm bước của máy để màn Trang chủ quyết định có hiện thẻ xin quyền hay không.
- *
- * Không bao giờ ném ngoại lệ — máy không có cảm biến vẫn trả về trạng thái "chưa sẵn sàng" thay vì crash.
- */
+/** Đọc trạng thái đếm bước; không bao giờ ném ngoại lệ — máy không có cảm biến vẫn trả "chưa sẵn sàng". */
 class GetStepCounterStatusUseCase @Inject constructor(
     private val repository: StepCounterRepository
 ) {

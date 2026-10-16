@@ -19,19 +19,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Test cho `HabitRepositoryImpl`:
- *
- * - mốc thời gian của `getHabitLogsForPeriod` — bug cũ `fromTs = now - daysBack ngày` khiến
- *   `daysBack = 0` lọc bằng đúng thời điểm gọi hàm → tiến độ trong ngày về 0 mỗi lần mở lại app.
- *   Mốc đúng phải căn theo **đầu ngày (00:00)**;
- * - xóa mềm thói quen.
- *
- * Trước đây repository này còn phải gọi `HabitWidgetRefresher.refresh()` sau mỗi lần ghi vì widget màn
- * hình chính hiển thị tiến độ thói quen. Widget đó nay là widget **"Sức khỏe hôm nay"** (bước chân /
- * giấc ngủ / nhịp tim) nên thay đổi thói quen không còn ảnh hưởng tới nội dung widget; việc vẽ lại
- * widget theo dữ liệu sức khỏe nằm ở `HealthDataRepositoryImpl` (`HealthDataRepositoryImplTest`).
- */
+/** Test `HabitRepositoryImpl`: mốc thời gian `getHabitLogsForPeriod` phải căn theo đầu ngày (00:00) và xoá mềm thói quen. */
 class HabitRepositoryImplTest {
 
     private val habitDao = mockk<HabitDao>(relaxed = true)
@@ -82,10 +70,7 @@ class HabitRepositoryImplTest {
         assertEquals(startOfToday, fromTimestamp.captured)
     }
 
-    /**
-     * Xóa thói quen là **xóa mềm**: repository phải gọi `softDeleteHabit` (đặt `isActive = 0`),
-     * không được xóa hàng khỏi bảng `habits` — nếu không log và lịch sử sẽ mất.
-     */
+    /** Xoá thói quen là xoá mềm: phải gọi `softDeleteHabit` (đặt `isActive = 0`), không xoá hàng để giữ log/lịch sử. */
     @Test
     fun `deleteHabit soft deletes through the dao`() = runTest {
         repository.deleteHabit(7L)
@@ -111,13 +96,7 @@ class HabitRepositoryImplTest {
         coVerify(exactly = 1) { habitDao.insertHabit(any()) }
     }
 
-    /**
-     * Sửa thói quen phải đi qua `@Update` (`habitDao.updateHabit`), **không** qua `@Insert(REPLACE)`.
-     *
-     * `REPLACE` là DELETE + INSERT trong SQLite, mà `habit_logs` khai khoá ngoại `onDelete = CASCADE`
-     * → dùng nó cho đường sửa sẽ xoá sạch log của thói quen và tiến độ trong ngày về 0 (lỗi KB-13:
-     * đổi mục tiêu "Chạy bộ buổi sáng" 30 → 45 phút làm thẻ hiện "0 / 45" thay vì "30 / 45").
-     */
+    /** Sửa thói quen phải qua `updateHabit`, không qua REPLACE: REPLACE = DELETE+INSERT sẽ xoá log do FK CASCADE. */
     @Test
     fun `updateHabit updates through the dao and never replaces the row`() = runTest {
         repository.updateHabit(

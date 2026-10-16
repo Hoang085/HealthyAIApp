@@ -12,37 +12,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 
-/**
- * Đọc ảnh người dùng **chọn từ thư viện** thành `Bitmap` đưa được vào luồng phân tích món ăn.
- *
- * Khác với ảnh chụp qua CameraX (đã là `Bitmap` đúng hướng), ảnh trong thư viện là **tệp bất kỳ** nên
- * phải xử lý hai việc:
- *
- * 1. **Thu nhỏ trước khi giải mã** — ảnh điện thoại thường 12–50 MP; giải mã thẳng vào bộ nhớ có thể
- *    ngốn hàng chục MB và làm app bị `OutOfMemoryError`. Ở đây đọc kích thước trước
- *    (`inJustDecodeBounds`), tính `inSampleSize` (luỹ thừa 2) để cạnh dài chỉ còn quanh
- *    [MAX_DIMENSION] điểm ảnh rồi mới giải mã — AI chỉ cần ảnh cỡ đó để nhận diện món ăn.
- * 2. **Xoay theo cờ EXIF** — ảnh chụp dọc hay được lưu ở dạng ngang kèm cờ `TAG_ORIENTATION`; thiếu
- *    bước này thì món ăn bị quay 90° khi phân tích.
- *
- * Toàn bộ việc đọc tệp chạy trên [Dispatchers.IO] và **không** bao giờ ném ra ngoài: uri hỏng, tệp bị
- * xoá, không có quyền đọc… đều trả `null` để màn hình báo *"Không đọc được ảnh đã chọn"* thay vì crash.
- */
+/** Đọc ảnh chọn từ thư viện thành `Bitmap`: thu nhỏ trước khi giải mã (tránh `OutOfMemoryError`) rồi xoay theo cờ EXIF; lỗi đọc trả `null` thay vì crash. */
 object GalleryImageLoader {
 
-    /**
-     * Cạnh dài tối đa (điểm ảnh) của ảnh đưa vào phân tích.
-     *
-     * 1280 đủ để mô hình nhận ra món ăn mà vẫn nhẹ: ảnh 4:3 chỉ còn ~1,3 MP (~5 MB trong bộ nhớ) so với
-     * ~48 MB của ảnh 12 MP nguyên bản. `ImageJpegEncoder` dùng cùng ngưỡng này khi nén để gửi cho AI.
-     */
+    /** Cạnh dài tối đa (điểm ảnh) của ảnh phân tích: 1280 đủ nhận diện món ăn mà vẫn nhẹ. */
     const val MAX_DIMENSION = 1280
 
-    /**
-     * Đọc ảnh tại [uri] thành `Bitmap` đã thu nhỏ và xoay đúng hướng.
-     *
-     * @return `null` khi không đọc được ảnh (uri hỏng, tệp không phải ảnh, hết bộ nhớ…).
-     */
+    /** Đọc ảnh tại [uri] thành `Bitmap` đã thu nhỏ và xoay đúng hướng; trả `null` khi không đọc được ảnh. */
     suspend fun load(
         context: Context,
         uri: Uri,
@@ -64,8 +40,7 @@ object GalleryImageLoader {
 
             rotateByExif(decoded, readExifRotation(resolver, uri))
         } catch (e: CancellationException) {
-            // Coroutine bị huỷ (người dùng rời màn) → ném tiếp, không trả `null` như "ảnh hỏng"
-            // (phụ lục C #39).
+            // Coroutine bị huỷ (người dùng rời màn) → ném tiếp, không trả `null` như "ảnh hỏng".
             throw e
         } catch (e: Exception) {
             // Ảnh hỏng/không đọc được không phải lỗi lập trình — màn hình đã có nhánh báo lỗi riêng.
@@ -100,10 +75,7 @@ object GalleryImageLoader {
         return rotated
     }
 
-    /**
-     * Hệ số thu nhỏ (luỹ thừa 2, đúng yêu cầu của `BitmapFactory`) để cạnh dài sau khi giải mã không
-     * vượt quá [maxDimension].
-     */
+    /** Hệ số thu nhỏ (luỹ thừa 2) để cạnh dài sau khi giải mã không vượt quá [maxDimension]. */
     private fun sampleSizeFor(width: Int, height: Int, maxDimension: Int): Int {
         var sample = 1
         while (max(width, height) / (sample * 2) >= maxDimension) sample *= 2

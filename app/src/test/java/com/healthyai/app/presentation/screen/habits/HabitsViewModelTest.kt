@@ -26,13 +26,7 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
-/**
- * Unit test cho phản hồi "Đã ghi nhận" ở màn Thói quen.
- *
- * Trước đây `HabitsViewModel` đặt `showLogSuccessFor` nhưng **UI không dùng** nên người dùng không
- * nhận được phản hồi nào sau khi ghi nhận. Test này chốt lại hợp đồng giữa ViewModel và UI:
- * ghi thành công → phát sự kiện một lần; UI hiện xong → gọi `onLogSuccessShown()` để xoá sự kiện.
- */
+/** Unit test cho phản hồi "Đã ghi nhận" ở màn Thói quen. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HabitsViewModelTest {
 
@@ -137,7 +131,7 @@ class HabitsViewModelTest {
         assertNull(viewModel.uiState.value.error)
     }
 
-    // ── Chặn giá trị không hợp lệ (phụ lục C #11) ────
+    // Chặn giá trị không hợp lệ
 
     @Test
     fun `logging a zero or negative value is rejected before writing`() = runTest {
@@ -154,7 +148,7 @@ class HabitsViewModelTest {
         coVerify(exactly = 0) { logHabitUseCase(any()) }
     }
 
-    // ── Yêu cầu ghi nhận từ màn Phân tích / màn Ghi chép (mục 3 #14, phụ lục C #22) ────
+    // Yêu cầu ghi nhận từ màn Phân tích / màn Ghi chép
 
     @Test
     fun `log request opens the dialog for the matching category`() = runTest {
@@ -213,14 +207,9 @@ class HabitsViewModelTest {
         assertNull(viewModel.uiState.value.logRequest)
     }
 
-    // ── Hợp đồng của "Thêm vào nhật ký" / nút gợi ý AI (KB-45, TC-CAM-15) ────
+    // Hợp đồng của "Thêm vào nhật ký" / nút gợi ý AI
 
-    /**
-     * KB-45 — "Đáng ngờ nếu: … **ghi nhận sai thói quen** (ví dụ ghi vào Uống nước)".
-     *
-     * Yêu cầu ghi nhận cho danh mục Dinh dưỡng **không được** mở hộp thoại của thói quen Uống nước
-     * chỉ vì nó đứng trước trong danh sách.
-     */
+    /** Yêu cầu ghi nhận phải mở đúng thói quen của danh mục, không lấy thói quen đứng trước danh sách. */
     @Test
     fun `log request never opens a habit from another category`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -246,13 +235,7 @@ class HabitsViewModelTest {
         )
     }
 
-    /**
-     * TC-CAM-15 — "Quay lại tab Ghi chép rồi bấm nút lần nữa **vẫn** hoạt động (yêu cầu là sự kiện một
-     * lần, không bị 'dính')".
-     *
-     * Đây là hợp đồng giữ cho thẻ "Thêm vào nhật ký" dùng lại được: sau khi hộp thoại đã xử lý xong
-     * (`onLogRequestHandled`), cùng một danh mục phải kích hoạt được yêu cầu **mới**.
-     */
+    /** Yêu cầu ghi nhận là sự kiện một lần: xử lý xong thì cùng danh mục vẫn kích hoạt lại được. */
     @Test
     fun `the same log request can be triggered again after being handled`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))

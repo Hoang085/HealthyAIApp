@@ -36,16 +36,7 @@ import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
 private val CardGreen = Color(0xFF2E7D32)
 
-/**
- * Thẻ **"Dùng dữ liệu Health Connect"** — switch quyết định **nguồn dữ liệu** cho thẻ "Tóm tắt sức khỏe".
- *
- * - **BẬT**: các ô Bước chân / Ngủ / Tim lấy số **trực tiếp từ Health Connect** (có thể gồm cả dữ liệu
- *   của đồng hồ đeo tay).
- * - **TẮT** (mặc định): lấy **dữ liệu đã lưu trong app** — bản chụp sức khỏe của hôm nay, và cảm biến
- *   tự đo của máy khi bản chụp còn trống.
- *
- * Switch chỉ đổi **nguồn hiển thị**: dữ liệu trên máy vẫn được giữ nguyên và mã hoá.
- */
+/** Thẻ "Dùng dữ liệu Health Connect": switch đổi nguồn số liệu thẻ "Tóm tắt sức khỏe" (BẬT = Health Connect, TẮT = dữ liệu trong app). */
 @Composable
 fun HealthDataSourceCard(
     settings: HealthConnectDataSettings,

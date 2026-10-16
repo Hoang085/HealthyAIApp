@@ -5,31 +5,12 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.healthyai.app.domain.usecase.heartrate.HeartRateMath
 
-/**
- * Bộ đọc khung hình camera cho phép **đo nhịp tim bằng camera + đèn flash** (PPG).
- *
- * Mỗi khung hình, lớp này tính **giá trị đỏ trung bình của vùng giữa khung** — đúng vùng mà ngón tay
- * che lên (đèn flash và ống kính nằm cạnh nhau ở mặt sau máy) — rồi đưa cho tầng phân tích
- * (`PpgAnalyzer`) theo từng khung hình kèm mốc thời gian.
- *
- * Vì sao chỉ đọc **hai mặt phẳng `Y` và `V`** thay vì đổi cả khung hình sang RGB:
- * - `YUV_420_888` là định dạng mặc định của `ImageAnalysis`; `Y` và `V` đã nằm sẵn trong bộ đệm, đổi
- *   sang RGB từng điểm ảnh là thừa (và chậm gấp nhiều lần ở 30 khung hình/giây);
- * - YUV→RGB là phép biến đổi **tuyến tính**, nên trung bình kênh đỏ suy trực tiếp từ trung bình `Y`
- *   và `V` — xem [HeartRateMath.redFromYuvMeans];
- * - lấy vùng giữa thay vì cả khung để bỏ viền tối/ngón tay lệch và giảm số điểm ảnh phải đọc.
- */
+/** Bộ đọc khung hình PPG: tính giá trị đỏ trung bình vùng giữa mỗi khung, chỉ đọc hai mặt phẳng Y và V thay vì đổi sang RGB cho nhanh. */
 class CameraPpgAnalyzer(
     private val onSample: (red: Double, timestampMs: Long) -> Unit
 ) : ImageAnalysis.Analyzer {
 
-    /**
-     * Đọc một khung hình và phát giá trị đỏ trung bình.
-     *
-     * Khung hình luôn được `close()` (kể cả khi lỗi) — nếu không, `ImageAnalysis` sẽ hết bộ đệm và
-     * **dừng phát khung hình**, làm phép đo đứng im giữa chừng. Khung hình lỗi/định dạng lạ bị bỏ qua
-     * chứ không làm chết camera.
-     */
+    /** Đọc một khung hình rồi phát giá trị đỏ trung bình; luôn close() khung hình để ImageAnalysis không hết bộ đệm. */
     override fun analyze(image: ImageProxy) {
         try {
             val red = meanRedOfCenterRoi(image)
@@ -41,10 +22,7 @@ class CameraPpgAnalyzer(
         }
     }
 
-    /**
-     * Giá trị đỏ trung bình của vùng **giữa** khung hình (50% chiều rộng × 50% chiều cao), hoặc `null`
-     * khi khung hình không phải `YUV_420_888` hay không đủ dữ liệu.
-     */
+    /** Trả về giá trị đỏ trung bình vùng giữa khung (50%×50%), hoặc null nếu không phải YUV_420_888/thiếu dữ liệu. */
     private fun meanRedOfCenterRoi(image: ImageProxy): Double? {
         if (image.format != ImageFormat.YUV_420_888) return null
 
@@ -99,10 +77,7 @@ class CameraPpgAnalyzer(
         /** `planes` của `YUV_420_888` theo thứ tự `Y`, `U`, `V` — kênh đỏ lấy từ `V`. */
         const val V_PLANE_INDEX = 2
 
-        /**
-         * Bước lấy mẫu (điểm ảnh). Vùng giữa ở 640×480 là 320×240 điểm; lấy cách 4 điểm chỉ còn
-         * 4 800 mẫu — thừa để tính trung bình mà vẫn kịp 30 khung hình/giây trên máy yếu.
-         */
+        /** Bước lấy mẫu 4 điểm: đủ mẫu để tính trung bình mà vẫn kịp 30 khung hình/giây trên máy yếu. */
         const val SAMPLE_STEP = 4
 
         const val NANOS_PER_MILLI = 1_000_000L

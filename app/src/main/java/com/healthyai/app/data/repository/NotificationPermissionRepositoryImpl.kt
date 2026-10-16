@@ -12,18 +12,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Triển khai [NotificationPermissionRepository] trên `NotificationManagerCompat`.
- *
- * Lớp này **chỉ đọc các tín hiệu thô** của hệ thống; việc suy ra trạng thái nằm ở
- * [NotificationPermissionStatus.from] — hàm thuần đó mới là chỗ khoá được hành vi "thẻ Bật nhắc nhở
- * hàng ngày" bằng unit test JVM (KB-36/37/38).
- *
- * ⚠️ Vì sao chỉ `areNotificationsEnabled()` là **không đủ**: trên Android 13+, app chưa tạo notification
- * channel nào và chưa từng xin quyền thì cờ thông báo cấp app **chưa bị đặt**, nên hàm này trả `true`.
- * Hệ quả thực tế đã gặp (KB-36/37/38): thẻ **không bao giờ hiện** trên bản cài mới vì
- * `notificationsEnabled` bị coi là `true`. Đó là lý do phải kiểm thêm quyền runtime trên API 33+.
- */
+/** Triển khai [NotificationPermissionRepository]; Android 13+ chưa xin quyền vẫn có areNotificationsEnabled() = true nên phải kiểm thêm quyền runtime. */
 @Singleton
 class NotificationPermissionRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context
@@ -35,12 +24,7 @@ class NotificationPermissionRepositoryImpl @Inject constructor(
         appNotificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
     )
 
-    /**
-     * Quyền runtime `POST_NOTIFICATIONS` (chỉ có từ Android 13+) đã được cấp chưa.
-     *
-     * Trên Android ≤ 12 luôn trả `false` — nhưng [NotificationPermissionStatus.from] **bỏ qua** giá trị
-     * này khi `sdkInt < 33`, nên kết quả vẫn đúng (bản cũ không có quyền runtime để xin).
-     */
+    /** Quyền runtime POST_NOTIFICATIONS (Android 13+) đã cấp chưa; ≤ 12 luôn false nhưng [NotificationPermissionStatus.from] bỏ qua khi sdkInt < 33. */
     private fun hasPostNotificationsPermission(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(

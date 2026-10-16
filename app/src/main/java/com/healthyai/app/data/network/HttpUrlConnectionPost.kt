@@ -7,20 +7,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import javax.inject.Inject
 
-/**
- * [HttpPost] thật, dùng `HttpURLConnection` của JDK.
- *
- * Vì sao **không** thêm OkHttp: yêu cầu ở đây chỉ là một POST JSON kèm ảnh base64, trong khi build của
- * dự án chạy **offline** (dependency phải có sẵn trong cache). `HttpURLConnection` không cần thêm thư
- * viện nào — cùng lý do đã áp dụng cho `GalleryImageLoader` (dùng API ảnh có sẵn của Android).
- *
- * Chạy trên [Dispatchers.IO] vì đây là I/O mạng (gọi từ `viewModelScope` = Main thread sẽ ném
- * `NetworkOnMainThreadException`).
- *
- * **Không bao giờ ném ra ngoài**: mọi lỗi kết nối (mất mạng, DNS, timeout, TLS) trả `null` để tầng
- * trên phân biệt "không gọi được" với "server trả lỗi"; riêng [CancellationException] được **ném
- * tiếp** đúng quy ước của repo (phụ lục C #39).
- */
+/** [HttpPost] dùng HttpURLConnection trên [Dispatchers.IO]; lỗi kết nối trả null, riêng [CancellationException] ném tiếp. */
 class HttpUrlConnectionPost @Inject constructor() : HttpPost {
 
     override suspend fun post(

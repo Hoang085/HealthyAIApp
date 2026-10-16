@@ -56,7 +56,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Package cá»§a á»©ng dá»¥ng Health Connect trÃªn Play Store. */
+/** Package của ứng dụng Health Connect trên Play Store. */
 private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
 
 @Composable
@@ -64,38 +64,33 @@ fun HomeScreen(
     onLogout: () -> Unit,
     /** Ô "Tim" trên thẻ "Tóm tắt sức khỏe" → mở màn đo nhịp tim bằng camera + đèn flash. */
     onMeasureHeartRate: () -> Unit,
-    /** Thẻ "Đồng bộ đám mây" → mở màn Chính sách bảo mật (mục 3 #31). */
-    onOpenPrivacyPolicy: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Há»™p thoáº¡i quyá»n cá»§a Health Connect; tráº£ vá» táº­p quyá»n ngÆ°á»i dÃ¹ng Ä‘Ã£ Ä‘á»“ng Ã½.
+    // Hộp thoại quyền của Health Connect trả về tập quyền người dùng đã đồng ý.
     val healthConnectLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { grantedPermissions ->
         viewModel.onHealthConnectPermissionsResult(grantedPermissions)
     }
 
-    // Há»™p thoáº¡i quyá»n thÃ´ng bÃ¡o (POST_NOTIFICATIONS, Android 13+). Tráº¡ng thÃ¡i tháº­t Ä‘Æ°á»£c Ä‘á»c láº¡i
-    // trong ViewModel nÃªn khÃ´ng cáº§n dÃ¹ng tham sá»‘ `granted` cá»§a launcher.
+    // Hộp thoại quyền thông báo (POST_NOTIFICATIONS, Android 13+); trạng thái thật đọc lại trong ViewModel.
     val notificationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) {
         viewModel.onNotificationPermissionResult()
     }
 
-    // Há»™p thoáº¡i quyá»n Ä‘áº¿m bÆ°á»›c chÃ¢n (ACTIVITY_RECOGNITION, Android 10+). CÅ©ng Ä‘á»c láº¡i tráº¡ng thÃ¡i tháº­t
-    // sau khi há»™p thoáº¡i Ä‘Ã³ng.
+    // Hộp thoại quyền đếm bước chân (ACTIVITY_RECOGNITION, Android 10+); cũng đọc lại trạng thái thật sau khi đóng.
     val stepPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) {
         viewModel.onStepPermissionResult()
     }
 
-    // NgÆ°á»i dÃ¹ng cÃ³ thá»ƒ cáº¥p quyá»n trong app Health Connect hoáº·c báº­t thÃ´ng bÃ¡o trong Settings rá»“i
-    // quay láº¡i app â†’ kiá»ƒm tra láº¡i má»—i khi mÃ n Home hiá»‡n ra.
+    // Người dùng có thể cấp quyền trong Health Connect hoặc bật thông báo ở Settings rồi quay lại → kiểm tra lại mỗi khi Home hiện ra.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.refreshSystemPermissions()
     }
@@ -119,12 +114,10 @@ fun HomeScreen(
         onEditSleepSchedule = viewModel::openSleepScheduleEditor,
         onMeasureHeartRate = onMeasureHeartRate,
         onCloudSyncToggle = viewModel::setCloudSyncEnabled,
-        onHealthDataSourceToggle = viewModel::setHealthConnectDataEnabled,
-        onOpenPrivacyPolicy = onOpenPrivacyPolicy
+        onHealthDataSourceToggle = viewModel::setHealthConnectDataEnabled
     )
 
-    // Khung giờ ngủ: hộp thoại đặt giờ đi ngủ / giờ thức. Trạng thái nằm trong ViewModel để phần
-    // kiểm tra hợp lệ và việc lưu test được bằng unit test JVM.
+    // Khung giờ ngủ: hộp thoại đặt giờ đi ngủ/giờ thức; trạng thái ở ViewModel để test được bằng unit test JVM.
     uiState.sleepScheduleDraft?.let { draft ->
         SleepScheduleEditorDialog(
             draft = draft,
@@ -136,7 +129,7 @@ fun HomeScreen(
     }
 }
 
-/** Má»Ÿ pháº§n cÃ i Ä‘áº·t quyá»n cá»§a app (dÃ¹ng khi há»™p thoáº¡i xin quyá»n khÃ´ng cÃ²n hiá»‡n Ä‘Æ°á»£c ná»¯a). */
+/** Mở phần cài đặt quyền của app (khi hộp thoại xin quyền không còn hiện được nữa). */
 private fun openAppSettings(context: Context) {
     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
         .setData(Uri.fromParts("package", context.packageName, null))
@@ -145,7 +138,7 @@ private fun openAppSettings(context: Context) {
     runCatching { context.startActivity(intent) }
 }
 
-/** Má»Ÿ Play Store Ä‘á»ƒ cÃ i / cáº­p nháº­t Health Connect; náº¿u mÃ¡y khÃ´ng cÃ³ Play Store thÃ¬ má»Ÿ link web. */
+/** Mở Play Store để cài/cập nhật Health Connect; máy không có Play Store thì mở link web. */
 private fun openHealthConnectStore(context: Context) {
     val marketUri = Uri.parse("market://details?id=$HEALTH_CONNECT_PACKAGE")
     val webUri = Uri.parse("https://play.google.com/store/apps/details?id=$HEALTH_CONNECT_PACKAGE")
@@ -163,10 +156,7 @@ private fun openHealthConnectStore(context: Context) {
     }
 }
 
-/**
- * Má»Ÿ mÃ n cÃ i Ä‘áº·t thÃ´ng bÃ¡o cá»§a app (dÃ¹ng khi ngÆ°á»i dÃ¹ng Ä‘Ã£ táº¯t thÃ´ng bÃ¡o á»Ÿ cáº¥p app â€”
- * lÃºc Ä‘Ã³ xin láº¡i quyá»n `POST_NOTIFICATIONS` khÃ´ng cÃ²n hiá»‡u lá»±c).
- */
+/** Mở màn cài đặt thông báo của app (khi người dùng đã tắt thông báo ở cấp app thì xin lại quyền không còn hiệu lực). */
 private fun openAppNotificationSettings(context: Context) {
     val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
@@ -199,15 +189,13 @@ fun HomeScreenContent(
     onEditSleepSchedule: () -> Unit,
     /** Bấm ô "Tim" (nút "Đo ngay") → mở màn đo nhịp tim bằng camera + đèn flash. */
     onMeasureHeartRate: () -> Unit,
-    // Hai tham số dưới có giá trị mặc định để các `@Preview` trong file không phải khai báo lại;
-    // `HomeScreen` (lối vào thật) luôn truyền đủ.
+    // Hai tham số dưới có giá trị mặc định để các @Preview trong file khỏi khai báo lại; HomeScreen luôn truyền đủ.
     onCloudSyncToggle: (Boolean) -> Unit = {},
     /** Switch "Dùng dữ liệu Health Connect" → đổi nguồn số liệu của thẻ "Tóm tắt sức khỏe". */
-    onHealthDataSourceToggle: (Boolean) -> Unit = {},
-    onOpenPrivacyPolicy: () -> Unit = {}
+    onHealthDataSourceToggle: (Boolean) -> Unit = {}
 ) {
     Scaffold(
-        // Ná»n theo theme (sÃ¡ng/tá»‘i) thay vÃ¬ #F8F9FA hard-code â†’ dark mode khÃ´ng cÃ²n chá»¯ sÃ¡ng trÃªn ná»n sÃ¡ng
+        // Nền theo theme (sáng/tối) thay vì #F8F9FA hard-code → dark mode không còn chữ sáng trên nền sáng
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         LazyColumn(
@@ -236,13 +224,12 @@ fun HomeScreenContent(
                 )
             }
 
-            // Đồng bộ đám mây: mặc định TẮT, người dùng tự bật (mục 3 #31)
+            // Đồng bộ đám mây: mặc định TẮT, người dùng tự bật.
             item {
                 CloudSyncCard(
                     settings = uiState.cloudSync,
                     isSignedIn = uiState.isSignedIn,
-                    onToggle = onCloudSyncToggle,
-                    onOpenPrivacyPolicy = onOpenPrivacyPolicy
+                    onToggle = onCloudSyncToggle
                 )
             }
 
@@ -266,7 +253,7 @@ fun HomeScreenContent(
                 }
             }
 
-            // MÃ¡y cÃ³ cáº£m biáº¿n Ä‘áº¿m bÆ°á»›c nhÆ°ng app chÆ°a Ä‘Æ°á»£c cáº¥p quyá»n ACTIVITY_RECOGNITION
+            // Máy có cảm biến đếm bước nhưng app chưa được cấp quyền ACTIVITY_RECOGNITION
             if (uiState.showStepCounterCard) {
                 item {
                     StepCounterPermissionCard(
@@ -312,8 +299,7 @@ fun HomeScreenContent(
 
 @Composable
 private fun GreetingHeader(userName: String?, onLogout: () -> Unit) {
-    // KhÃ´ng cÃ²n dáº¥u pháº©y in sáºµn trong cÃ¢u chÃ o: chá»‰ thÃªm khi thá»±c sá»± cÃ³ tÃªn á»Ÿ dÃ²ng dÆ°á»›i, Ä‘á»ƒ cháº¿ Ä‘á»™
-    // khÃ¡ch khÃ´ng hiá»‡n "Chào buổi sáng," vá»›i dáº¥u pháº©y treo lÆ¡ lá»­ng (phá»¥ lá»¥c C #30).
+    // Không để dấu phẩy in sẵn trong câu chào: chỉ thêm khi thực sự có tên ở dòng dưới, tránh chế độ khách hiện dấu phẩy treo lơ lửng.
     val greeting = when (LocalTime.now().hour) {
         in 5..11  -> stringResource(R.string.home_greeting_morning)
         in 12..17 -> stringResource(R.string.home_greeting_afternoon)
@@ -322,7 +308,7 @@ private fun GreetingHeader(userName: String?, onLogout: () -> Unit) {
     }
     val date = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, dd 'tháng' MM", Locale("vi")))
 
-    // NÃºt Đăng xuất (má»¥c 3 #19): há»i láº¡i trÆ°á»›c khi thoÃ¡t phiÃªn Ä‘á»ƒ trÃ¡nh báº¥m nháº§m.
+    // Nút Đăng xuất: hỏi lại trước khi thoát phiên để tránh bấm nhầm.
     var showLogoutConfirm by remember { mutableStateOf(false) }
 
     Row(
@@ -342,7 +328,7 @@ private fun GreetingHeader(userName: String?, onLogout: () -> Unit) {
                     fontSize = 28.sp
                 )
             )
-            // ChÆ°a Ä‘Äƒng nháº­p (cháº¿ Ä‘á»™ khÃ¡ch) â†’ khÃ´ng cÃ³ dÃ²ng tÃªn nÃ o; trÆ°á»›c Ä‘Ã¢y luÃ´n lÃ  "Alex" cá»©ng.
+            // Chưa đăng nhập (chế độ khách) → không có dòng tên; trước đây luôn là "Alex" cứng.
             if (userName != null) {
                 Text(
                     userName,
@@ -362,7 +348,7 @@ private fun GreetingHeader(userName: String?, onLogout: () -> Unit) {
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
-            // Avatar Placeholder
+            // Ảnh đại diện tạm
             Box(
                 modifier = Modifier
                     .size(56.dp)
@@ -440,24 +426,21 @@ private fun HealthSummaryCard(uiState: HomeUiState, onMeasureHeartRate: () -> Un
                 HealthCircleStat(
                     icon = Icons.Default.DirectionsWalk,
                     label = stringResource(R.string.home_label_steps),
-                    // Æ¯u tiÃªn Health Connect; náº¿u Health Connect khÃ´ng cÃ³ sá»‘ thÃ¬ dÃ¹ng cáº£m biáº¿n cá»§a mÃ¡y
+                    // Ưu tiên Health Connect; nếu Health Connect không có số thì dùng cảm biến của máy
                     value = formatStepCount(uiState.displaySteps),
                     color = Color(0xFF4CAF50)
                 )
                 HealthCircleStat(
                     icon = Icons.Default.Bedtime,
                     label = stringResource(R.string.home_label_sleep),
-                    // Ưu tiên Health Connect (có thể từ đồng hồ đeo tay); không có số thì dùng ước
-                    // lượng từ cảm biến của điện thoại.
+                    // Ưu tiên Health Connect (có thể từ đồng hồ đeo tay); không có số thì dùng ước lượng từ cảm biến điện thoại.
                     value = formatSleepDuration(uiState.displaySleepHours),
                     color = Color(0xFF2E4032)
                 )
                 HealthCircleStat(
                     icon = Icons.Default.Favorite,
                     label = stringResource(R.string.home_label_heart),
-                    // Ưu tiên số của Health Connect trong ngày; chưa có thì dùng nhịp tim ghi trong ngày
-                    // (lần đo bằng camera ở màn "Đo nhịp tim"). Hôm nay chưa có số nào → "-- bpm" thay
-                    // vì "0 bpm" (0 bị đọc thành "nhịp tim bằng 0").
+                    // Ưu tiên số Health Connect trong ngày, rồi nhịp tim ghi trong ngày; chưa có số nào thì hiện "-- bpm" thay vì "0 bpm".
                     value = formatHeartRate(uiState.displayHeartRate),
                     color = Color(0xFF4CAF50),
                     actionLabel = stringResource(R.string.home_measure_now),
@@ -478,8 +461,7 @@ private fun HealthCircleStat(
     actionLabel: String? = null,
     onClick: (() -> Unit)? = null
 ) {
-    // Ô có hành động được bọc `clickable` (kèm `role = Button` để trình đọc màn hình hiểu đây là nút);
-    // viền bo + clip đặt trước `clickable` để gợn sóng không tràn ra ngoài ô.
+    // Ô có hành động bọc clickable (kèm role = Button cho trình đọc màn hình); clip + bo góc đặt trước clickable để gợn sóng không tràn ra ngoài.
     val interactiveModifier = if (onClick != null) {
         Modifier
             .clip(RoundedCornerShape(16.dp))
@@ -558,7 +540,7 @@ private fun HabitItem(habit: Habit, isCompleted: Boolean) {
                     )
                 )
             }
-            // Checkbox Circle
+            // Ô đánh dấu hoàn thành dạng vòng tròn
             if (isCompleted) {
                 Box(
                     modifier = Modifier
@@ -630,7 +612,7 @@ fun HomeScreenPreview() {
                         isCompleted = false
                     )
                 ),
-                // ÄÃ£ Ä‘Äƒng nháº­p â†’ lá»i chÃ o 2 dÃ²ng vá»›i tÃªn tháº­t cá»§a phiÃªn (phá»¥ lá»¥c C #30)
+                // Đã đăng nhập → lời chào 2 dòng với tên thật của phiên
                 userName = "alex.healthyai",
                 isLoading = false
             ),
@@ -653,7 +635,7 @@ fun HomeScreenPreview() {
 fun HomeScreenGuestPreview() {
     HealthyAITheme {
         HomeScreenContent(
-            // Cháº¿ Ä‘á»™ khÃ¡ch â†’ `userName = null` â†’ KHÃ”NG cÃ³ dÃ²ng tÃªn (trÆ°á»›c Ä‘Ã¢y luÃ´n hiá»‡n "Alex")
+            // Chế độ khách → userName = null → KHÔNG có dòng tên (trước đây luôn hiện "Alex")
             uiState = HomeUiState(
                 habits = listOf(
                     HomeHabitItem(

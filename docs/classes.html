@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="classes.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Danh mục lớp — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 10 · Tra cứu</div>
+      <h1>Danh mục lớp &amp; trách nhiệm</h1>
+      <p class="page-lead">
+        Liệt kê <strong>toàn bộ lớp trong mã sản phẩm</strong> (142 file Kotlin, không tính test), xếp theo
+        tầng, và nói rõ mỗi lớp <strong>quản lý cái gì</strong> (dữ liệu/trạng thái nó giữ) và
+        <strong>làm việc gì</strong> (trách nhiệm chính). Mỗi dòng kèm <strong>đường dẫn đầy đủ</strong> từ
+        gốc repo để bạn mở thẳng file, không phải đi tìm.
+      </p>
+
+      <div class="callout tip">
+        <span class="callout__title">Quy ước đọc bảng</span>
+        <p>
+          Cột <strong>Lớp</strong> ghi cả <em>loại</em> khai báo (<code>class</code>, <code>data class</code>,
+          <code>object</code>, <code>enum</code>, <code>interface</code>) vì nó quyết định cách dùng:
+          <code>object</code> = hàm thuần/singleton không trạng thái, <code>data class</code> = dữ liệu bất
+          biến, <code>interface</code> = cổng để tầng trên không phụ thuộc Android.
+          Cột <strong>Quản lý</strong> là dữ liệu/trạng thái lớp đó sở hữu; cột <strong>Chức năng</strong>
+          là việc nó thực hiện.
+        </p>
+        <p>
+          <strong>Đường dẫn</strong> trong bảng là đường dẫn <strong>đầy đủ, tính từ gốc repo</strong>
+          (<code>E:\HealthyAIApp</code>), viết bằng dấu <code>/</code> — dán thẳng vào Android Studio
+          (<em>Ctrl+Shift+N</em>), VS Code, hoặc terminal đều được. Muốn lấy cả 142 đường dẫn một lần thì
+          xem <a href="#18-danh-sach-duong-dan-day-du-copy-nhanh">mục 18</a>.
+        </p>
+      </div>
+
+      <h2>1. Điểm vào ứng dụng</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HiltApplication</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/HiltApplication.kt</span></td>
+            <td>Vòng đời tiến trình app; cấu hình <code>WorkManager</code></td>
+            <td>Điểm vào đầu tiên: bật Hilt, thay <code>WorkerFactory</code> mặc định bằng
+                <code>HiltWorkerFactory</code> (để worker inject được repository), và tạo
+                <strong>notification channel ngay lúc khởi động</strong> — nhờ vậy trạng thái thông báo
+                của app xác định ngay từ lần mở đầu, không phụ thuộc máy.</td>
+          </tr>
+          <tr>
+            <td><code>MainActivity</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/MainActivity.kt</span></td>
+            <td>Activity duy nhất của app; nội dung Compose; lịch chạy của 4 worker</td>
+            <td>Dựng toàn bộ UI (single-activity + Compose) qua <code>setContent</code>. Khi mở app lần
+                đầu, cũng là nơi <strong>lên lịch cho cả 4 worker</strong> (<code>HealthSyncWorker</code>,
+                <code>SyncWorker</code>, <code>ReminderWorker</code>, <code>SleepTrackingWorker</code>).
+                Ngoài ra nhận intent <code>ACTION_SHOW_PERMISSIONS_RATIONALE</code> /
+                <code>ACTION_VIEW_PERMISSION_USAGE</code> của Health Connect để mở thẳng màn Chính sách bảo
+                mật — màn này <strong>không</strong> nằm sau cổng đăng nhập, nếu không Health Connect sẽ
+                từ chối duyệt.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>2. Tầng Domain — model</h2>
+      <p class="small">
+        Model thuần Kotlin, <strong>không</strong> phụ thuộc Room/Firebase/Android. Đây là "từ vựng" của
+        toàn hệ thống: mọi tầng khác đều nói bằng những kiểu này. Cả 19 file nằm ở
+        <code>app/src/main/java/com/healthyai/app/domain/model/</code>.
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>Habit</code> <span class="small">(data class)</span><br>
+                <code>HabitCategory</code> · <code>HabitTimeOfDay</code> · <code>HabitFrequency</code>
+                <span class="small">(enum)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/Habit.kt</span></td>
+            <td>Một thói quen: tên, danh mục, mục tiêu, đơn vị, thời điểm, tần suất, cờ hoạt động</td>
+            <td>Model trung tâm của tính năng thói quen. Ba enum là <strong>khoá nghiệp vụ</strong> (kèm
+                nhãn tiếng Việt + emoji) để tầng trên không so sánh bằng chuỗi viết cứng.</td>
+          </tr>
+          <tr>
+            <td><code>HabitLog</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/HabitLog.kt</span></td>
+            <td>Một lần ghi nhận: thói quen nào, giá trị bao nhiêu, lúc nào, đã đồng bộ chưa
+                (<code>isDirty</code>)</td>
+            <td>Đơn vị dữ liệu mà mọi con số thống kê (tiến độ ngày, nhất quán tuần, điểm sinh lực) đều
+                được tính ra từ nó.</td>
+          </tr>
+          <tr>
+            <td><code>HealthData</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/HealthData.kt</span></td>
+            <td>Bản chụp ba chỉ số: bước chân, giờ ngủ, nhịp tim (+ calo)</td>
+            <td>Kiểu dữ liệu sức khỏe dùng chung cho Health Connect, cảm biến tự đo và bản lưu trong app —
+                nhờ vậy các tầng trên không cần biết số đó đến từ nguồn nào.</td>
+          </tr>
+          <tr>
+            <td><code>DailyHealthSummary</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/DailyHealthSummary.kt</span></td>
+            <td>Một dòng của bảng "Lịch sử sức khỏe 7 ngày": ngày + bước chân + giờ ngủ + nhịp tim +
+                <code>hasData</code></td>
+            <td>Đúng bản chụp mà <code>HealthSyncWorker</code> ghi vào <code>health_data_history</code>, gom
+                theo ngày. Giao diện và AI phân tích <strong>cùng một nguồn số</strong> này.</td>
+          </tr>
+          <tr>
+            <td><code>DailyConsistency</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/DailyConsistency.kt</span></td>
+            <td>Mức độ hoàn thành thói quen của <em>một ngày</em></td>
+            <td>Nguồn dữ liệu cho biểu đồ "Sự nhất quán hàng tuần". Một thói quen "đạt" khi tổng log trong
+                ngày ≥ mục tiêu hiện tại.</td>
+          </tr>
+          <tr>
+            <td><code>VitalityScore</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/VitalityScore.kt</span></td>
+            <td>Điểm sinh lực 0–100, cờ <code>hasData</code>, mức chênh <code>delta</code> so với tuần trước</td>
+            <td>Kết quả của <code>VitalityScoreMath</code>. <code>hasData = false</code> ⇒ UI hiện lời nhắc
+                thay vì con số ảo; <code>delta = null</code> ⇒ UI ẩn phần so sánh.</td>
+          </tr>
+          <tr>
+            <td><code>Suggestion</code> <span class="small">(data class)</span> ·
+                <code>SuggestionPriority</code> <span class="small">(enum)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/Suggestion.kt</span></td>
+            <td>Một gợi ý cá nhân hóa + độ ưu tiên</td>
+            <td>Đầu ra của <code>HabitRuleEngine</code>: gợi ý nào quan trọng hơn thì được xếp lên trước trên
+                tab Phân tích.</td>
+          </tr>
+          <tr>
+            <td><code>SleepSchedule</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/SleepSchedule.kt</span></td>
+            <td>Giờ đi ngủ + giờ thức do người dùng đặt (kèm <code>DEFAULT</code>)</td>
+            <td>App <strong>không</strong> tự quyết định khung đêm nữa: người dùng đặt khung, app chỉ đo
+                trong khung đó — hết cảnh ngủ muộn bị tính sai.</td>
+          </tr>
+          <tr>
+            <td><code>SleepEnvironment</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/SleepEnvironment.kt</span></td>
+            <td>Một lần "chụp" môi trường: màn hình có sáng, độ sáng phòng (lux), độ bất động (g)</td>
+            <td>Đầu vào để <em>suy ra</em> đang ngủ hay thức mà không cần Health Connect và không cần quyền
+                nào.</td>
+          </tr>
+          <tr>
+            <td><code>SleepNight</code> · <code>SleepTrend</code> <span class="small">(data class)</span> ·
+                <code>SleepQuality</code> <span class="small">(enum)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/SleepTrend.kt</span></td>
+            <td>Giờ ngủ của từng đêm (7 đêm) và xếp hạng chất lượng</td>
+            <td>Dựng bởi <code>SleepTrendMath</code> từ <code>DailyHealthSummary</code>; <code>0.0</code>
+                nghĩa là "đêm đó chưa có dữ liệu", khác hẳn "ngủ 0 giờ".</td>
+          </tr>
+          <tr>
+            <td><code>SleepStageBreakdown</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/SleepStageBreakdown.kt</span></td>
+            <td>Tổng thời lượng từng pha Sâu/Nông/REM và phần phiên ngủ <em>không</em> chia pha</td>
+            <td>Hai mức chi tiết vì không phải máy nào cũng chia pha. Phần không chia pha trước đây bị bỏ
+                qua, làm thẻ giấc ngủ trống dù Health Connect <strong>có</strong> dữ liệu.</td>
+          </tr>
+          <tr>
+            <td><code>HeartRateZone</code> <span class="small">(enum)</span> ·
+                <code>HeartRateResult</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/HeartRate.kt</span></td>
+            <td>Kết quả một lần đo nhịp tim + phân loại vùng (60–100 bpm)</td>
+            <td>Phân loại chỉ mang tính <strong>tham khảo</strong> cho một lần đo tại chỗ (ngồi yên), không
+                phải chẩn đoán y khoa.</td>
+          </tr>
+          <tr>
+            <td><code>StepCounterStatus</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/StepCounterStatus.kt</span></td>
+            <td>Máy có cảm biến đếm bước không + đã có quyền <code>ACTIVITY_RECOGNITION</code> chưa</td>
+            <td>Điều kiện để màn Trang chủ quyết định có hiện thẻ xin quyền đếm bước hay không.</td>
+          </tr>
+          <tr>
+            <td><code>HealthConnectStatus</code> <span class="small">(enum)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/HealthConnectStatus.kt</span></td>
+            <td>Trạng thái Health Connect trên máy (sẵn sàng / cần cài / cần cập nhật)</td>
+            <td>Quyết định màn Trang chủ hiển thị thẻ nào trong ba thẻ hướng dẫn Health Connect.</td>
+          </tr>
+          <tr>
+            <td><code>HealthConnectPermissionStatus</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/HealthConnectPermissionStatus.kt</span></td>
+            <td>Ảnh chụp quyền Health Connect: trạng thái máy, danh sách quyền cần xin, đã đủ chưa</td>
+            <td>Danh sách quyền được truyền thẳng vào hộp thoại xin quyền của hệ thống.</td>
+          </tr>
+          <tr>
+            <td><code>HealthConnectDataSettings</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/HealthConnectDataSettings.kt</span></td>
+            <td>Switch "Dùng dữ liệu Health Connect" của thẻ Tóm tắt sức khỏe (mặc định TẮT)</td>
+            <td>Quyết định <strong>nguồn hiển thị</strong> ba ô Bước chân/Ngủ/Tim: số trực tiếp từ Health
+                Connect, hay số app đã lưu + cảm biến tự đo.</td>
+          </tr>
+          <tr>
+            <td><code>CloudSyncSettings</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/CloudSyncSettings.kt</span></td>
+            <td>Đã bật đồng bộ chưa + mốc đồng ý <code>consentAtMillis</code></td>
+            <td>Mốc đồng ý là <strong>mốc chặn</strong>: chỉ log tạo sau mốc đó mới được tải lên, nên bật
+                đồng bộ <em>không</em> đẩy lịch sử cũ lên mây.</td>
+          </tr>
+          <tr>
+            <td><code>NotificationPermissionStatus</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/NotificationPermissionStatus.kt</span></td>
+            <td>Thông báo có thật sự bật không + còn xin được quyền bằng hộp thoại không</td>
+            <td>Hai tín hiệu riêng biệt để thẻ "Bật nhắc nhở hàng ngày" chọn đúng nút (xin quyền hay mở
+                Settings) — chỉ kiểm công tắc cấp app là không đủ trên Android 13+.</td>
+          </tr>
+          <tr>
+            <td><code>FoodInsight</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/model/FoodInsight.kt</span></td>
+            <td>Kết quả AI đọc ảnh món ăn: có món không, tên món, emoji, lợi ích, điều nên lưu ý</td>
+            <td>Trả lời đúng câu hỏi người dùng đặt ra ("ảnh này là món gì, ăn vào thì sao") thay cho danh
+                sách nhãn ảnh chung của ML Kit trước đây.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>3. Tầng Domain — repository (interface)</h2>
+      <p class="small">
+        Chỉ là <strong>hợp đồng</strong>: tầng Domain không biết Room, Firebase hay API nào. Bản cài đặt
+        thật nằm ở tầng Data (mục 10). Thư mục:
+        <code>app/src/main/java/com/healthyai/app/domain/repository/</code>.
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HabitRepository</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/repository/HabitRepository.kt</span></td>
+            <td>Hợp đồng cho Habit + HabitLog</td>
+            <td>Đọc/ghi thói quen và nhật ký, lấy bản ghi chưa đồng bộ, đánh dấu đã đồng bộ.</td>
+          </tr>
+          <tr>
+            <td><code>HealthDataRepository</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/repository/HealthDataRepository.kt</span></td>
+            <td>Hợp đồng cho dữ liệu sức khỏe</td>
+            <td>Lấy số của hôm nay, lịch sử theo ngày, ghi một bản chụp mới, đọc pha giấc ngủ.</td>
+          </tr>
+          <tr>
+            <td><code>AuthRepository</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/repository/AuthRepository.kt</span></td>
+            <td>Phiên đăng nhập Firebase Auth</td>
+            <td>Đăng nhập/đăng ký/đăng xuất, trả <code>currentUserId</code>. <code>null</code> = chế độ
+                khách ⇒ <code>SyncWorker</code> bỏ qua bước đồng bộ.</td>
+          </tr>
+          <tr>
+            <td><code>SettingsRepository</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/repository/SettingsRepository.kt</span></td>
+            <td>Thiết lập người dùng trong bảng khoá–giá trị <code>app_settings</code></td>
+            <td>Đọc/ghi khung giờ ngủ và các thiết lập dạng switch. Dạng khoá–giá trị để thêm thiết lập
+                mới không phải nâng version schema.</td>
+          </tr>
+          <tr>
+            <td><code>StepCounterRepository</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/repository/StepCounterRepository.kt</span></td>
+            <td>Trạng thái đếm bước + số bước hôm nay (nguồn "tự lực")</td>
+            <td>Cho app có số bước ngay cả khi máy không cài ứng dụng sức khỏe nào và chưa cấp quyền
+                Health Connect.</td>
+          </tr>
+          <tr>
+            <td><code>SleepTrackerRepository</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/repository/SleepTrackerRepository.kt</span></td>
+            <td>Số giờ ngủ ước lượng từ cảm biến (nguồn "tự lực" thứ hai)</td>
+            <td>Chỉ là nguồn <strong>dự phòng</strong>: số của đồng hồ đeo tay trong Health Connect luôn
+                được ưu tiên khi có.</td>
+          </tr>
+          <tr>
+            <td><code>NotificationPermissionRepository</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/repository/NotificationPermissionRepository.kt</span></td>
+            <td>Trạng thái quyền hiển thị thông báo</td>
+            <td>Chỉ <strong>đọc</strong>; việc xin quyền do UI làm qua
+                <code>ActivityResultContracts.RequestPermission()</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>4. Tầng Domain — UseCase &amp; thuật toán</h2>
+      <p class="small">
+        Toàn bộ <strong>nghiệp vụ</strong> nằm ở đây. Phần lớn là hàm thuần Kotlin nên test được trên JVM
+        mà không cần emulator. UseCase chỉ <em>ghép</em> repository với thuật toán, không tự tính toán.
+        Thư mục gốc: <code>app/src/main/java/com/healthyai/app/domain/usecase/</code>.
+      </p>
+
+      <h3>4.1 UseCase thói quen</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>GetTodayHabitsUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/GetTodayHabitsUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Phát <code>Flow</code> danh sách thói quen đang hoạt động — màn Trang chủ tự cập nhật khi
+                thói quen đổi.</td>
+          </tr>
+          <tr>
+            <td><code>LogHabitUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/LogHabitUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Ghi một lần thực hiện thói quen vào nhật ký.</td>
+          </tr>
+          <tr>
+            <td><code>AddHabitUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/habit/AddHabitUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Tạo thói quen mới.</td>
+          </tr>
+          <tr>
+            <td><code>UpdateHabitUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/habit/UpdateHabitUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Sửa thói quen. Dùng <code>@Update</code> (không phải <code>REPLACE</code>) để nhật ký cũ
+                không bị xoá theo khoá ngoại CASCADE.</td>
+          </tr>
+          <tr>
+            <td><code>DeleteHabitUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/habit/DeleteHabitUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Xoá <strong>mềm</strong> thói quen (<code>isActive = 0</code>) — nhật ký đã ghi vẫn giữ.</td>
+          </tr>
+          <tr>
+            <td><code>GetWeeklyConsistencyUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/habit/GetWeeklyConsistencyUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Tính mức hoàn thành theo <em>từng ngày</em> trong 7 ngày. Mẫu số là <strong>snapshot</strong>
+                của mỗi ngày (<code>Habit.createdAt</code>) nên tạo/xoá thói quen hôm nay không làm sai
+                lệch biểu đồ của 6 ngày trước.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>4.2 UseCase dữ liệu sức khỏe</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>GetHealthDataUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetHealthDataUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Lấy bản chụp sức khỏe <strong>của hôm nay</strong> từ Health Connect. Gọi thẳng
+                <code>getTodayHealthData</code> để tên hàm nói đúng việc nó làm.</td>
+          </tr>
+          <tr>
+            <td><code>GetStoredHealthDataUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetStoredHealthDataUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Đọc bản chụp sức khỏe <em>đã lưu trong app</em> (bảng <code>health_data_history</code>) khi
+                người dùng TẮT switch "Dùng dữ liệu Health Connect". Không bao giờ ném ngoại lệ.</td>
+          </tr>
+          <tr>
+            <td><code>GetHealthInsightsUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetHealthInsightsUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>UseCase tổng hợp: gom dữ liệu nhiều nguồn rồi đưa qua Rule Engine để ra gợi ý — đúng luồng
+                Repository → UseCase → Rule Engine → Presentation.</td>
+          </tr>
+          <tr>
+            <td><code>GetRecentHealthSummaryUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetRecentHealthSummaryUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Phát <code>Flow</code> lịch sử 7 ngày cho thẻ "Lịch sử sức khỏe" — cùng dữ liệu Rule Engine
+                dùng, nên "vì sao AI gợi ý thế" luôn khớp con số người dùng thấy.</td>
+          </tr>
+          <tr>
+            <td><code>GetLatestRecordedHeartRateUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetLatestRecordedHeartRateUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Đọc nhịp tim ghi gần nhất <strong>trong hôm nay</strong> (từ lần đo camera hoặc từ đồng bộ
+                Health Connect). Sang ngày mới mà chưa đo lại thì trả 0 ⇒ ô "Tim" hiện "-- bpm".</td>
+          </tr>
+          <tr>
+            <td><code>GetSleepStageBreakdownUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetSleepStageBreakdownUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Lấy tổng thời lượng từng pha Sâu/Nông/REM trực tiếp từ Health Connect (không qua Room nên
+                không cần migration).</td>
+          </tr>
+          <tr>
+            <td><code>GetVitalityScoreUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetVitalityScoreUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Phát điểm sinh lực 7 ngày gần nhất kèm mức thay đổi so với 7 ngày trước; cập nhật realtime
+                theo nhật ký và dữ liệu sức khỏe.</td>
+          </tr>
+          <tr>
+            <td><code>GetHealthConnectPermissionStatusUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/GetHealthConnectPermissionStatusUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Đọc trạng thái quyền Health Connect; lỗi được coi là "không khả dụng" để UI vẫn hiện thẻ
+                hướng dẫn thay vì crash (chỉ <code>CancellationException</code> được ném tiếp).</td>
+          </tr>
+          <tr>
+            <td><code>SaveMeasuredHeartRateUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/SaveMeasuredHeartRateUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Ghi nhịp tim app <em>tự đo bằng camera</em> vào lịch sử sức khỏe hôm nay — nhờ vậy số vừa
+                đo hiện ngay ở Trang chủ và được Rule Engine dùng. Từ chối giá trị ≤ 0.</td>
+          </tr>
+          <tr>
+            <td><code>GetNotificationPermissionStatusUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/notification/GetNotificationPermissionStatusUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Quyết định màn Trang chủ có hiện thẻ "Bật nhắc nhở hàng ngày" hay không.</td>
+          </tr>
+          <tr>
+            <td><code>GetStepCounterStatusUseCase</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/steps/GetStepCounterStatusUseCase.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Đọc trạng thái đếm bước. Máy không có cảm biến vẫn trả "chưa sẵn sàng" thay vì crash.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>4.3 Thuật toán &amp; logic thuần (không trạng thái, test trên JVM)</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HabitRuleEngine</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/HabitRuleEngine.kt</span></td>
+            <td>Kho gợi ý + logic chọn mẹo xoay vòng</td>
+            <td>"AI on-device" của app: chạy hoàn toàn offline, đọc 7 ngày nhật ký + dữ liệu sức khỏe,
+                xác định danh mục đang có vấn đề rồi chọn mẹo <strong>xoay vòng theo ngày</strong> — thay
+                cho kiểu "một thẻ cảnh báo cố định lặp mãi" gây cảm giác bị ép buộc.</td>
+          </tr>
+          <tr>
+            <td><code>SuggestionCatalog</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/SuggestionCatalog.kt</span></td>
+            <td>Kho mẹo theo danh mục × 2 nhóm <code>TipFocus</code></td>
+            <td>"Chất liệu" cho feed gợi ý: mỗi danh mục có nhiều mẹo, tách nhóm CONCERN (danh mục đang có
+                vấn đề) và GENERAL (đang ổn / chưa đủ dữ liệu).</td>
+          </tr>
+          <tr>
+            <td><code>FoodAnalysis</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/food/FoodAnalysis.kt</span></td>
+            <td>Prompt gửi Gemini + luật làm sạch kết quả</td>
+            <td>Dựng prompt (ưu tiên món Việt/Á, chỉ trả thông tin tham khảo) và <strong>làm sạch</strong>
+                dữ liệu AI trả về (cắt độ dài, bỏ mục rỗng, giới hạn số gạch đầu dòng) vì model là nguồn
+                không tin cậy hoàn toàn.</td>
+          </tr>
+          <tr>
+            <td><code>VitalityScoreMath</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/VitalityScoreMath.kt</span></td>
+            <td>Trọng số/ngưỡng của công thức điểm</td>
+            <td>Tính điểm sinh lực bằng trung bình <strong>theo từng ngày</strong> từ ba thành phần (thói
+                quen đạt mục tiêu, giờ ngủ, bước chân) — bỏ thói quen vài ngày là điểm tụt, thay vì giữ
+                nguyên như khi lấy trung bình cả tuần.</td>
+          </tr>
+          <tr>
+            <td><code>HealthSummaryHistory</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/HealthSummaryHistory.kt</span></td>
+            <td>Luật gộp lịch sử theo ngày</td>
+            <td>Gom <code>health_data_history</code> thành <em>một dòng mỗi ngày</em>: mỗi ngày lấy hàng
+                mới nhất, và luôn trả đủ 7 dòng (kể cả ngày trống) để biểu đồ không bị co lại.</td>
+          </tr>
+          <tr>
+            <td><code>SleepTrendMath</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/SleepTrendMath.kt</span></td>
+            <td>Ngưỡng đánh giá chất lượng giấc ngủ</td>
+            <td>Dựng xu hướng 7 đêm từ <code>DailyHealthSummary</code> — dùng cùng nguồn với thẻ lịch sử và
+                Rule Engine nên các con số trên màn Phân tích luôn khớp nhau.</td>
+          </tr>
+          <tr>
+            <td><code>StepCounterMath</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/steps/StepCounterMath.kt</span></td>
+            <td>Trạng thái đếm theo phiên (<code>baseline</code>, <code>sessionId</code>, phần đã đếm)</td>
+            <td>Quy đổi con số <strong>luỹ kế từ lúc máy khởi động</strong> thành "số bước hôm nay", chỉ
+                tính phần quan sát được <em>trong lúc app đang chạy</em> — nếu lấy thẳng hiệu số thì số
+                bước "tự nhảy" mỗi lần mở app.</td>
+          </tr>
+          <tr>
+            <td><code>SleepTrackerMath</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/sleep/SleepTrackerMath.kt</span></td>
+            <td>Trạng thái đêm đang xét + thời gian ngủ cộng dồn</td>
+            <td>Suy ra "đang ngủ" từ ba tín hiệu (màn hình tắt + phòng tối + máy bất động) <em>và</em> đang
+                trong khung giờ người dùng đặt. Cộng dồn giữa hai mẫu khi cả hai đều "đang ngủ" nên
+                khoảng Doze không bị mất.</td>
+          </tr>
+          <tr>
+            <td><code>PpgAnalyzer</code> <span class="small">(class)</span> ·
+                <code>PpgProgress</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/heartrate/PpgAnalyzer.kt</span></td>
+            <td>Bộ đệm tín hiệu và trạng thái phân tích dòng khung hình</td>
+            <td>Biến dòng giá trị đỏ của từng khung hình thành nhịp tim: bỏ thành phần một chiều, tìm đỉnh
+                mạch (nội suy parabol), kiểm tra tính chu kỳ bằng tự tương quan; trả về cả chất lượng và
+                cảnh báo để hướng dẫn người dùng.</td>
+          </tr>
+          <tr>
+            <td><code>HeartRateMath</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/heartrate/HeartRateMath.kt</span></td>
+            <td>Ngưỡng và phép tính dùng chung cho PPG</td>
+            <td>Chứa các hàm thuần (kể cả quy đổi trung bình Y/V → kênh đỏ) để phần đọc khung hình và phần
+                phân tích không lặp công thức.</td>
+          </tr>
+          <tr>
+            <td><code>TodayHealthSummary</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/health/TodayHealthSummary.kt</span></td>
+            <td>Ba chỉ số hôm nay hiển thị trên widget</td>
+            <td>Chốt <strong>quy tắc chọn nguồn</strong> giống hệt thẻ "Tóm tắt sức khỏe" (bước chân ưu
+                tiên cảm biến máy, giấc ngủ ưu tiên Health Connect) để widget và app không bao giờ nói
+                hai số khác nhau.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>4.4 Cổng ra khỏi tầng Domain</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>CloudSyncPolicy</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/usecase/sync/CloudSyncPolicy.kt</span></td>
+            <td>Luật "log nào được phép rời khỏi máy"</td>
+            <td><strong>Cổng riêng tư</strong>: một chỗ duy nhất quyết định log được tải lên, đòi đủ hai
+                điều kiện (đã bật đồng bộ <em>và</em> log tạo sau mốc đồng ý).</td>
+          </tr>
+          <tr>
+            <td><code>HealthWidgetRefresher</code> <span class="small">(interface)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/domain/widget/HealthWidgetRefresher.kt</span></td>
+            <td>Hợp đồng "vẽ lại widget"</td>
+            <td>Vì widget chỉ đọc dữ liệu một lần lúc vẽ và chu kỳ cập nhật là 30 phút, Domain cần một
+                cách báo cho Presentation vẽ lại ngay sau khi vừa đo nhịp tim / vừa đồng bộ xong.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>5. Tầng Data — Room (dữ liệu cục bộ)</h2>
+      <p class="small">
+        Thư mục: <code>app/src/main/java/com/healthyai/app/data/local/</code>.
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>AppDatabase</code> <span class="small">(abstract class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/AppDatabase.kt</span></td>
+            <td>Kết nối Room (được SQLCipher mã hoá) + danh sách DAO</td>
+            <td>Khai báo 4 bảng. <code>exportSchema = true</code> để schema vào git phục vụ migration —
+                <strong>không</strong> dùng <code>fallbackToDestructiveMigration()</code> vì sẽ mất dữ liệu
+                người dùng.</td>
+          </tr>
+          <tr>
+            <td><code>Converters</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/Converters.kt</span></td>
+            <td>Cách lưu enum vào SQLite</td>
+            <td>Chuyển <code>HabitCategory</code>/<code>HabitTimeOfDay</code>/<code>HabitFrequency</code>
+                sang/từ chuỗi <code>name</code>.</td>
+          </tr>
+          <tr>
+            <td><code>HabitDao</code> <span class="small">(interface)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/dao/HabitDao.kt</span></td>
+            <td>Truy vấn bảng <code>habits</code></td>
+            <td>Đọc thói quen đang hoạt động (Flow), đọc theo id, thêm, sửa, và <strong>xoá mềm</strong>
+                (<code>isActive = 0</code>).</td>
+          </tr>
+          <tr>
+            <td><code>HabitLogDao</code> <span class="small">(interface)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/dao/HabitLogDao.kt</span></td>
+            <td>Truy vấn bảng <code>habit_logs</code></td>
+            <td>Đọc log từ mốc thời gian (Flow), lấy log chưa đồng bộ (<code>isDirty = 1</code>), ghi log,
+                đánh dấu đã đồng bộ, đọc log gần nhất theo danh mục (cho Rule Engine).</td>
+          </tr>
+          <tr>
+            <td><code>HealthDataDao</code> <span class="small">(interface)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/dao/health/HealthDataDao.kt</span></td>
+            <td>Truy vấn bảng <code>health_data_history</code></td>
+            <td>Đọc N hàng mới nhất, chèn/cập nhật bản chụp, tìm bản ghi mới nhất kể từ mốc thời gian (để
+                gộp đúng một hàng mỗi ngày), lấy nhịp tim gần nhất, và dọn dữ liệu cũ quá 30 ngày.</td>
+          </tr>
+          <tr>
+            <td><code>SettingsDao</code> <span class="small">(interface)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/dao/settings/SettingsDao.kt</span></td>
+            <td>Truy vấn bảng <code>app_settings</code></td>
+            <td>Đọc toàn bộ thiết lập (một lần và dạng Flow) và ghi đè cả bộ.</td>
+          </tr>
+          <tr>
+            <td><code>HabitEntity</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/entity/HabitEntity.kt</span></td>
+            <td>Ánh xạ 1-1 bảng <code>habits</code></td>
+            <td>Khuôn dạng lưu trữ của <code>Habit</code> (kèm cờ <code>isActive</code> cho xoá mềm).</td>
+          </tr>
+          <tr>
+            <td><code>HabitLogEntity</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/entity/HabitLogEntity.kt</span></td>
+            <td>Ánh xạ 1-1 bảng <code>habit_logs</code> (có khoá ngoại CASCADE)</td>
+            <td>Khuôn dạng lưu trữ của <code>HabitLog</code>; <code>isDirty</code> là cờ "chưa đồng bộ"
+                (chiến lược Last Write Wins).</td>
+          </tr>
+          <tr>
+            <td><code>HealthDataEntity</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/entity/health/HealthDataEntity.kt</span></td>
+            <td>Ánh xạ bảng <code>health_data_history</code></td>
+            <td>Lưu từng bản chụp sức khỏe kèm mốc thời gian — để tính xu hướng mà không phải gọi Health
+                Connect liên tục.</td>
+          </tr>
+          <tr>
+            <td><code>SettingEntity</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/entity/settings/SettingEntity.kt</span></td>
+            <td>Một dòng khoá–giá trị trong <code>app_settings</code></td>
+            <td>Cặp <code>name</code>/<code>value</code> dạng TEXT; repository lo việc chuyển kiểu sang
+                domain.</td>
+          </tr>
+          <tr>
+            <td><code>DatabaseMigrations</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/migration/DatabaseMigrations.kt</span></td>
+            <td>Danh sách migration 1→4 và <code>DATABASE_VERSION</code></td>
+            <td>Mỗi bước tăng version có migration giữ nguyên dữ liệu (thêm cột <code>timeOfDay</code>/<code>frequency</code>,
+                bảng lịch sử sức khỏe, bảng thiết lập).</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>6. Tầng Data — bảo mật cơ sở dữ liệu</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>DatabasePassphrase</code> <span class="small">(class)</span> ·
+                <code>PassphraseVault</code> · <code>PassphraseCipher</code> <span class="small">(interface)</span> ·
+                <code>DatabasePassphraseProvider</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/security/DatabasePassphraseProvider.kt</span></td>
+            <td>Khoá thô mở DB SQLCipher + cờ <code>newlyCreated</code></td>
+            <td>Sinh khoá đúng <strong>một lần</strong> cho mỗi máy rồi lấy lại về sau; cờ
+                <code>newlyCreated</code> là tín hiệu để tầng gọi xử lý file DB cũ còn sót lại.</td>
+          </tr>
+          <tr>
+            <td><code>SharedPreferencesPassphraseVault</code> ·
+                <code>AndroidKeystorePassphraseCipher</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/security/AndroidPassphraseStorage.kt</span></td>
+            <td>File prefs chứa <code>Base64(IV ‖ ciphertext)</code> + khoá AES trong Android Keystore</td>
+            <td>Lưu passphrase <strong>đã mã hoá</strong>: muốn đọc phải có khoá Keystore của chính thiết
+                bị. Cố ý ghi bằng <code>commit()</code> đồng bộ để không có khe thời gian làm mất khoá.</td>
+          </tr>
+          <tr>
+            <td><code>LegacyDatabaseKeyMigration</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/security/LegacyDatabaseKeyMigration.kt</span></td>
+            <td>Khoá hard-code của bản cũ</td>
+            <td>Đúng một lần trên mỗi máy: mở DB cũ bằng khoá cũ rồi <code>PRAGMA rekey</code> sang khoá
+                Keystore mới — giữ nguyên toàn bộ thói quen/nhật ký của người dùng đã cài bản trước.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>7. Tầng Data — trạng thái cục bộ của cảm biến</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>StepCounterStore</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/steps/StepCounterStore.kt</span></td>
+            <td>Phiên chạy hiện tại, baseline, phần đã đếm trong ngày, mẫu gần nhất, số bước hôm nay</td>
+            <td>Nhớ trạng thái đếm giữa các lần mở app. <code>sessionId</code> sinh một lần cho mỗi tiến
+                trình nên phân biệt được "app còn chạy nền" (đếm tiếp) với "app đã bị đóng hẳn".</td>
+          </tr>
+          <tr>
+            <td><code>SleepTrackerStore</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/local/sleep/SleepTrackerStore.kt</span></td>
+            <td>Đêm đang xét, thời gian ngủ cộng dồn, mẫu gần nhất, đêm đã chốt gần nhất</td>
+            <td>Giữ trạng thái ước lượng giấc ngủ giữa các lần worker chạy. Đêm đã chốt được giữ riêng để
+                ô "Ngủ" ở Trang chủ vẫn hiện số của đêm vừa qua sau khi đêm mới bắt đầu.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>8. Tầng Data — nguồn cảm biến &amp; Health Connect</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>StepCounterSensor</code> <span class="small">(interface)</span> ·
+                <code>AndroidStepCounterSensor</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/steps/StepCounterSensor.kt<br>
+                app/src/main/java/com/healthyai/app/data/steps/AndroidStepCounterSensor.kt</span></td>
+            <td>Luồng giá trị luỹ kế của <code>TYPE_STEP_COUNTER</code></td>
+            <td>Đọc cảm biến đếm bước phần cứng. Chọn <code>STEP_COUNTER</code> (không phải
+                <code>STEP_DETECTOR</code>) vì đếm ở phần cứng: gần như không tốn pin và không cần
+                foreground service. Tách interface để unit test thay được bằng giả lập.</td>
+          </tr>
+          <tr>
+            <td><code>SleepSensor</code> <span class="small">(interface)</span> ·
+                <code>AndroidSleepSensor</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/sleep/SleepSensor.kt<br>
+                app/src/main/java/com/healthyai/app/data/sleep/AndroidSleepSensor.kt</span></td>
+            <td>Mẫu ánh sáng, gia tốc và trạng thái màn hình</td>
+            <td>Lấy mẫu <strong>theo yêu cầu</strong>: chỉ nghe cảm biến trong vài giây rồi gỡ listener
+                trong <code>finally</code> (kể cả khi coroutine bị huỷ) — nên chạy 15 phút/lần mà không
+                giữ cảm biến suốt đêm.</td>
+          </tr>
+          <tr>
+            <td><code>HealthConnectDataSource</code> <span class="small">(interface)</span> ·
+                <code>HealthConnectDataSourceImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/healthconnect/HealthConnectDataSource.kt<br>
+                app/src/main/java/com/healthyai/app/data/healthconnect/HealthConnectDataSourceImpl.kt</span></td>
+            <td>Kết nối Health Connect, quyền đã cấp, dữ liệu đọc về</td>
+            <td>Đọc bước chân/giấc ngủ/nhịp tim/calo và phiên ngủ có pha. Quy ước chung của file: mọi
+                <code>try/catch</code> phải ném tiếp <code>CancellationException</code> trước khi bắt
+                <code>Exception</code> — nếu nuốt, việc huỷ coroutine sẽ bị biến thành "không có dữ liệu".
+                Kèm hàm thuần <code>sdkStatusToHealthConnectStatus</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>9. Tầng Data — nhịp tim, ảnh &amp; AI</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>CameraPpgAnalyzer</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/heartrate/CameraPpgAnalyzer.kt</span></td>
+            <td>Vùng đệm khung hình camera</td>
+            <td>Tính <strong>giá trị đỏ trung bình vùng giữa khung</strong> rồi đưa từng khung cho
+                <code>PpgAnalyzer</code>. Chỉ đọc hai mặt phẳng Y và V (YUV→RGB là phép tuyến tính) để
+                không phải đổi cả khung sang RGB ở 30 khung/giây.</td>
+          </tr>
+          <tr>
+            <td><code>GalleryImageLoader</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/vision/GalleryImageLoader.kt</span></td>
+            <td>Bitmap ảnh người dùng chọn</td>
+            <td>Thu nhỏ <em>trước khi</em> giải mã (<code>inJustDecodeBounds</code> + <code>inSampleSize</code>)
+                để không <code>OutOfMemoryError</code> với ảnh 12–50 MP, và xoay theo cờ EXIF để món ăn
+                không bị quay 90°.</td>
+          </tr>
+          <tr>
+            <td><code>ImageJpegEncoder</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/vision/ImageJpegEncoder.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Nén Bitmap thành JPEG (cạnh dài ≤ 1280 px) trước khi gửi AI: mỗi byte base64 đều tốn thời
+                gian, và ảnh quá lớn cũng chẳng thêm thông tin. Chạy trên <code>Dispatchers.Default</code>.</td>
+          </tr>
+          <tr>
+            <td><code>FoodInsightSource</code> <span class="small">(interface)</span> ·
+                <code>FoodAnalysisError</code> <span class="small">(enum)</span> ·
+                <code>FoodAnalysisResult</code> <span class="small">(sealed interface)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/vision/FoodInsightSource.kt</span></td>
+            <td>Hợp đồng "phân tích ảnh món ăn" + các loại lỗi</td>
+            <td>Tách lỗi thành enum để tầng dữ liệu <strong>không</strong> phải biết tiếng Việt — ViewModel
+                mới là nơi dịch thành thông báo cho người dùng.</td>
+          </tr>
+          <tr>
+            <td><code>GeminiFoodInsightSource</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/vision/GeminiFoodInsightSource.kt</span></td>
+            <td>Khoá API, model chính + model dự phòng</td>
+            <td>Gọi Gemini qua REST (không dùng SDK vì build offline), gửi ảnh base64, parse JSON trả về và
+                ánh xạ lỗi (401/404/429/503 → enum). Đây là tính năng <strong>duy nhất</strong> đưa dữ liệu
+                ra khỏi máy.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>10. Tầng Data — mạng, Firebase &amp; bản cài đặt repository</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HttpPost</code> <span class="small">(interface)</span> ·
+                <code>HttpPostResponse</code> <span class="small">(data class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/network/HttpPost.kt</span></td>
+            <td>Hợp đồng một lượt POST + kết quả (mã HTTP, thân)</td>
+            <td>Tách cổng mạng ra khỏi lớp gọi API để unit test JVM chạy được toàn bộ phần parse/ánh xạ
+                lỗi mà không cần mạng thật.</td>
+          </tr>
+          <tr>
+            <td><code>HttpUrlConnectionPost</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/network/HttpUrlConnectionPost.kt</span></td>
+            <td>Kết nối HTTP</td>
+            <td>Bản cài đặt thật bằng <code>HttpURLConnection</code> của JDK (không thêm OkHttp vì build
+                chạy offline). Chạy trên <code>Dispatchers.IO</code>; mọi lỗi kết nối trả <code>null</code>
+                để phân biệt "không gọi được" với "server trả lỗi".</td>
+          </tr>
+          <tr>
+            <td><code>FirestoreSyncDataSource</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/firebase/FirestoreSyncDataSource.kt</span></td>
+            <td>Nhánh Firestore <code>users/{uid}/habit_logs</code></td>
+            <td>Tải một <code>HabitLog</code> lên Firestore dưới dạng <code>Result</code>. Là điểm ghi duy
+                nhất ra ngoài Internet của tính năng đồng bộ.</td>
+          </tr>
+          <tr>
+            <td><code>HabitRepositoryImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/repository/HabitRepositoryImpl.kt</span></td>
+            <td>Cầu nối Habit/HabitLog ↔ <code>HabitDao</code>/<code>HabitLogDao</code></td>
+            <td>Cài đặt <code>HabitRepository</code>: chuyển Entity ↔ domain model, chống trùng tên khi
+                thêm/sửa, và phục vụ cả luồng đồng bộ (lấy log chưa đồng bộ, đánh dấu đã đồng bộ).</td>
+          </tr>
+          <tr>
+            <td><code>HealthDataRepositoryImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/repository/HealthDataRepositoryImpl.kt</span></td>
+            <td>Luật gộp ba nguồn dữ liệu sức khỏe</td>
+            <td>Trộn Health Connect + cảm biến đếm bước + bộ ước lượng giấc ngủ (Health Connect luôn ưu
+                tiên trước), ghi bản chụp theo ngày, và là nơi <strong>duy nhất</strong> gọi
+                <code>HealthWidgetRefresher.refresh()</code> mỗi lần ghi dữ liệu hôm nay.</td>
+          </tr>
+          <tr>
+            <td><code>AuthRepositoryImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/repository/AuthRepositoryImpl.kt</span></td>
+            <td>Phiên Firebase Auth</td>
+            <td>Đăng nhập/đăng ký/đăng xuất và phát trạng thái phiên. Firebase tự lưu phiên trên máy nên
+                lần mở sau người dùng vào thẳng app.</td>
+          </tr>
+          <tr>
+            <td><code>SettingsRepositoryImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/repository/SettingsRepositoryImpl.kt</span></td>
+            <td>Giá trị thiết lập trong <code>app_settings</code></td>
+            <td>Lưu giờ dưới dạng <strong>số phút trong ngày</strong> (0–1439) để không phụ thuộc locale;
+                dữ liệu thiếu/hỏng đều rơi về <code>SleepSchedule.DEFAULT</code>.</td>
+          </tr>
+          <tr>
+            <td><code>StepCounterRepositoryImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/repository/StepCounterRepositoryImpl.kt</span></td>
+            <td>Kết quả đếm bước hôm nay</td>
+            <td>Kiểm tra quyền <code>ACTIVITY_RECOGNITION</code> rồi biến từng mẫu luỹ kế của cảm biến
+                thành "số bước hôm nay" qua <code>StepCounterStore</code>.</td>
+          </tr>
+          <tr>
+            <td><code>SleepTrackerRepositoryImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/repository/SleepTrackerRepositoryImpl.kt</span></td>
+            <td>Số giờ ngủ ước lượng</td>
+            <td>Ghép <code>SleepSensor</code> + khung giờ người dùng đặt + <code>SleepTrackerMath</code>.
+                Máy không có cảm biến thì chỉ trả số đã lưu — worker không bao giờ thất bại vì tính năng
+                này.</td>
+          </tr>
+          <tr>
+            <td><code>NotificationPermissionRepositoryImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/data/repository/NotificationPermissionRepositoryImpl.kt</span></td>
+            <td>Tín hiệu thô của hệ thống về thông báo</td>
+            <td>Chỉ đọc <code>areNotificationsEnabled()</code> + trạng thái quyền runtime; việc <em>suy ra</em>
+                trạng thái nằm ở hàm thuần <code>NotificationPermissionStatus.from</code> để test được
+                trên JVM.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>11. Dependency Injection (Hilt)</h2>
+      <p class="small">Thư mục: <code>app/src/main/java/com/healthyai/app/di/</code>.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>AppModule</code> <span class="small">(abstract class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/di/AppModule.kt</span></td>
+            <td>Các ràng buộc interface → implementation</td>
+            <td>Nói cho Hilt biết khi code xin một interface thì đưa implementation nào — nhờ vậy tầng
+                Domain không bao giờ tham chiếu lớp cụ thể.</td>
+          </tr>
+          <tr>
+            <td><code>DatabaseModule</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/di/DatabaseModule.kt</span></td>
+            <td>Instance <code>AppDatabase</code> + <code>SupportFactory</code> của SQLCipher</td>
+            <td>Dựng Room với passphrase lấy từ Keystore, chạy migration không mất dữ liệu.</td>
+          </tr>
+          <tr>
+            <td><code>FirebaseModule</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/di/FirebaseModule.kt</span></td>
+            <td>Singleton <code>FirebaseAuth</code> và <code>FirebaseFirestore</code></td>
+            <td>Cung cấp hai đối tượng Firebase cho repository, tránh gọi <code>Firebase.auth</code> rải
+                rác trong code.</td>
+          </tr>
+          <tr>
+            <td><code>AiModule</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/di/AiModule.kt</span></td>
+            <td>Khoá API + tên model AI đọc từ <code>BuildConfig</code></td>
+            <td>Lấy cấu hình Gemini từ <code>local.properties</code> lúc build (khoá không vào git). Máy
+                chưa cấu hình khoá thì nguồn AI trả <code>NOT_CONFIGURED</code> để màn Ghi chép báo rõ
+                thay vì gọi mạng rồi lỗi khó hiểu.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>12. Chạy nền (WorkManager)</h2>
+      <p class="small">Thư mục: <code>app/src/main/java/com/healthyai/app/worker/</code>.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HealthSyncWorker</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/worker/HealthSyncWorker.kt</span></td>
+            <td>Job đồng bộ sức khỏe định kỳ</td>
+            <td>Đọc dữ liệu sức khỏe rồi ghi bản chụp theo ngày vào <code>health_data_history</code>, đồng
+                thời dọn dữ liệu quá 30 ngày. Tuân thủ hạn chế pin của hệ thống.</td>
+          </tr>
+          <tr>
+            <td><code>SleepTrackingWorker</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/worker/SleepTrackingWorker.kt</span></td>
+            <td>Nhịp chạy 15 phút/lần cho ước lượng giấc ngủ</td>
+            <td>Mỗi lần chạy đọc khung giờ người dùng đặt rồi lấy một mẫu cảm biến vài giây. Cần worker
+                (khác phần đếm bước) vì Android <strong>không có</strong> cảm biến "đang ngủ". Giới hạn đã
+                biết: WorkManager có thể bị hoãn trong chế độ Doze.</td>
+          </tr>
+          <tr>
+            <td><code>SyncWorker</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/worker/SyncWorker.kt</span></td>
+            <td>Job tải log chưa đồng bộ lên Firestore (6 giờ/lần)</td>
+            <td>Chỉ tải khi hội đủ hai điều kiện của <code>CloudSyncPolicy</code>. Chế độ khách thì bỏ qua
+                và trả <code>success</code> (job chạy lại theo chu kỳ). Retry tối đa 3 lần với exponential
+                backoff.</td>
+          </tr>
+          <tr>
+            <td><code>ReminderWorker</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/worker/ReminderWorker.kt</span></td>
+            <td>Job nhắc nhở hàng ngày</td>
+            <td>Gửi thông báo nhắc cập nhật thói quen; inject dependency qua
+                <code>@AssistedInject</code>.</td>
+          </tr>
+          <tr>
+            <td><code>ReminderNotifications</code> <span class="small">(object)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/worker/ReminderNotifications.kt</span></td>
+            <td>Định nghĩa notification channel nhắc nhở</td>
+            <td>Nguồn duy nhất khai báo kênh thông báo, và được gọi ngay trong
+                <code>HiltApplication.onCreate()</code> — nếu chỉ tạo trong worker thì tối đa 24 giờ đầu
+                trạng thái thông báo là "chưa xác định", làm thẻ nhắc nhở hiện/ẩn khác nhau theo máy.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>13. Tầng Presentation — điều hướng</h2>
+      <p class="small">Thư mục: <code>app/src/main/java/com/healthyai/app/presentation/navigation/</code>.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>AppNavigation</code> <span class="small">(composable)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/navigation/AppNavigation.kt</span></td>
+            <td>NavHost, bottom bar, đường đi giữa các màn</td>
+            <td>Điểm vào của UI: trước hết là "cổng xác thực", sau đó dựng NavHost 4 tab chính + các màn
+                phụ. Cũng là nơi chuyển yêu cầu "mở sẵn hộp thoại ghi nhận" giữa hai màn.</td>
+          </tr>
+          <tr>
+            <td><code>AuthGateViewModel</code> <span class="small">(class)</span> ·
+                <code>SessionState</code> <span class="small">(sealed interface)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/navigation/AuthGateViewModel.kt</span></td>
+            <td>Trạng thái phiên ở cấp điều hướng (đang tải / chưa đăng nhập / đã vào app)</td>
+            <td>Quyết định màn hình gốc: hiện màn đăng nhập hay vào thẳng app (kể cả trường hợp chọn chế
+                độ khách).</td>
+          </tr>
+          <tr>
+            <td><code>Screen</code> <span class="small">(sealed class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/navigation/Screen.kt</span></td>
+            <td>Danh mục destination: route + <code>titleRes</code> + icon</td>
+            <td><code>titleRes</code> là <strong>id tài nguyên</strong> chứ không phải chuỗi viết cứng, nên
+                nhãn tab luôn theo ngôn ngữ của hệ thống.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>14. Tầng Presentation — màn hình &amp; ViewModel</h2>
+      <p class="small">
+        Theo khuôn chung: <strong>ViewModel</strong> giữ trạng thái + luật hiển thị (test được trên JVM),
+        <strong>Screen</strong> chỉ vẽ và phát sự kiện người dùng. Thư mục gốc:
+        <code>app/src/main/java/com/healthyai/app/presentation/screen/</code>.
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>LoginViewModel</code> · <code>LoginUiState</code> ·
+                <code>mapAuthError</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/auth/LoginViewModel.kt</span></td>
+            <td>Email, mật khẩu, đang gửi hay không, thông báo lỗi, chế độ đăng nhập/đăng ký</td>
+            <td>Kiểm tra hợp lệ, gọi <code>AuthRepository</code>, và dịch lỗi Firebase thành câu tiếng Việt
+                dễ hiểu (<code>mapAuthError</code> là hàm thuần, test được).</td>
+          </tr>
+          <tr>
+            <td><code>LoginScreen</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/auth/LoginScreen.kt</span></td>
+            <td>Không trạng thái (nhận <code>uiState</code>)</td>
+            <td>Màn đăng nhập/đăng ký. App <strong>không bắt buộc</strong> đăng nhập: nút "Bỏ qua" đưa vào
+                chế độ khách (dữ liệu vẫn lưu cục bộ, chỉ phần đồng bộ Firestore cần tài khoản).</td>
+          </tr>
+          <tr>
+            <td><code>HomeViewModel</code> · <code>HomeUiState</code> ·
+                <code>HomeHabitItem</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/home/HomeViewModel.kt</span></td>
+            <td>Toàn bộ trạng thái Trang chủ: ba chỉ số hiển thị, thói quen hôm nay, các cờ "hiện thẻ nào",
+                switch đồng bộ/nguồn dữ liệu</td>
+            <td>Ghép nhiều nguồn thành một UI state, chứa các <strong>quy tắc dẫn xuất</strong> (chọn nguồn
+                số để hiển thị, có hiện thẻ xin quyền hay không) và cập nhật lại khi màn hình quay lại
+                tiền cảnh.</td>
+          </tr>
+          <tr>
+            <td><code>HomeScreen</code> + các thẻ<br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/home/HomeScreen.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/home/SleepScheduleCard.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/home/HealthDataSourceCard.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/home/CloudSyncCard.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/home/HealthConnectPermissionCard.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/home/ReminderNotificationCard.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/home/StepCounterPermissionCard.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Màn Trang chủ và các thẻ con. Màn cũng xin quyền Health Connect / thông báo / đếm bước qua
+                các launcher của hệ thống.</td>
+          </tr>
+          <tr>
+            <td><code>HabitsViewModel</code> · <code>HabitsUiState</code> ·
+                <code>HabitWithProgress</code> · <code>LogRequest</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitsViewModel.kt</span></td>
+            <td>Danh sách thói quen kèm tiến độ, bộ lọc đang chọn, hộp thoại ghi nhận đang mở</td>
+            <td>Tính tiến độ theo ngày, lọc theo buổi, ghi nhận thói quen, và nhận
+                <code>LogRequest</code> gửi từ màn khác (từ thẻ gợi ý AI hoặc từ màn Ghi chép bữa ăn) để
+                mở sẵn hộp thoại ghi nhận.</td>
+          </tr>
+          <tr>
+            <td><code>HabitsScreen</code> · <code>HabitFilter</code> · <code>HabitLogInput</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitsScreen.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitFilter.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitLogInput.kt</span></td>
+            <td>Không trạng thái (màn) / enum lọc / kết quả đọc ô nhập</td>
+            <td>Màn Thói quen: danh sách, chip lọc, hộp thoại ghi nhận. <code>HabitFilter</code> dùng enum
+                làm khoá + nhãn từ <code>strings.xml</code> (thay cho chuỗi tiếng Việt viết cứng);
+                <code>parseLogValue</code> đọc số người dùng nhập và trả kết quả có kiểu.</td>
+          </tr>
+          <tr>
+            <td><code>AddEditHabitViewModel</code> · <code>AddEditHabitUiState</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/habits/addedit/AddEditHabitViewModel.kt</span></td>
+            <td>Bản nháp của form thói quen + lỗi kiểm tra hợp lệ</td>
+            <td>Nạp thói quen cần sửa, kiểm tra dữ liệu nhập (tên, mục tiêu, danh mục) rồi gọi use case
+                thêm/cập nhật.</td>
+          </tr>
+          <tr>
+            <td><code>AddEditHabitScreen</code> (+ <code>FlowRow</code>, <code>CategoryItem</code>)<br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/habits/addedit/AddEditHabitScreen.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Form thêm/sửa thói quen: chọn danh mục, thời điểm, đơn vị và mục tiêu.</td>
+          </tr>
+          <tr>
+            <td><code>CameraViewModel</code> · <code>CameraUiState</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/camera/CameraViewModel.kt</span></td>
+            <td>Ảnh đang phân tích, đang gọi AI, kết quả, lỗi, có cho phép thử lại không</td>
+            <td>Gọi chuỗi nén ảnh → nguồn AI → làm sạch kết quả; dịch lỗi thành thông báo và giữ ảnh cũ để
+                "Thử lại" không cần chụp lại.</td>
+          </tr>
+          <tr>
+            <td><code>CameraScreen</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/camera/CameraScreen.kt</span></td>
+            <td>CameraX + quyền camera</td>
+            <td>Màn "Ghi chép bữa ăn": chụp hoặc chọn ảnh, hiện hộp thoại "Đang phân tích món ăn" (khoá
+                màn để tránh bấm chồng nhiều lượt), và hiện thẻ kết quả / thẻ "Chưa nhận diện được món ăn".</td>
+          </tr>
+          <tr>
+            <td><code>HeartRateViewModel</code> · <code>HeartRateUiState</code> ·
+                <code>HeartRatePhase</code> · <code>HeartRateGuidance</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/heartrate/HeartRateViewModel.kt</span></td>
+            <td>Ba chặng (chờ/đang đo/xong), nhịp hiện tại, chất lượng tín hiệu, dạng sóng, cảnh báo, kết
+                quả</td>
+            <td>Máy trạng thái của phép đo PPG: nhận giá trị đỏ từng khung hình, gọi <code>PpgAnalyzer</code>,
+                chốt kết quả và tự lưu vào nhật ký sức khỏe. Toàn bộ nằm ở ViewModel nên test được trên JVM.</td>
+          </tr>
+          <tr>
+            <td><code>HeartRateScreen</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/heartrate/HeartRateScreen.kt</span></td>
+            <td>Camera sau + đèn flash</td>
+            <td>Chỉ lo <strong>phần cứng</strong> (xin quyền, bật camera/flash, đưa từng khung hình cho
+                ViewModel) và <strong>phần hướng dẫn</strong> người dùng đang đo.</td>
+          </tr>
+          <tr>
+            <td><code>InsightsViewModel</code> · <code>InsightsUiState</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/insights/InsightsViewModel.kt</span></td>
+            <td>Gợi ý AI, dữ liệu nhất quán tuần, điểm sinh lực, lịch sử 7 ngày</td>
+            <td>Gom 4 nguồn dữ liệu qua <code>combine</code> thành một UI state cho màn Phân tích.</td>
+          </tr>
+          <tr>
+            <td><code>InsightsScreen</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/insights/InsightsScreen.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Tab Phân tích: thẻ gợi ý AI (kèm nút hành động nhảy sang tab Thói quen), biểu đồ nhất quán
+                tuần, chỉ số sinh lực, bảng + biểu đồ lịch sử sức khỏe, và thẻ "AI &amp; quyền riêng tư"
+                (lối vào Chính sách bảo mật).</td>
+          </tr>
+          <tr>
+            <td><code>PrivacyPolicyScreen</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/privacy/PrivacyPolicyScreen.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Màn Chính sách bảo mật, dựng từ các string <code>privacy_*</code>. Có hai lối vào: thẻ "AI
+                &amp; quyền riêng tư" và rationale của Health Connect (nên màn này <strong>không</strong>
+                nằm sau cổng đăng nhập).</td>
+          </tr>
+          <tr>
+            <td><code>CoreTrackingViewModel</code> · <code>TrackingUiState</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/screen/tracking/CoreTrackingViewModel.kt</span></td>
+            <td>Bản chụp <code>HealthData</code>, cờ đang làm mới, lỗi, mốc cập nhật</td>
+            <td>Bản <strong>cũ</strong> của luồng đọc dữ liệu sức khỏe. Hiện không màn nào dùng — chỉ còn
+                unit test của chính nó. Giữ lại làm ví dụ, không thuộc đường chạy thật.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>15. Tầng Presentation — thành phần, định dạng, theme, widget</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>InfoActionCard</code> <span class="small">(composable)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/ui/component/InfoActionCard.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Thẻ hướng dẫn dùng chung: icon tròn + tiêu đề + mô tả + một nút hành động (cấp quyền, cài
+                ứng dụng, mở Settings) — dùng cho thẻ quyền Health Connect và thẻ quyền thông báo.</td>
+          </tr>
+          <tr>
+            <td><code>ErrorStateCard</code> <span class="small">(composable)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/ui/component/ErrorStateCard.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Thẻ lỗi đỏ dùng chung cho các màn có thao tác ghi dữ liệu, kèm nút đóng.</td>
+          </tr>
+          <tr>
+            <td><code>formatHabitProgress</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/ui/format/HabitProgressText.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Chuỗi "đã ghi / mục tiêu" của một thói quen, định dạng theo danh mục (nước quy ra lít,
+                vận động ra phút, ngủ ra giờ).</td>
+          </tr>
+          <tr>
+            <td><code>formatTargetValue</code> · <code>formatStepCount</code> ·
+                <code>formatStepsExact</code> · <code>formatSleepDuration</code> ·
+                <code>formatHeartRate</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/ui/format/NumberDisplay.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Chuỗi số "sạch": bỏ đuôi thập phân khi là số nguyên, và <strong>không</strong> dùng
+                <code>String.format</code>/<code>DecimalFormat</code> vì chúng phụ thuộc locale (máy
+                <code>vi-VN</code> sẽ cho <code>"7,5"</code> và lúc lưu sẽ parse hỏng).</td>
+          </tr>
+          <tr>
+            <td><code>formatClockTime</code> · <code>formatSleepWindow</code> ·
+                <code>formatSleepWindowDuration</code><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/ui/format/TimeDisplay.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Chuỗi giờ:phút kiểu 24 giờ và mô tả khung giờ ngủ, cũng tự dựng chuỗi để không lệch theo
+                locale.</td>
+          </tr>
+          <tr>
+            <td><code>Color</code> · <code>Type</code> <span class="small">(tệp hằng số)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/ui/theme/Color.kt<br>
+                app/src/main/java/com/healthyai/app/presentation/ui/theme/Type.kt</span></td>
+            <td>Bảng màu và kiểu chữ của app</td>
+            <td>Khai báo palette xanh (dùng cả cho bảng màu sáng/tối) và typography dùng chung.</td>
+          </tr>
+          <tr>
+            <td><code>HealthyAITheme</code> <span class="small">(composable)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/ui/theme/Theme.kt</span></td>
+            <td>Color scheme sáng/tối đang dùng</td>
+            <td>Bọc toàn bộ UI: chọn bảng màu sáng/tối, có hỗ trợ dynamic color của Android 12+.</td>
+          </tr>
+          <tr>
+            <td><code>HealthWidget</code> <span class="small">(class)</span> ·
+                <code>HealthWidgetReceiver</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/widget/HealthWidget.kt</span></td>
+            <td>Nội dung widget "Sức khỏe hôm nay" (Glance) + màu của widget</td>
+            <td><code>provideGlance()</code> đọc dữ liệu hôm nay theo đúng quy tắc của
+                <code>TodayHealthSummary</code> rồi vẽ bước chân / giấc ngủ / nhịp tim. Màu tự khai báo
+                (không dùng <code>GlanceTheme</code>) để không lệch khỏi bản sắc xanh của app.</td>
+          </tr>
+          <tr>
+            <td><code>HealthWidgetRefresherImpl</code> <span class="small">(class)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/presentation/widget/HealthWidgetRefresherImpl.kt</span></td>
+            <td>Danh sách widget đang có trên màn hình chính</td>
+            <td>Cài đặt cổng <code>HealthWidgetRefresher</code> bằng <code>updateAll()</code>: vẽ lại mọi
+                widget để số liệu được đọc mới ngay sau khi app vừa ghi dữ liệu.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>16. Tiện ích</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Lớp · đường dẫn</th><th>Quản lý</th><th>Chức năng</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>runCatchingCancellable</code> <span class="small">(hàm inline)</span><br>
+                <span class="small">app/src/main/java/com/healthyai/app/util/RunCatchingCancellable.kt</span></td>
+            <td>Không trạng thái</td>
+            <td>Giống <code>runCatching</code> nhưng <strong>không nuốt</strong>
+                <code>CancellationException</code>. Dùng ở mọi chỗ bọc lời gọi <code>suspend</code>/I/O:
+                nếu nuốt tín hiệu huỷ, chỗ gọi sẽ hiện thông báo lỗi cho người dùng trong khi thao tác chỉ
+                bị huỷ vì đổi màn hình.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>17. Tổng hợp theo tầng</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tầng / nhóm</th><th>Lớp (file)</th><th>Thư mục</th><th>Vai trò trong một câu</th></tr></thead>
+        <tbody>
+          <tr><td>Điểm vào</td><td>2</td>
+              <td><code>app/src/main/java/com/healthyai/app/</code></td>
+              <td>Khởi động Hilt + WorkManager, dựng UI Compose.</td></tr>
+          <tr><td><code>domain/model</code></td><td>19</td><td><code>…/app/domain/model/</code></td>
+              <td>Từ vựng dữ liệu thuần Kotlin, không phụ thuộc framework.</td></tr>
+          <tr><td><code>domain/repository</code></td><td>7</td><td><code>…/app/domain/repository/</code></td>
+              <td>Hợp đồng dữ liệu mà Domain yêu cầu, không biết nguồn thật.</td></tr>
+          <tr><td><code>domain/usecase</code></td><td>29</td><td><code>…/app/domain/usecase/</code></td>
+              <td>Nghiệp vụ và thuật toán: gợi ý, điểm số, gộp theo ngày, đếm bước, ước lượng ngủ, PPG.</td></tr>
+          <tr><td><code>domain/widget</code></td><td>1</td><td><code>…/app/domain/widget/</code></td>
+              <td>Cổng báo "dữ liệu đổi, vẽ lại widget".</td></tr>
+          <tr><td><code>data/local</code> (Room + bảo mật + store)</td><td>16</td><td><code>…/app/data/local/</code></td>
+              <td>Lưu trữ cục bộ đã mã hoá và trạng thái giữa các lần chạy.</td></tr>
+          <tr><td><code>data/</code> còn lại (HC, cảm biến, AI, mạng, Firebase, repository impl)</td><td>21</td>
+              <td><code>…/app/data/</code></td>
+              <td>Cài đặt thật của các cổng ra: hệ điều hành, cảm biến, Internet.</td></tr>
+          <tr><td><code>di</code></td><td>4</td><td><code>…/app/di/</code></td>
+              <td>Nối interface với implementation và cấp cấu hình.</td></tr>
+          <tr><td><code>worker</code></td><td>5</td><td><code>…/app/worker/</code></td>
+              <td>Công việc chạy nền theo chu kỳ: sức khỏe, giấc ngủ, đồng bộ, nhắc nhở.</td></tr>
+          <tr><td><code>presentation</code></td><td>37</td><td><code>…/app/presentation/</code></td>
+              <td>Điều hướng, màn hình + ViewModel, thành phần dùng chung, định dạng, theme, widget.</td></tr>
+          <tr><td><code>util</code></td><td>1</td><td><code>…/app/util/</code></td>
+              <td>Tiện ích dùng chung toàn dự án.</td></tr>
+          <tr><td><strong>Tổng</strong></td><td><strong>142</strong></td>
+              <td><code>app/src/main/java/com/healthyai/app/</code></td>
+              <td>—</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>18. Danh sách đường dẫn đầy đủ (copy nhanh)</h2>
+      <p class="small">
+        Cả 142 file, mỗi dòng một đường dẫn <strong>đầy đủ từ gốc repo</strong> — dán thẳng vào terminal
+        sau khi <code>cd</code> vào <code>E:\HealthyAIApp</code>, hoặc vào hộp tìm file của Android Studio.
+        Nút <strong>Copy</strong> ở góc khối dưới sao chép toàn bộ danh sách.
+      </p>
+<pre><code>app/src/main/java/com/healthyai/app/HiltApplication.kt
+app/src/main/java/com/healthyai/app/MainActivity.kt
+app/src/main/java/com/healthyai/app/data/firebase/FirestoreSyncDataSource.kt
+app/src/main/java/com/healthyai/app/data/healthconnect/HealthConnectDataSource.kt
+app/src/main/java/com/healthyai/app/data/healthconnect/HealthConnectDataSourceImpl.kt
+app/src/main/java/com/healthyai/app/data/heartrate/CameraPpgAnalyzer.kt
+app/src/main/java/com/healthyai/app/data/local/AppDatabase.kt
+app/src/main/java/com/healthyai/app/data/local/Converters.kt
+app/src/main/java/com/healthyai/app/data/local/dao/HabitDao.kt
+app/src/main/java/com/healthyai/app/data/local/dao/HabitLogDao.kt
+app/src/main/java/com/healthyai/app/data/local/dao/health/HealthDataDao.kt
+app/src/main/java/com/healthyai/app/data/local/dao/settings/SettingsDao.kt
+app/src/main/java/com/healthyai/app/data/local/entity/HabitEntity.kt
+app/src/main/java/com/healthyai/app/data/local/entity/HabitLogEntity.kt
+app/src/main/java/com/healthyai/app/data/local/entity/health/HealthDataEntity.kt
+app/src/main/java/com/healthyai/app/data/local/entity/settings/SettingEntity.kt
+app/src/main/java/com/healthyai/app/data/local/migration/DatabaseMigrations.kt
+app/src/main/java/com/healthyai/app/data/local/security/AndroidPassphraseStorage.kt
+app/src/main/java/com/healthyai/app/data/local/security/DatabasePassphraseProvider.kt
+app/src/main/java/com/healthyai/app/data/local/security/LegacyDatabaseKeyMigration.kt
+app/src/main/java/com/healthyai/app/data/local/sleep/SleepTrackerStore.kt
+app/src/main/java/com/healthyai/app/data/local/steps/StepCounterStore.kt
+app/src/main/java/com/healthyai/app/data/network/HttpPost.kt
+app/src/main/java/com/healthyai/app/data/network/HttpUrlConnectionPost.kt
+app/src/main/java/com/healthyai/app/data/repository/AuthRepositoryImpl.kt
+app/src/main/java/com/healthyai/app/data/repository/HabitRepositoryImpl.kt
+app/src/main/java/com/healthyai/app/data/repository/HealthDataRepositoryImpl.kt
+app/src/main/java/com/healthyai/app/data/repository/NotificationPermissionRepositoryImpl.kt
+app/src/main/java/com/healthyai/app/data/repository/SettingsRepositoryImpl.kt
+app/src/main/java/com/healthyai/app/data/repository/SleepTrackerRepositoryImpl.kt
+app/src/main/java/com/healthyai/app/data/repository/StepCounterRepositoryImpl.kt
+app/src/main/java/com/healthyai/app/data/sleep/AndroidSleepSensor.kt
+app/src/main/java/com/healthyai/app/data/sleep/SleepSensor.kt
+app/src/main/java/com/healthyai/app/data/steps/AndroidStepCounterSensor.kt
+app/src/main/java/com/healthyai/app/data/steps/StepCounterSensor.kt
+app/src/main/java/com/healthyai/app/data/vision/FoodInsightSource.kt
+app/src/main/java/com/healthyai/app/data/vision/GalleryImageLoader.kt
+app/src/main/java/com/healthyai/app/data/vision/GeminiFoodInsightSource.kt
+app/src/main/java/com/healthyai/app/data/vision/ImageJpegEncoder.kt
+app/src/main/java/com/healthyai/app/di/AiModule.kt
+app/src/main/java/com/healthyai/app/di/AppModule.kt
+app/src/main/java/com/healthyai/app/di/DatabaseModule.kt
+app/src/main/java/com/healthyai/app/di/FirebaseModule.kt
+app/src/main/java/com/healthyai/app/domain/model/CloudSyncSettings.kt
+app/src/main/java/com/healthyai/app/domain/model/DailyConsistency.kt
+app/src/main/java/com/healthyai/app/domain/model/DailyHealthSummary.kt
+app/src/main/java/com/healthyai/app/domain/model/FoodInsight.kt
+app/src/main/java/com/healthyai/app/domain/model/Habit.kt
+app/src/main/java/com/healthyai/app/domain/model/HabitLog.kt
+app/src/main/java/com/healthyai/app/domain/model/HealthConnectDataSettings.kt
+app/src/main/java/com/healthyai/app/domain/model/HealthConnectPermissionStatus.kt
+app/src/main/java/com/healthyai/app/domain/model/HealthConnectStatus.kt
+app/src/main/java/com/healthyai/app/domain/model/HealthData.kt
+app/src/main/java/com/healthyai/app/domain/model/HeartRate.kt
+app/src/main/java/com/healthyai/app/domain/model/NotificationPermissionStatus.kt
+app/src/main/java/com/healthyai/app/domain/model/SleepEnvironment.kt
+app/src/main/java/com/healthyai/app/domain/model/SleepSchedule.kt
+app/src/main/java/com/healthyai/app/domain/model/SleepStageBreakdown.kt
+app/src/main/java/com/healthyai/app/domain/model/SleepTrend.kt
+app/src/main/java/com/healthyai/app/domain/model/StepCounterStatus.kt
+app/src/main/java/com/healthyai/app/domain/model/Suggestion.kt
+app/src/main/java/com/healthyai/app/domain/model/VitalityScore.kt
+app/src/main/java/com/healthyai/app/domain/repository/AuthRepository.kt
+app/src/main/java/com/healthyai/app/domain/repository/HabitRepository.kt
+app/src/main/java/com/healthyai/app/domain/repository/HealthDataRepository.kt
+app/src/main/java/com/healthyai/app/domain/repository/NotificationPermissionRepository.kt
+app/src/main/java/com/healthyai/app/domain/repository/SettingsRepository.kt
+app/src/main/java/com/healthyai/app/domain/repository/SleepTrackerRepository.kt
+app/src/main/java/com/healthyai/app/domain/repository/StepCounterRepository.kt
+app/src/main/java/com/healthyai/app/domain/usecase/GetTodayHabitsUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/HabitRuleEngine.kt
+app/src/main/java/com/healthyai/app/domain/usecase/LogHabitUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/SuggestionCatalog.kt
+app/src/main/java/com/healthyai/app/domain/usecase/food/FoodAnalysis.kt
+app/src/main/java/com/healthyai/app/domain/usecase/habit/AddHabitUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/habit/DeleteHabitUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/habit/GetWeeklyConsistencyUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/habit/UpdateHabitUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetHealthConnectPermissionStatusUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetHealthDataUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetHealthInsightsUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetLatestRecordedHeartRateUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetRecentHealthSummaryUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetSleepStageBreakdownUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetStoredHealthDataUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/GetVitalityScoreUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/HealthSummaryHistory.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/SaveMeasuredHeartRateUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/SleepTrendMath.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/TodayHealthSummary.kt
+app/src/main/java/com/healthyai/app/domain/usecase/health/VitalityScoreMath.kt
+app/src/main/java/com/healthyai/app/domain/usecase/heartrate/HeartRateMath.kt
+app/src/main/java/com/healthyai/app/domain/usecase/heartrate/PpgAnalyzer.kt
+app/src/main/java/com/healthyai/app/domain/usecase/notification/GetNotificationPermissionStatusUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/sleep/SleepTrackerMath.kt
+app/src/main/java/com/healthyai/app/domain/usecase/steps/GetStepCounterStatusUseCase.kt
+app/src/main/java/com/healthyai/app/domain/usecase/steps/StepCounterMath.kt
+app/src/main/java/com/healthyai/app/domain/usecase/sync/CloudSyncPolicy.kt
+app/src/main/java/com/healthyai/app/domain/widget/HealthWidgetRefresher.kt
+app/src/main/java/com/healthyai/app/presentation/navigation/AppNavigation.kt
+app/src/main/java/com/healthyai/app/presentation/navigation/AuthGateViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/navigation/Screen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/auth/LoginScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/auth/LoginViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/screen/camera/CameraScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/camera/CameraViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitFilter.kt
+app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitLogInput.kt
+app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitsScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/habits/HabitsViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/screen/habits/addedit/AddEditHabitScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/habits/addedit/AddEditHabitViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/screen/heartrate/HeartRateScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/heartrate/HeartRateViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/CloudSyncCard.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/HealthConnectPermissionCard.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/HealthDataSourceCard.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/HomeScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/HomeViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/ReminderNotificationCard.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/SleepScheduleCard.kt
+app/src/main/java/com/healthyai/app/presentation/screen/home/StepCounterPermissionCard.kt
+app/src/main/java/com/healthyai/app/presentation/screen/insights/InsightsScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/insights/InsightsViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/screen/privacy/PrivacyPolicyScreen.kt
+app/src/main/java/com/healthyai/app/presentation/screen/tracking/CoreTrackingViewModel.kt
+app/src/main/java/com/healthyai/app/presentation/ui/component/ErrorStateCard.kt
+app/src/main/java/com/healthyai/app/presentation/ui/component/InfoActionCard.kt
+app/src/main/java/com/healthyai/app/presentation/ui/format/HabitProgressText.kt
+app/src/main/java/com/healthyai/app/presentation/ui/format/NumberDisplay.kt
+app/src/main/java/com/healthyai/app/presentation/ui/format/TimeDisplay.kt
+app/src/main/java/com/healthyai/app/presentation/ui/theme/Color.kt
+app/src/main/java/com/healthyai/app/presentation/ui/theme/Theme.kt
+app/src/main/java/com/healthyai/app/presentation/ui/theme/Type.kt
+app/src/main/java/com/healthyai/app/presentation/widget/HealthWidget.kt
+app/src/main/java/com/healthyai/app/presentation/widget/HealthWidgetRefresherImpl.kt
+app/src/main/java/com/healthyai/app/util/RunCatchingCancellable.kt
+app/src/main/java/com/healthyai/app/worker/HealthSyncWorker.kt
+app/src/main/java/com/healthyai/app/worker/ReminderNotifications.kt
+app/src/main/java/com/healthyai/app/worker/ReminderWorker.kt
+app/src/main/java/com/healthyai/app/worker/SleepTrackingWorker.kt
+app/src/main/java/com/healthyai/app/worker/SyncWorker.kt</code></pre>
+
+      <div class="callout tip">
+        <span class="callout__title">Đọc tiếp</span>
+        <p>
+          Vì sao chia tầng như vậy và luật phụ thuộc → <a href="architecture.html">Chương 2 · Kiến trúc</a>.
+          Chi tiết Room, SQLCipher và migration → <a href="data.html">Chương 3 · Tầng dữ liệu</a>.
+          Thuật toán cảm biến → <a href="logic-sensors.html">Chương 4</a>; Rule Engine &amp; AI →
+          <a href="logic-ai.html">Chương 5</a>. Giao diện → <a href="ui.html">Chương 6</a>.
+          Bản đồ file và bảng "muốn hiểu X thì đọc file nào" → <a href="files.html">Chương 9</a>.
+        </p>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

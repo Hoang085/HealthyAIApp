@@ -4,15 +4,7 @@ import com.healthyai.app.domain.model.HealthData
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Test cho [TodayHealthSummary] — ba chỉ số hiển thị trên widget màn hình chính.
- *
- * Điểm cần chốt là **thứ tự ưu tiên nguồn**, vì widget và thẻ "Tóm tắt sức khỏe" ở màn Trang chủ phải
- * luôn nói cùng một con số (xem KDoc của `TodayHealthSummary`):
- *
- * - bước chân ưu tiên **cảm biến của máy** khi cảm biến đã sẵn sàng;
- * - giấc ngủ / nhịp tim ưu tiên **Health Connect**, chỉ rơi về nguồn tự đo khi Health Connect trống.
- */
+/** Test cho [TodayHealthSummary]: thứ tự ưu tiên nguồn (cảm biến/Health Connect) cho ba chỉ số trên widget. */
 class TodayHealthSummaryTest {
 
     private val healthConnect = HealthData(steps = 8_000L, sleepHours = 6.5, heartRate = 74.0)

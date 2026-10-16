@@ -49,16 +49,7 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlinx.coroutines.delay
 
-/**
- * Màn Phân tích.
- *
- * [onOpenHabitLog] được gọi khi người dùng bấm nút hành động trong thẻ gợi ý AI (ví dụ
- * **"Ghi nhận uống nước"**) — màn hình chỉ phát danh mục của gợi ý, còn việc điều hướng sang tab
- * Thói quen do [com.healthyai.app.presentation.navigation.AppNavigation] lo (xem mục 3 #14).
- *
- * [onOpenPrivacyPolicy] là lối vào **Chính sách bảo mật** của phần AI (mục 3 #43) — mở từ thẻ ở cuối
- * màn này (xem [AiPrivacyCard]).
- */
+/** Màn Phân tích; điều hướng khi bấm nút gợi ý AI do AppNavigation lo, còn lối vào Chính sách bảo mật ở thẻ cuối màn. */
 @Composable
 fun InsightsScreen(
     onOpenHabitLog: (HabitCategory) -> Unit,
@@ -67,8 +58,7 @@ fun InsightsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Chi tiết pha giấc ngủ đọc trực tiếp từ Health Connect (không phải Flow) → đọc lại mỗi lần
-    // người dùng **quay lại** màn Phân tích, thay vì chỉ đọc một lần lúc mở app (phụ lục C #26).
+    // Chi tiết pha giấc ngủ đọc trực tiếp từ Health Connect (không phải Flow) nên đọc lại mỗi lần quay lại màn này.
     LifecycleResumeEffect(Unit) {
         viewModel.refresh()
         onPauseOrDispose { }
@@ -86,7 +76,7 @@ fun InsightsScreen(
 fun InsightsScreenContent(
     uiState: InsightsUiState,
     onOpenHabitLog: (HabitCategory) -> Unit,
-    /** Mở màn "Chính sách bảo mật" — nói rõ ảnh món ăn được gửi tới Google Gemini (mục 3 #43). */
+    /** Mở màn "Chính sách bảo mật": nói rõ ảnh món ăn được gửi tới Google Gemini. */
     onOpenPrivacyPolicy: () -> Unit = {},
     onDismissError: () -> Unit = {}
 ) {
@@ -104,7 +94,7 @@ fun InsightsScreenContent(
                 InsightsHeader()
             }
 
-            // Lỗi đọc dữ liệu phải hiện ra chứ không được im lặng (phụ lục C #43).
+            // Lỗi đọc dữ liệu phải hiện ra chứ không được im lặng.
             uiState.visibleError?.let { message ->
                 item {
                     ErrorStateCard(message = message, onDismiss = onDismissError)
@@ -118,9 +108,7 @@ fun InsightsScreenContent(
                     }
                 }
             } else {
-                // Feed gợi ý BLOOM AI nay là **một banner trượt tự động** (xem [AiTipBanner]) thay cho
-                // danh sách thẻ xếp dọc: chiều cao cố định nên màn Phân tích gọn hẳn, trong khi người
-                // dùng vẫn xem được toàn bộ bộ mẹo xoay vòng theo ngày (mục 3 #27).
+                // Feed gợi ý BLOOM AI là một banner trượt tự động (chiều cao cố định) thay cho danh sách thẻ xếp dọc.
                 item {
                     if (uiState.suggestions.isNotEmpty()) {
                         AiTipBanner(
@@ -152,8 +140,7 @@ fun InsightsScreenContent(
                 }
             }
 
-            // Lối vào Chính sách bảo mật của phần AI (mục 3 #43). Nằm ngoài nhánh `isLoading` nên luôn
-            // hiện, kể cả khi dữ liệu đang đọc hoặc lỗi.
+            // Lối vào Chính sách bảo mật của phần AI; nằm ngoài nhánh isLoading nên luôn hiện.
             item {
                 AiPrivacyCard(onOpenPrivacyPolicy = onOpenPrivacyPolicy)
             }
@@ -163,14 +150,7 @@ fun InsightsScreenContent(
     }
 }
 
-/**
- * Thẻ **"AI & quyền riêng tư"** — lối vào màn Chính sách bảo mật, nằm ở cuối tab **Phân tích AI**
- * (mục 3 #43).
- *
- * Nút "Xem chính sách bảo mật" trước đây nằm ở màn Ghi chép bữa ăn, cạnh công tắc "Phân tích món ăn
- * bằng AI". Màn đó đã bỏ công tắc, nên lối vào được **chuyển về đây**: tab này nói về AI, đúng chỗ
- * người dùng cần đọc rằng ảnh món ăn rời thiết bị để tới Google Gemini.
- */
+/** Thẻ "AI & quyền riêng tư" ở cuối tab Phân tích AI — lối vào màn Chính sách bảo mật. */
 @Composable
 private fun AiPrivacyCard(onOpenPrivacyPolicy: () -> Unit) {
     Card(
@@ -229,18 +209,16 @@ private fun AiTipCard(
 ) {
     val priorityColor = when (suggestion.priority) {
         SuggestionPriority.CRITICAL -> Color.Red
-        SuggestionPriority.HIGH -> Color(0xFFE65100) // Orange 900
+        SuggestionPriority.HIGH -> Color(0xFFE65100) // Cam 900
         SuggestionPriority.MEDIUM -> Color(0xFF2E7D32)
         SuggestionPriority.LOW -> Color.Gray
     }
 
-    // Nền thẻ lấy từ theme (sáng/tối) rồi phủ một lớp màu ưu tiên mờ → giữ được tín hiệu mức độ
-    // ưu tiên mà dark mode không còn thẻ nền sáng (#FFFFFF/#FFEBEE/#FFF3E0) làm mất chữ (mục 3 #18).
+    // Nền thẻ lấy từ theme rồi phủ màu ưu tiên mờ, để dark mode không làm mất chữ như thẻ nền sáng cố định.
     val surfaceColor = MaterialTheme.colorScheme.surfaceContainerLow
     val priorityTint = priorityColor.copy(alpha = 0.12f)
 
-    // fillMaxSize (không phải fillMaxWidth): thẻ là một TRANG của banner cao cố định nên phải phủ hết
-    // chiều cao trang — nếu không, các trang lệch kích thước sẽ làm banner nhảy khi trượt.
+    // fillMaxSize (không phải fillMaxWidth): thẻ là một trang của banner cao cố định nên phải phủ hết chiều cao, tránh banner nhảy khi trượt.
     Card(
         modifier = Modifier.fillMaxSize(),
         shape = RoundedCornerShape(32.dp),
@@ -329,27 +307,17 @@ private fun AiTipCard(
     }
 }
 
-/**
- * **Banner gợi ý BLOOM AI** — chỉ hiển thị **một gợi ý mỗi lúc** và **tự trượt** sang gợi ý kế tiếp
- * sau mỗi [AI_BANNER_AUTO_SCROLL_MS].
- *
- * Trước đây mỗi gợi ý là một thẻ **xếp dọc** nên màn Phân tích bị dài và nặng; nay toàn bộ feed nằm
- * trong một khối cao cố định ([AI_BANNER_HEIGHT]) nên màn hình gọn hẳn, mà người dùng vẫn xem được
- * hết bộ mẹo nhờ tự cuộn hoặc **vuốt tay**. Bộ mẹo do [com.healthyai.app.domain.usecase.HabitRuleEngine]
- * xoay vòng theo ngày và không trùng nhau, nên mỗi ngày banner mang những gợi ý khác (mục 3 #27).
- */
+/** Banner gợi ý BLOOM AI: hiển thị một gợi ý mỗi lúc và tự trượt sang gợi ý kế tiếp, trong khối cao cố định. */
 @Composable
 private fun AiTipBanner(
     suggestions: List<Suggestion>,
     onActionClick: (HabitCategory) -> Unit
 ) {
     val pageCount = suggestions.size
-    // Pager "vô hạn" (số trang rất lớn + lấy phần dư) để banner luôn trượt **tới trước**, không bao
-    // giờ phải quay ngược về gợi ý đầu khi tới gợi ý cuối.
+    // Pager "vô hạn" (số trang rất lớn + lấy phần dư) để banner luôn trượt tới trước, không quay ngược về đầu.
     val pagerState = rememberPagerState(pageCount = { Int.MAX_VALUE })
 
-    // Tự cuộn: chỉ chạy khi có từ 2 gợi ý trở lên, và đứng ngoài lúc người dùng đang vuốt tay để
-    // không giành điều khiển với họ.
+    // Tự cuộn: chỉ chạy khi có từ 2 gợi ý trở lên và không giành điều khiển khi người dùng đang vuốt tay.
     LaunchedEffect(pageCount) {
         if (pageCount <= 1) return@LaunchedEffect
         while (true) {
@@ -577,7 +545,7 @@ private fun VitalityScoreCard(vitality: VitalityScore) {
 
             Box(contentAlignment = Alignment.Center) {
                 Canvas(modifier = Modifier.size(160.dp)) {
-                    // Background circle
+                    // Vòng nền
                     drawArc(
                         color = trackColor,
                         startAngle = 0f,
@@ -585,12 +553,12 @@ private fun VitalityScoreCard(vitality: VitalityScore) {
                         useCenter = false,
                         style = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
                     )
-                    // Progress arc (sections)
+                    // Cung tiến độ theo đoạn
                     val sections = 8
                     val gap = 5f
                     val sweep = (360f / sections) - gap
 
-                    // Score normalized to 8 sections
+                    // Chuẩn hoá điểm thành 8 đoạn
                     val sectionsToFill = (score / 100f * sections).toInt().coerceIn(0, sections)
 
                     for (i in 0 until sectionsToFill) {
@@ -640,13 +608,7 @@ private fun VitalityScoreCard(vitality: VitalityScore) {
     }
 }
 
-/**
- * Thẻ **"Lịch sử sức khỏe 7 ngày"**: biểu đồ cột số bước + bảng mỗi ngày một dòng (bước chân, giờ ngủ,
- * nhịp tim) đọc từ `health_data_history` — đúng nguồn dữ liệu mà AI ở màn này dùng để phân tích.
- *
- * Ngày **chưa có hàng nào** trong lịch sử hiện rõ "Chưa có dữ liệu" thay vì một loạt số 0, vì 0 sẽ bị
- * hiểu là "hôm đó đi bộ 0 bước / ngủ 0 giờ" (khác hẳn "chưa có nguồn dữ liệu").
- */
+/** Thẻ "Lịch sử sức khỏe 7 ngày": biểu đồ bước chân + bảng mỗi ngày một dòng; ngày chưa có dữ liệu hiện "Chưa có dữ liệu" thay vì số 0. */
 @Composable
 private fun HealthHistoryCard(days: List<DailyHealthSummary>) {
     Card(
@@ -693,10 +655,7 @@ private fun HealthHistoryCard(days: List<DailyHealthSummary>) {
     }
 }
 
-/**
- * Biểu đồ cột **số bước** của 7 ngày: mốc 100% là ngày đi nhiều nhất trong tuần (để cột luôn đọc được
- * dù người dùng đi 500 hay 20 000 bước). Ngày chưa có số hiện `—` và không có cột.
- */
+/** Biểu đồ cột số bước 7 ngày; mốc 100% là ngày đi nhiều nhất tuần để cột luôn đọc được. */
 @Composable
 private fun StepsBarChart(days: List<DailyHealthSummary>) {
     val maxSteps = days.maxOf { it.steps }.coerceAtLeast(1L)
@@ -752,7 +711,7 @@ private fun StepsBarChart(days: List<DailyHealthSummary>) {
     }
 }
 
-/** Bảng 7 ngày: mỗi ngày một dòng gồm **bước chân / giờ ngủ / nhịp tim** đã ghi. */
+/** Bảng 7 ngày: mỗi ngày một dòng gồm bước chân / giờ ngủ / nhịp tim đã ghi. */
 @Composable
 private fun HealthHistoryTable(days: List<DailyHealthSummary>) {
     val today = LocalDate.now()
@@ -840,7 +799,7 @@ private fun HealthHistoryDivider() {
     )
 }
 
-/** Ô **chưa ghi được chỉ số nào** trong ngày (khác hẳn số 0 — xem [DailyHealthSummary.hasData]). */
+/** Ô chưa ghi được chỉ số nào trong ngày (khác hẳn số 0). */
 private const val NO_DATA_CELL = "—"
 
 private fun formatStepsCell(steps: Long): String =
@@ -881,8 +840,7 @@ private fun SleepQualityTrendCard(trend: SleepTrend, breakdown: SleepStageBreakd
             Spacer(modifier = Modifier.height(24.dp))
 
             if (!trend.hasData && !breakdown.hasData) {
-                // Chưa có giờ ngủ (app chưa đo/đồng bộ) và cũng chưa có dữ liệu pha → hướng dẫn cụ thể
-                // cách để có số liệu, thay vì chỉ nói "cần Health Connect".
+                // Chưa có giờ ngủ và cũng chưa có dữ liệu pha → hướng dẫn cụ thể cách để có số liệu.
                 Text(
                     stringResource(R.string.insights_sleep_no_data),
                     style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray),
@@ -926,8 +884,7 @@ private fun SleepQualityTrendCard(trend: SleepTrend, breakdown: SleepStageBreakd
                     )
                 }
 
-                // Chỉ vẽ thanh chi tiết khi máy **có** dữ liệu pha; máy chỉ báo tổng thời lượng ngủ thì
-                // hiện dòng tổng (phụ lục C #25).
+                // Chỉ vẽ thanh chi tiết khi máy có dữ liệu pha; máy chỉ báo tổng thời lượng thì hiện dòng tổng.
                 if (breakdown.hasStages) {
                     if (trend.hasData) {
                         Spacer(modifier = Modifier.height(20.dp))
@@ -953,8 +910,7 @@ private fun SleepQualityTrendCard(trend: SleepTrend, breakdown: SleepStageBreakd
                         style = MaterialTheme.typography.labelSmall.copy(color = Color.Gray)
                     )
                 } else if (breakdown.hasData) {
-                    // Thiết bị chỉ báo `STAGE_TYPE_SLEEPING` (không chia Sâu/Nông/REM) → vẫn có số liệu
-                    // ngủ thật để hiển thị thay vì thẻ rỗng (phụ lục C #25).
+                    // Thiết bị chỉ báo STAGE_TYPE_SLEEPING (không chia Sâu/Nông/REM) → vẫn hiện số ngủ thật thay vì thẻ rỗng.
                     if (trend.hasData) {
                         Spacer(modifier = Modifier.height(20.dp))
                     }
@@ -971,10 +927,7 @@ private fun SleepQualityTrendCard(trend: SleepTrend, breakdown: SleepStageBreakd
     }
 }
 
-/**
- * Biểu đồ cột **giờ ngủ của 7 đêm gần nhất** (cũ → mới). Mốc 100% là đêm ngủ nhiều nhất trong tuần để
- * cột luôn đọc được; đêm chưa có số hiện `—` và không có cột.
- */
+/** Biểu đồ cột giờ ngủ 7 đêm gần nhất; mốc 100% là đêm ngủ nhiều nhất tuần để cột luôn đọc được. */
 @Composable
 private fun SleepNightsBarChart(trend: SleepTrend) {
     val maxHours = trend.nights.maxOf { it.hours }.coerceAtLeast(1.0).toFloat()
@@ -1060,10 +1013,7 @@ private fun formatSleepMinutes(minutes: Long): String = "${minutes / 60}h ${minu
 
 private val BAR_TRACK_HEIGHT = 92.dp
 
-/**
- * Chiều cao cố định của banner gợi ý AI. Cố định để banner không "phình" theo độ dài mẹo và để màn
- * Phân tích không bị dài như khi xếp dọc nhiều thẻ (mục 3 #27).
- */
+/** Chiều cao cố định của banner gợi ý AI, để banner không "phình" theo độ dài mẹo. */
 private val AI_BANNER_HEIGHT = 240.dp
 
 /** Nhịp tự cuộn của banner gợi ý AI — 5 giây đủ để đọc trọn một gợi ý. */

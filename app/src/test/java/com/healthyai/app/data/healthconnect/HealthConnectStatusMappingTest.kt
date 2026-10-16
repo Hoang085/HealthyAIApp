@@ -4,14 +4,7 @@ import com.healthyai.app.domain.model.HealthConnectStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Test cho việc dịch mã trạng thái của Health Connect SDK sang enum của domain —
- * đây là dữ liệu quyết định màn Home hiện thẻ "Cấp quyền" hay "Cài / Cập nhật Health Connect".
- *
- * Dùng số literal thay vì hằng số của `HealthConnectClient` để test chạy được trên JVM
- * (giá trị theo SDK: `SDK_AVAILABLE = 3`, `SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED = 2`,
- * `SDK_UNAVAILABLE = 1`).
- */
+/** Test dịch mã trạng thái Health Connect sang enum domain; dùng số literal để chạy trên JVM (3=available, 2=update required, 1=unavailable). */
 class HealthConnectStatusMappingTest {
 
     @Test

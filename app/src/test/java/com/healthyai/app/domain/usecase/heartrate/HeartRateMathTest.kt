@@ -6,14 +6,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho [HeartRateMath] — các phép tính thuần của phép đo nhịp tim bằng camera + đèn flash.
- *
- * Mọi giá trị đều tính bằng tay để test không phụ thuộc thời gian chạy thật.
- */
+/** Unit test cho [HeartRateMath] — phép đo nhịp tim bằng camera + đèn flash; mọi giá trị tính tay. */
 class HeartRateMathTest {
 
-    // ── Ngưỡng phải khớp với nhau ──────────────────────────────
+    // Ngưỡng phải khớp với nhau
 
     @Test
     fun `the interval limits match the bpm limits they describe`() {
@@ -40,7 +36,7 @@ class HeartRateMathTest {
         assertFalse(HeartRateMath.isValidInterval(1_600.0)) // 37 bpm → quá chậm
     }
 
-    // ── Trung vị và độ tản ─────────────────────────────────────
+    // Trung vị và độ tản
 
     @Test
     fun `the bpm of an interval is 60 000 divided by its length`() {
@@ -66,7 +62,7 @@ class HeartRateMathTest {
         assertEquals(5.0, HeartRateMath.medianAbsoluteDeviation(intervals), 0.001)
     }
 
-    // ── Độ đều của nhịp ───────────────────────────────────────
+    // Độ đều của nhịp
 
     @Test
     fun `perfectly even heartbeats have maximum regularity`() {
@@ -94,7 +90,7 @@ class HeartRateMathTest {
         assertTrue(HeartRateMath.intervalRegularity(intervals) > 0.7f)
     }
 
-    // ── Độ mạnh tín hiệu ──────────────────────────────────────
+    // Độ mạnh tín hiệu
 
     @Test
     fun `signal strength is a ratio so a brighter image does not change it`() {
@@ -118,7 +114,7 @@ class HeartRateMathTest {
         assertTrue("Phải nằm dưới mức tín hiệu mạnh", weak < 0.5f)
     }
 
-    // ── Nội suy đỉnh ──────────────────────────────────────────
+    // Nội suy đỉnh
 
     @Test
     fun `a symmetric peak needs no correction`() {
@@ -150,7 +146,7 @@ class HeartRateMathTest {
         assertTrue(offset >= -1.0 && offset <= 1.0)
     }
 
-    // ── Đổi YUV → kênh đỏ ─────────────────────────────────────
+    // Đổi YUV → kênh đỏ
 
     @Test
     fun `a neutral chroma means the red channel equals the brightness`() {
@@ -168,7 +164,7 @@ class HeartRateMathTest {
         assertTrue(HeartRateMath.redFromYuvMeans(luma = 150.0, chromaV = 100.0) < 150.0)
     }
 
-    // ── Phân loại nhịp nghỉ ───────────────────────────────────
+    // Phân loại nhịp nghỉ
 
     @Test
     fun `resting zones follow the usual 60 to 100 bpm range`() {

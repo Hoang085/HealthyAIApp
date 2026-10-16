@@ -6,19 +6,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho [FoodAnalysis] — luật thuần Kotlin của tính năng "phân tích món ăn bằng AI" (mục 3 #42).
- *
- * Chốt hai nhóm hành vi dễ hỏng:
- * 1. **Prompt** — vì đây là "hợp đồng" với model: phải đòi tiếng Việt, ưu tiên món Việt/Á, phủ trái
- *    cây/đồ uống, bắt ghi "(có thể)" khi không chắc (chống đúng lỗi *"đĩa cơm → pizza"*), và **cấm**
- *    phát ngôn y tế.
- * 2. **[FoodAnalysis.toInsight]** — dữ liệu AI trả về là **không tin cậy**: phải cắt độ dài, bỏ mục
- *    rỗng, bỏ mục trùng, giới hạn số gạch đầu dòng, và thay emoji rác bằng emoji mặc định.
- */
+/** Unit test cho [FoodAnalysis]. */
 class FoodAnalysisTest {
 
-    // ── Prompt ─────────────────────────────────────────────────
+    // Prompt
 
     @Test
     fun `prompt asks for Vietnamese and prioritises Vietnamese or Asian dishes`() {
@@ -63,7 +54,7 @@ class FoodAnalysisTest {
         )
     }
 
-    // ── toInsight: trường hợp bình thường ──────────────────────
+    // toInsight: trường hợp bình thường
 
     @Test
     fun `a dish with benefits and cautions is kept as is`() {
@@ -90,7 +81,7 @@ class FoodAnalysisTest {
         assertTrue("Thiếu danh sách thì coi như rỗng", insight.benefits.isEmpty() && insight.cautions.isEmpty())
     }
 
-    // ── toInsight: ảnh không có đồ ăn / không gọi được tên ─────
+    // toInsight: ảnh không có đồ ăn / không gọi được tên
 
     @Test
     fun `not food means an empty insight`() {
@@ -121,7 +112,7 @@ class FoodAnalysisTest {
         assertFalse(FoodAnalysis.toInsight(true, null, null, listOf("a"), listOf("b")).hasDish)
     }
 
-    // ── toInsight: dọn dữ liệu bẩn ─────────────────────────────
+    // toInsight: dọn dữ liệu bẩn
 
     @Test
     fun `blank and whitespace bullets are dropped and the rest is trimmed`() {

@@ -15,18 +15,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Unit test cho [AuthGateViewModel] — "cổng xác thực" quyết định màn hình gốc của app.
- *
- * Trước bản sửa lỗi mục 3 #19, app **không có UI đăng xuất**: sau khi đăng nhập (hoặc bấm
- * "Bỏ qua") người dùng chỉ còn cách xoá dữ liệu app để quay lại màn đăng nhập. Test chốt lại
- * hành vi của [AuthGateViewModel.signOut] — xem **TC-AUTH-16**:
- * 1. chưa có phiên → `SignedOut` (màn đăng nhập);
- * 2. có phiên Firebase → `SignedIn` (vào thẳng app);
- * 3. bấm "Bỏ qua" → `Guest`;
- * 4. **đăng xuất ở chế độ khách** → xoá cờ khách → `SignedOut`;
- * 5. **đăng xuất khi đã đăng nhập** → gọi `AuthRepository.signOut()` → `SignedOut`.
- */
+/** Unit test cho [AuthGateViewModel] — cổng xác thực quyết định màn hình gốc của app. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthGateViewModelTest {
 
@@ -119,7 +108,7 @@ class AuthGateViewModelTest {
     /** Repository giả trong bộ nhớ: không cần Firebase/Android. */
     private class FakeAuthRepository(
         userId: String? = null,
-        /** Tên hiển thị của phiên (phụ lục C #30) — chỉ dùng cho màn Trang chủ. */
+        /** Tên hiển thị của phiên — chỉ dùng cho màn Trang chủ. */
         private val userName: String? = null
     ) : AuthRepository {
 

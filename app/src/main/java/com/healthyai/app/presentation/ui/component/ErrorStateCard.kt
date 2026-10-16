@@ -19,10 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/**
- * Thẻ lỗi đỏ dùng chung cho các màn hình có thao tác ghi dữ liệu: hiện [message] kèm nút đóng
- * ([onDismiss]). Dùng ở màn Trang chủ (đọc dữ liệu sức khỏe) và màn Thói quen (ghi nhận thất bại).
- */
+/** Thẻ lỗi đỏ hiện [message] kèm nút đóng ([onDismiss]). */
 @Composable
 fun ErrorStateCard(message: String, onDismiss: () -> Unit) {
     Card(

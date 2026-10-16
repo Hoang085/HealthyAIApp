@@ -9,21 +9,10 @@ import org.junit.Test
 import java.util.Random
 import kotlin.math.abs
 
-/**
- * Unit test cho [PpgAnalyzer] — thuật toán biến dòng khung hình camera thành nhịp tim.
- *
- * Tín hiệu mạch đập được **giả lập** (xem [PpgTestSignal]) vì unit test không thể cắm ngón tay thật vào
- * camera. Nhờ vậy test chốt được cả **độ chính xác** (nhịp đã biết → nhịp đo ra) lẫn **khả năng từ
- * chối** tín hiệu không phải mạch đập (nhiễu, mất ngón tay, nhịp không đều).
- */
+/** Unit test cho [PpgAnalyzer] — biến dòng khung hình camera thành nhịp tim; tín hiệu mạch đập giả lập (xem [PpgTestSignal]). */
 class PpgAnalyzerTest {
 
-    /**
-     * Phát khung hình trong [durationMs] vào [analyzer] và trả về tình trạng đo ở khung hình cuối.
-     *
-     * @param bpm `null` = không có mạch đập (chỉ có nhiễu).
-     * @param noise Độ lệch chuẩn của nhiễu cộng thêm (rung tay, nhiễu cảm biến).
-     */
+    /** Phát khung hình trong [durationMs] vào [analyzer] và trả về tình trạng đo ở khung hình cuối; `bpm = null` = chỉ nhiễu. */
     private fun feed(
         analyzer: PpgAnalyzer = PpgAnalyzer(),
         durationMs: Long,
@@ -61,7 +50,7 @@ class PpgAnalyzerTest {
         ready = false
     )
 
-    // ── Đo đúng nhịp ──────────────────────────────────────────
+    // Đo đúng nhịp
 
     @Test
     fun `a 72 bpm pulse is measured as 72 bpm`() {
@@ -116,7 +105,7 @@ class PpgAnalyzerTest {
         assertTrue("Biên độ đỉnh tâm thu ~0,6% của DC → tín hiệu mạnh", progress.signalStrength > 0.5f)
     }
 
-    // ── Chưa đủ dữ liệu ───────────────────────────────────────
+    // Chưa đủ dữ liệu
 
     @Test
     fun `nothing is concluded before the minimum measuring time`() {
@@ -136,7 +125,7 @@ class PpgAnalyzerTest {
         assertFalse(progress.ready)
     }
 
-    // ── Từ chối tín hiệu không phải mạch đập ──────────────────
+    // Từ chối tín hiệu không phải mạch đập
 
     @Test
     fun `pure noise never passes as a heartbeat`() {
@@ -151,8 +140,7 @@ class PpgAnalyzerTest {
 
     @Test
     fun `a signal buried in noise is not reported as a wrong rhythm`() {
-        // Tín hiệu thật nhưng nhiễu khá mạnh (rung tay) — chấp nhận không kết luận, nhưng nếu có kết
-        // quả thì không được lệch hẳn khỏi nhịp thật.
+        // Nhiễu mạnh (rung tay): chấp nhận không kết luận, nhưng có kết quả thì không được lệch hẳn.
         val progress = feed(durationMs = 30_000, bpm = 72.0, noise = 0.3)
 
         if (progress.bpm != null) {
@@ -253,7 +241,7 @@ class PpgAnalyzerTest {
         )
     }
 
-    // ── Trạng thái ────────────────────────────────────────────
+    // Trạng thái
 
     @Test
     fun `reset clears everything for the next measurement`() {
@@ -275,8 +263,7 @@ class PpgAnalyzerTest {
 
     @Test
     fun `a frame timestamp of zero is handled like any other timestamp`() {
-        // Mốc thời gian bằng 0 không được dùng làm giá trị "chưa có" (sentinel) — nếu không, đồng hồ
-        // đo sẽ đứng ở 0 mãi và không bao giờ chốt được kết quả.
+        // Mốc 0 không được dùng làm sentinel "chưa có", nếu không đồng hồ đo đứng ở 0 mãi.
         val analyzer = PpgAnalyzer()
         var progress = analyzer.addSample(PpgTestSignal.FINGER_DC, 0L)
         var timestamp = PpgTestSignal.FRAME_MS

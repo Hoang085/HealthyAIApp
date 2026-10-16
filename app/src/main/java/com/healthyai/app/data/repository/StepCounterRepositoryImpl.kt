@@ -21,14 +21,7 @@ import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Đếm bước từ cảm biến của máy: kiểm tra quyền `ACTIVITY_RECOGNITION` rồi chuyển từng mẫu luỹ kế của
- * cảm biến thành "số bước hôm nay" qua [StepCounterStore] (bên trong dùng `StepCounterMath`).
- *
- * Chỉ **phần đếm được trong lúc app đang chạy** mới được cộng vào: app đang mở hoặc còn nằm trong tác
- * vụ (chạy nền) thì đếm tiếp bình thường, còn đóng hẳn app rồi mở lại thì khoảng thời gian ở giữa
- * **không** được tính (xem `StepCounterMath` / `StepCounterStore`).
- */
+/** Đếm bước từ cảm biến của máy; chỉ phần đếm trong lúc app đang chạy mới được cộng vào. */
 @Singleton
 class StepCounterRepositoryImpl @Inject constructor(
     private val sensor: StepCounterSensor,
@@ -41,10 +34,7 @@ class StepCounterRepositoryImpl @Inject constructor(
         permissionGranted = hasActivityRecognitionPermission()
     )
 
-    /**
-     * `ACTIVITY_RECOGNITION` chỉ được yêu cầu từ Android 10 (API 29); các bản cũ hơn dùng cảm biến
-     * đếm bước không cần quyền nên luôn coi là đã có.
-     */
+    /** `ACTIVITY_RECOGNITION` chỉ cần từ Android 10 (API 29); bản cũ hơn coi như đã có quyền. */
     private fun hasActivityRecognitionPermission(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(
@@ -66,10 +56,7 @@ class StepCounterRepositoryImpl @Inject constructor(
             .collect { cumulative -> send(store.onSample(cumulative)) }
     }.distinctUntilChanged()
 
-    /**
-     * Đọc một lần cho worker ghi lịch sử: chờ mẫu cảm biến đầu tiên trong [timeoutMs], hết thời gian
-     * chờ thì dùng giá trị đã lưu của hôm nay (0 nếu đã sang ngày mới hoặc chưa từng đọc).
-     */
+    /** Đọc một lần cho worker ghi lịch sử: chờ mẫu cảm biến trong [timeoutMs], hết hạn thì dùng giá trị đã lưu của hôm nay. */
     override suspend fun readTodaySteps(timeoutMs: Long): Long {
         if (!getStatus().isReady) return store.readStoredTodaySteps(LocalDate.now().toString())
 

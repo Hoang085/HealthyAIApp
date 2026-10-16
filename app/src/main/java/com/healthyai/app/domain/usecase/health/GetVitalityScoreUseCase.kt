@@ -9,17 +9,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 
-/**
- * UseCase lấy điểm Vitality của **7 ngày gần nhất** kèm **mức thay đổi so với 7 ngày trước đó**.
- *
- * Công thức nằm ở [VitalityScoreMath]: điểm ghép từ **thói quen đạt mục tiêu + giờ ngủ + bước chân**,
- * tính **theo từng ngày** trong cửa sổ nên bỏ thói quen vài ngày là điểm **tụt** (thay vì giữ nguyên
- * như khi lấy trung bình cả tuần với mặc định 50/70).
- *
- * - Điểm số cập nhật realtime theo nhật ký thói quen và dữ liệu sức khỏe (Flow).
- * - `hasData = false` khi cửa sổ chưa có nguồn nào để chấm (chưa có thói quen/bước chân/giờ ngủ).
- * - `delta = null` khi 7 ngày trước đó không có quan sát nào → UI ẩn phần so sánh.
- */
+/** Điểm Vitality 7 ngày gần nhất kèm mức thay đổi so với 7 ngày trước; delta null khi kỳ trước không có dữ liệu. */
 class GetVitalityScoreUseCase @Inject constructor(
     private val habitRepository: HabitRepository,
     private val healthDataRepository: HealthDataRepository

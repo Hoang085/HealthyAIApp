@@ -9,12 +9,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-/**
- * Unit test cho `HealthSummaryHistory.summarize` — phần gom lịch sử `health_data_history` thành **một
- * dòng mỗi ngày** mà thẻ "Lịch sử sức khỏe 7 ngày" ở tab Phân tích hiển thị.
- *
- * Dùng ngày và múi giờ **cố định** để test không phụ thuộc giờ máy.
- */
+/** Unit test cho HealthSummaryHistory.summarize (ngày/múi giờ cố định) — gom lịch sử thành một dòng mỗi ngày. */
 class HealthSummaryHistoryTest {
 
     private val zone: ZoneId = ZoneId.of("Asia/Ho_Chi_Minh")
@@ -56,8 +51,7 @@ class HealthSummaryHistoryTest {
 
     @Test
     fun `the newest row of a day wins because it holds the merged data`() {
-        // Đúng chuỗi ghi thật trong ngày: đồng bộ buổi sáng → đồng bộ buổi tối (gộp bước chân) → đo
-        // nhịp tim bằng camera (gộp tiếp vào chính hàng đó). Hàng mới nhất là hàng đầy đủ nhất.
+        // Chuỗi ghi thật trong ngày: hàng mới nhất là hàng đầy đủ nhất (đã gộp dữ liệu).
         val history = listOf(
             row(today.minusDays(1), steps = 1_200L, at = LocalTime.of(8, 0)),
             row(today.minusDays(1), steps = 4_500L, sleepHours = 6.0, at = LocalTime.of(20, 0)),

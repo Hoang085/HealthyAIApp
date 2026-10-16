@@ -19,12 +19,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Test cho điểm sinh lực **ghép từ thói quen + giờ ngủ + bước chân** và **tính theo từng ngày**.
- *
- * Điểm chính cần bảo vệ: bỏ thói quen vài ngày thì điểm **tụt** (trước đây lấy trung bình cả tuần với
- * mặc định 50/70 nên điểm giữ nguyên), và `delta` chỉ hiện khi tuần trước **thật sự có quan sát**.
- */
+/** Test điểm sinh lực ghép từ thói quen + giờ ngủ + bước chân: bỏ thói quen vài ngày thì điểm tụt. */
 class GetVitalityScoreUseCaseTest {
 
     private val habitRepository = mockk<HabitRepository>()
@@ -145,7 +140,7 @@ class GetVitalityScoreUseCaseTest {
         assertEquals(100, result.score)
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
     private fun given(habits: List<Habit>, logs: List<HabitLog>, history: List<HealthData>) {
         every { habitRepository.getAllActiveHabits() } returns flowOf(habits)

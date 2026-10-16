@@ -6,10 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Test kho mẹo [SuggestionCatalog]: mỗi danh mục phải có **cả** nhóm mẹo cho lúc "có vấn đề" (CONCERN)
- * **và** lúc "đang ổn" (GENERAL) — điều kiện để feed gợi ý luôn đa dạng, không lặp một thẻ duy nhất.
- */
+/** Test kho mẹo [SuggestionCatalog]: mỗi danh mục có cả mẹo CONCERN lẫn GENERAL để feed đa dạng. */
 class SuggestionCatalogTest {
 
     @Test

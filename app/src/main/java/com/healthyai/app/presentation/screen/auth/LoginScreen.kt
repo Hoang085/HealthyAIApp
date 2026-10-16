@@ -40,12 +40,7 @@ import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
 private val BrandGreen = Color(0xFF2E7D32)
 
-/**
- * Màn hình đăng nhập / đăng ký bằng email + mật khẩu.
- *
- * App **không bắt buộc** đăng nhập: [onContinueAsGuest] cho phép vào thẳng app ở chế độ
- * khách (dữ liệu vẫn lưu cục bộ; chỉ phần đồng bộ Firestore cần đăng nhập).
- */
+/** Đăng nhập / đăng ký bằng email + mật khẩu; không bắt buộc — có thể tiếp tục ở chế độ khách. */
 @Composable
 fun LoginScreen(
     onContinueAsGuest: () -> Unit,
@@ -96,16 +91,6 @@ fun LoginScreenContent(
                     fontWeight = FontWeight.Bold,
                     fontSize = 26.sp
                 )
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (uiState.isRegisterMode) {
-                    stringResource(R.string.auth_subtitle_register)
-                } else {
-                    stringResource(R.string.auth_subtitle_sign_in)
-                },
-                style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray),
-                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -238,14 +223,6 @@ fun LoginScreenContent(
             ) {
                 Text(stringResource(R.string.auth_skip_guest), fontWeight = FontWeight.SemiBold)
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = stringResource(R.string.auth_guest_note),
-                style = MaterialTheme.typography.bodySmall.copy(color = Color.Gray),
-                textAlign = TextAlign.Center
-            )
         }
     }
 }

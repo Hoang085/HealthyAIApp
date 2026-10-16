@@ -14,10 +14,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Test cho biểu đồ "Sự nhất quán hàng tuần": số thói quen đạt mục tiêu theo từng ngày
- * trong 7 ngày gần nhất (thay cho biểu đồ hard-code trước đây).
- */
+/** Test cho biểu đồ "Sự nhất quán hàng tuần": số thói quen đạt mục tiêu mỗi ngày trong 7 ngày gần nhất. */
 class GetWeeklyConsistencyUseCaseTest {
 
     private val habitRepository = mockk<HabitRepository>()
@@ -100,8 +97,7 @@ class GetWeeklyConsistencyUseCaseTest {
 
     @Test
     fun `days before a habit was created do not count it in the denominator`() = runTest {
-        // Phụ lục C #27 — mẫu số là snapshot từng ngày: thói quen tạo HÔM QUA chỉ được tính cho hôm qua
-        // và hôm nay, không được tính ngược về các ngày trước đó.
+        // Mẫu số là snapshot từng ngày: thói quen tạo hôm qua chỉ tính cho hôm qua và hôm nay.
         givenHabits(
             habit(
                 id = 1L,
@@ -128,7 +124,7 @@ class GetWeeklyConsistencyUseCaseTest {
 
     @Test
     fun `a habit created today does not lower the ratio of the previous days`() = runTest {
-        // Phụ lục C #27 — chính lỗi đã báo: tạo thói quen mới hôm nay từng làm tụt tỉ lệ của 6 ngày trước
+        // Lỗi đã báo: tạo thói quen mới hôm nay từng làm tụt tỉ lệ của 6 ngày trước.
         givenHabits(
             habit(
                 id = 1L,
@@ -162,7 +158,7 @@ class GetWeeklyConsistencyUseCaseTest {
         assertEquals(2, result.last().totalHabits)
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
     private fun givenHabits(vararg habits: Habit) {
         every { habitRepository.getAllActiveHabits() } returns flowOf(habits.toList())

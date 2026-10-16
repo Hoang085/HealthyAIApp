@@ -19,11 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalTime
 
-/**
- * Unit test cho [SettingsRepositoryImpl] — chỗ dễ sai khi thêm thiết lập mới: giá trị thiếu/hỏng phải rơi
- * về **mặc định** (23:00 → 07:00) chứ không được làm app mất khung để đo, và khung không hợp lệ thì
- * **không** được ghi vào DB.
- */
+/** Test [SettingsRepositoryImpl]: giá trị thiếu/hỏng phải rơi về mặc định (23:00 → 07:00) và khung không hợp lệ thì không ghi DB. */
 class SettingsRepositoryImplTest {
 
     private val settingsDao = mockk<SettingsDao>()
@@ -119,7 +115,7 @@ class SettingsRepositoryImplTest {
         )
     }
 
-    // ── Đồng bộ đám mây (mục 3 #31) ─────────────────────────────
+    // Đồng bộ đám mây
 
     @Test
     fun `cloud sync defaults to off when nothing was stored`() = runTest {
@@ -184,7 +180,7 @@ class SettingsRepositoryImplTest {
         )
     }
 
-    // ── Nguồn dữ liệu sức khỏe của Trang chủ (mặc định TẮT) ──────
+    // Nguồn dữ liệu sức khỏe của Trang chủ (mặc định TẮT)
 
     @Test
     fun `the health data source defaults to off when nothing was stored`() = runTest {

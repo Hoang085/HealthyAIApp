@@ -7,10 +7,7 @@ import androidx.room.PrimaryKey
 
 import com.healthyai.app.domain.model.HabitCategory
 
-/**
- * Room Entity — bảng "habit_logs".
- * isDirty = true: chưa đồng bộ lên cloud (Last Write Wins strategy cho conflict resolution).
- */
+/** Room Entity bảng "habit_logs"; isDirty = true nghĩa là chưa đồng bộ lên cloud (Last Write Wins). */
 @Entity(
     tableName = "habit_logs",
     foreignKeys = [

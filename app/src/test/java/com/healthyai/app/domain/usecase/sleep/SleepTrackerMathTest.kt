@@ -10,13 +10,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-/**
- * Unit test cho [SleepTrackerMath] — phần dễ sai nhất khi **tự tính số giờ ngủ** từ cảm biến:
- * khung giờ ngủ của người dùng, phân loại "đang ngủ", cộng dồn giữa hai mẫu, mốc "đêm" (khoá đêm nhảy
- * tại **giờ đi ngủ**, tên đêm theo ngày thức dậy) và số phút nên hiển thị trên màn Trang chủ.
- *
- * Mọi mốc thời gian đều được tính bằng tay để test không phụ thuộc thời gian chạy thật.
- */
+/** Unit test cho [SleepTrackerMath] — số giờ ngủ dễ sai: khung giờ, phân loại, cộng dồn, mốc đêm, số phút hiển thị. */
 class SleepTrackerMathTest {
 
     private val zone: ZoneId = ZoneId.of("Asia/Ho_Chi_Minh")
@@ -29,7 +23,7 @@ class SleepTrackerMathTest {
     /** Khung giờ ngủ điển hình (và cũng là mặc định của app): 23:00 → 07:00. */
     private val night: SleepSchedule = SleepSchedule(LocalTime.of(23, 0), LocalTime.of(7, 0))
 
-    /** Khung **không** vắt qua nửa đêm (người ngủ muộn): 01:00 → 08:00. */
+    /** Khung không vắt qua nửa đêm (người ngủ muộn): 01:00 → 08:00. */
     private val lateShift: SleepSchedule = SleepSchedule(LocalTime.of(1, 0), LocalTime.of(8, 0))
 
     private fun at(date: LocalDate, hour: Int, minute: Int = 0): Long =
@@ -54,7 +48,7 @@ class SleepTrackerMathTest {
         schedule: SleepSchedule = night
     ) = SleepTrackerMath.sample(state, nowMs, asleepNow, zone, schedule)
 
-    // ── Khung giờ ngủ do người dùng đặt ────────────────────────
+    // Khung giờ ngủ do người dùng đặt
 
     @Test
     fun `the sleep window follows the bedtime and wake time the user set`() {
@@ -107,7 +101,7 @@ class SleepTrackerMathTest {
         assertEquals("Sang ngày mới thì khoá đêm mới", tomorrow.toString(), SleepTrackerMath.nightIsoOf(at(tomorrow, 0, 30), zone, lateShift))
     }
 
-    // ── Phân loại "đang ngủ" ───────────────────────────────────
+    // Phân loại "đang ngủ"
 
     @Test
     fun `a dark still phone with the screen off inside the window is asleep`() {
@@ -150,7 +144,7 @@ class SleepTrackerMathTest {
         )
     }
 
-    // ── Cộng dồn thời gian ngủ ─────────────────────────────────
+    // Cộng dồn thời gian ngủ
 
     @Test
     fun `the first asleep sample only marks the start, it adds no sleep yet`() {
@@ -228,8 +222,7 @@ class SleepTrackerMathTest {
 
     @Test
     fun `changing the user window keeps the sleep already collected for the same night`() {
-        // Người dùng đổi khung 23:00–07:00 sang 01:00–08:00 → khoá đêm vẫn là "hôm nay" nên số đã đo
-        // không được phép mất.
+        // Đổi khung 23:00–07:00 → 01:00–08:00: khoá đêm vẫn "hôm nay" nên số đã đo không được mất.
         val start = sample(null, at(yesterday, 23), asleepNow = true)
         val morning = sample(start.state, at(today, 6), asleepNow = true)
 
@@ -250,7 +243,7 @@ class SleepTrackerMathTest {
         )
     }
 
-    // ── Số phút nên hiển thị (ô "Ngủ" ở màn Trang chủ) ─────────
+    // Số phút nên hiển thị (ô "Ngủ" ở màn Trang chủ)
 
     @Test
     fun `sleep of the night that just ended stays visible all day`() {
@@ -343,7 +336,7 @@ class SleepTrackerMathTest {
         )
     }
 
-    // ── Giá trị đọc ra để hiển thị / lưu lịch sử ────────────────
+    // Giá trị đọc ra để hiển thị / lưu lịch sử
 
     @Test
     fun `stored sleep is shown only for the night it belongs to`() {

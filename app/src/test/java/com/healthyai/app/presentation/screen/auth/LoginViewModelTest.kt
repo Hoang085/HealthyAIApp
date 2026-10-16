@@ -25,14 +25,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho màn hình đăng nhập.
- *
- * Trước đây app **không có màn hình đăng nhập**: `SyncWorker` đọc `FirebaseAuth.currentUser?.uid`
- * nhưng không có cách nào để đăng nhập → luôn `null`. Test này chốt lại hành vi của lớp
- * ViewModel mới: validate dữ liệu trước khi gọi Firebase, dịch lỗi sang tiếng Việt, chống
- * double-submit và hỗ trợ cả chế độ Đăng nhập / Đăng ký.
- */
+/** Unit test màn hình đăng nhập: validate trước khi gọi Firebase, dịch lỗi, chống double-submit, hỗ trợ Đăng nhập/Đăng ký. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LoginViewModelTest {
 
@@ -195,9 +188,8 @@ class LoginViewModelTest {
         assertNull(viewModel.uiState.value.error)
     }
 
-    // ── Dịch lỗi Firebase Auth ──────────────────────────────────
-    // Lưu ý: các exception của Firebase được tạo bằng MockK (không gọi constructor thật)
-    // vì constructor của `FirebaseException` gọi `android.text.TextUtils` — không có trên JVM.
+    // Dịch lỗi Firebase Auth
+    // Firebase exception tạo bằng MockK vì constructor thật gọi `android.text.TextUtils` (không có trên JVM).
 
     @Test
     fun `weak password error is not confused with wrong credentials`() {

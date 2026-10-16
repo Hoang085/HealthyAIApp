@@ -3,34 +3,7 @@ package com.healthyai.app.domain.usecase.heartrate
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/**
- * Bộ phân tích **dòng khung hình camera** thành nhịp tim (PPG — photoplethysmography).
- *
- * Đầu vào là **giá trị đỏ trung bình** của vùng giữa mỗi khung hình kèm mốc thời gian; đầu ra là
- * [PpgProgress] sau mỗi khung hình (nhịp hiện tại, chất lượng, dạng sóng để vẽ, và cảnh báo cho phần
- * hướng dẫn người dùng).
- *
- * ## Các bước xử lý
- * 1. **Bỏ thành phần một chiều (DC)** — trừ trung bình trượt ~1 giây: phần còn lại (AC) chính là
- *    "từng đợt máu dồn về đầu ngón tay". Trung bình trượt đối xứng nên **không làm lệch mốc thời
- *    gian của các đỉnh**, vì vậy phép lọc này không ảnh hưởng tới nhịp đo được.
- * 2. **Tìm đỉnh mạch** — đỉnh cục bộ của AC cao hơn ngưỡng thích ứng (45% biên độ của 2 giây gần
- *    nhất), có chống dội (không nhận hai đỉnh gần hơn [HeartRateMath.MIN_INTERVAL_MS]) và mốc thời
- *    gian được **nội suy parabol** để chính xác hơn khoảng cách giữa hai khung hình.
- * 3. **Kiểm tra tính chu kỳ bằng tự tương quan** — đây là bước trả lời câu hỏi "chuỗi đổi màu này có
- *    lặp lại đều đặn không, hay chỉ là nhiễu?". Tín hiệu thật cho tự tương quan cao ở bước trễ đúng
- *    bằng một chu kỳ tim; nhiễu thì gần như không tương quan ở mọi bước trễ.
- * 4. **Chốt nhịp** — trung vị các khoảng RR (đã loại ngoại lệ) rồi suy ra bpm; chất lượng là sự kết
- *    hợp của **tính chu kỳ** và **độ đều của nhịp**, cả hai đều là đại lượng **không phụ thuộc biên
- *    độ** nên không bị ảnh hưởng khi camera tự chỉnh phơi sáng.
- *
- * Lớp này **chỉ dùng toán thuần** (không phụ thuộc Android) nên test được trên JVM — xem
- * `PpgAnalyzerTest` với tín hiệu mạch đập giả lập ở nhịp đã biết.
- *
- * ⚠️ **Giới hạn đã biết:** đây là **ước lượng** từ camera điện thoại, không phải thiết bị y tế.
- * Chuyển động tay, ấn ngón tay quá mạnh (dòng máu bị chặn), hoặc ánh sáng phòng nhấp nháy đều làm
- * sai kết quả — đó là lý do app chỉ kết luận khi nhịp **đều** và tín hiệu **có chu kỳ rõ**.
- */
+/** Bộ phân tích dòng khung hình camera thành nhịp tim (PPG — photoplethysmography). */
 class PpgAnalyzer {
 
     private data class Sample(val timestampMs: Long, val value: Double)
@@ -52,7 +25,7 @@ class PpgAnalyzer {
     private var firstTimestampMs: Long? = null
     private var lastPeakTimestampMs: Double? = null
 
-    /** Số đỉnh mạch đã xác nhận **trong chuỗi đang đo** (mất ngón tay là bắt đầu lại). */
+    /** Số đỉnh mạch đã xác nhận trong chuỗi đang đo (mất ngón tay là bắt đầu lại). */
     private var beats = 0
 
     private var periodicity = 0f
@@ -63,11 +36,7 @@ class PpgAnalyzer {
     private var smoothedAc = 0.0
     private var smoothingStarted = false
 
-    /**
-     * Cờ "được phép nhận nhịp tiếp theo": sau mỗi nhịp phải đợi tín hiệu **rơi xuống dưới mức đặt
-     * lại** rồi mới tìm đỉnh mới. Không có bước này thì nhiễu (rung tay) tạo thêm đỉnh giả giữa hai
-     * nhịp, làm nhịp đo được bị "nhanh" giả tạo.
-     */
+    /** Cờ cho phép nhận nhịp tiếp theo — đợi tín hiệu rơi dưới mức đặt lại để tránh đỉnh giả do rung tay. */
     private var armed = true
 
     /** Xoá toàn bộ trạng thái để bắt đầu một lần đo mới. */
@@ -80,13 +49,7 @@ class PpgAnalyzer {
         forgetSignal()
     }
 
-    /**
-     * Nạp một khung hình mới và trả về tình trạng đo hiện tại.
-     *
-     * @param red Giá trị đỏ trung bình của vùng giữa khung hình (xem
-     *   [HeartRateMath.redFromYuvMeans]).
-     * @param timestampMs Mốc thời gian của khung hình (ms, đồng hồ đơn điệu của camera).
-     */
+    /** Nạp một khung hình mới (giá trị đỏ + mốc thời gian) và trả về tình trạng đo hiện tại. */
     fun addSample(red: Double, timestampMs: Long): PpgProgress {
         if (firstTimestampMs == null) firstTimestampMs = timestampMs
 
@@ -101,10 +64,7 @@ class PpgAnalyzer {
         // 2) Bỏ DC → thành phần xoay chiều (AC) là "từng đợt máu dồn về đầu ngón tay".
         val ac = red - dc
 
-        // Lọc mượt bằng trung bình động hàm mũ (EMA). EMA có **độ trễ không đổi** nên mọi đỉnh đều
-        // bị dịch đi đúng một khoảng như nhau — khoảng cách giữa hai nhịp **không** bị lệch (khác với
-        // bộ lọc phi tuyến), trong khi nhiễu tần số cao bị giảm khoảng một nửa (rung tay không còn
-        // sinh ra đỉnh giả giữa hai nhịp).
+        // Lọc mượt bằng EMA: độ trễ không đổi nên khoảng cách hai nhịp không lệch, nhiễu tần số cao giảm.
         val smoothed = if (smoothingStarted) {
             smoothedAc + AC_SMOOTHING_ALPHA * (ac - smoothedAc)
         } else {
@@ -160,7 +120,7 @@ class PpgAnalyzer {
         )
     }
 
-    // ── Tìm đỉnh mạch ─────────────────────────────────────────
+    // Tìm đỉnh mạch
 
     private fun detectPeak() {
         val index = PEAK_LOOKAHEAD
@@ -168,13 +128,7 @@ class PpgAnalyzer {
         val peak = pending[index]
         val next = pending[index + 1]
 
-        // Ngưỡng **thích ứng theo nhiễu**: đỉnh phải cao hơn trung bình 2 giây gần nhất ít nhất
-        // [PEAK_SNR_RATIO] lần độ lệch chuẩn của chính tín hiệu đó.
-        //
-        // Vì sao không dùng `min + tỉ lệ × biên độ`: biên độ (max − min) bị **chính nhiễu** kéo rộng
-        // ra, nên ngưỡng tụt xuống và nhiễu lại tạo thêm đỉnh giả — đúng lỗi làm nhịp đo ra bị
-        // "nhanh" giả tạo khi tay rung. Lấy ngưỡng theo độ lệch chuẩn thì tín hiệu yếu (biên độ nhỏ)
-        // tự động bị đòi hỏi khắt khe hơn, còn tín hiệu mạnh vẫn dễ vượt ngưỡng.
+        // Ngưỡng thích ứng = mean + [PEAK_SNR_RATIO]·độ lệch chuẩn; dùng độ lệch chuẩn (không dùng biên độ) vì biên độ bị nhiễu kéo rộng gây đỉnh giả.
         val (mean, deviation) = acStatistics()
         if (deviation <= 0.0) return
         val threshold = mean + PEAK_SNR_RATIO * deviation
@@ -209,12 +163,7 @@ class PpgAnalyzer {
         while (intervals.size > HeartRateMath.INTERVAL_WINDOW) intervals.removeFirst()
     }
 
-    /**
-     * Nhịp suy từ trung vị các khoảng RR, sau khi **loại ngoại lệ** (khoảng lệch quá 25% so với trung
-     * vị — thường là nhịp bị nhận hai lần hoặc bỏ sót một nhịp).
-     *
-     * `null` khi chưa đủ [HeartRateMath.MIN_INTERVALS] khoảng.
-     */
+    /** Nhịp từ trung vị khoảng RR sau khi loại ngoại lệ (>25% lệch trung vị); `null` khi chưa đủ khoảng. */
     private fun estimateBpm(): Int? {
         if (intervals.size < HeartRateMath.MIN_INTERVALS) return null
 
@@ -228,14 +177,7 @@ class PpgAnalyzer {
         return HeartRateMath.bpmOf(HeartRateMath.median(used)).roundToInt()
     }
 
-    /**
-     * Quên tín hiệu đang có — gọi khi **mất ngón tay che camera** (không còn là tín hiệu mạch đập)
-     * hoặc khi bắt đầu lần đo mới.
-     *
-     * Xoá cả **dạng sóng gần đây** và **tính chu kỳ** (không chỉ các khoảng RR): khi không còn ngón
-     * tay thì mọi số liệu cũ — kể cả "nhịp ước lượng" — đều không còn đúng nữa, giữ lại sẽ khiến màn
-     * đo hiện một con số cũ mà người dùng tưởng là số đang đo.
-     */
+    /** Quên tín hiệu đang có (mất ngón tay hoặc bắt đầu đo mới) — xoá cả dạng sóng và tính chu kỳ. */
     private fun forgetSignal() {
         pending.clear()
         recent.clear()
@@ -247,16 +189,9 @@ class PpgAnalyzer {
         armed = true
     }
 
-    // ── Tự tương quan (tính chu kỳ) ────────────────────────────
+    // Tự tương quan (tính chu kỳ)
 
-    /**
-     * Tính **tự tương quan chuẩn hoá** của dạng sóng ~8 giây gần nhất ở mọi bước trễ ứng với nhịp
-     * 40–200 bpm, lấy giá trị lớn nhất làm [periodicity] (`0..1`).
-     *
-     * Giá trị này **không phụ thuộc biên độ** (đã chuẩn hoá theo năng lượng tín hiệu), nên là thước
-     * đo đáng tin để phân biệt "mạch đập thật" với "nhiễu + chuyển động": nhiễu cho tương quan rất
-     * thấp ở mọi bước trễ, còn mạch đập cho tương quan cao ở đúng chu kỳ tim.
-     */
+    /** Tính tự tương quan chuẩn hoá của dạng sóng ~8 giây, lấy cực đại làm [periodicity] (0..1). */
     private fun updatePeriodicity(nowMs: Long) {
         periodicity = 0f
         correlationBpm = null
@@ -303,7 +238,7 @@ class PpgAnalyzer {
         }
     }
 
-    /** Tự tương quan **chuẩn hoá** ở bước trễ [lag]: `Σ xᵢ·xᵢ₋ₗₐg / Σ xᵢ²` (nằm trong `-1..1`). */
+    /** Tự tương quan chuẩn hoá ở bước trễ [lag] (nằm trong `-1..1`). */
     private fun correlation(series: DoubleArray, lag: Int, energy: Double): Double {
         var sum = 0.0
         for (i in lag until series.size) {
@@ -312,10 +247,7 @@ class PpgAnalyzer {
         return sum / energy
     }
 
-    /**
-     * Lấy lại [count] mẫu cách đều nhau [step] ms (kết thúc ở khung hình mới nhất) bằng nội suy
-     * tuyến tính — cần thiết vì khoảng cách giữa các khung hình của camera có dao động.
-     */
+    /** Lấy lại [count] mẫu cách đều [step] ms bằng nội suy tuyến tính (khoảng cách khung hình dao động). */
     private fun resample(step: Double, count: Int, endMs: Long): DoubleArray {
         val samples = recent.toList()
         val out = DoubleArray(count)
@@ -336,7 +268,7 @@ class PpgAnalyzer {
         return out
     }
 
-    // ── Tiện ích cửa sổ trượt ─────────────────────────────────
+    // Tiện ích cửa sổ trượt
 
     private fun push(window: ArrayDeque<Sample>, sample: Sample, windowMs: Long) {
         window.addLast(sample)
@@ -370,12 +302,7 @@ class PpgAnalyzer {
         return mean to kotlin.math.sqrt(squares / acWindow.size)
     }
 
-    /**
-     * Dạng sóng AC gần đây đã **chuẩn hoá** về `-1..1` (chia cho biên độ lớn nhất trong cửa sổ) để
-     * màn đo vẽ được đường tín hiệu mà không phải lo về đơn vị của từng thiết bị.
-     *
-     * Số điểm được giảm bớt (tối đa [WAVEFORM_POINTS]) cho nhẹ việc vẽ.
-     */
+    /** Dạng sóng AC gần đây chuẩn hoá về `-1..1`, giảm còn tối đa [WAVEFORM_POINTS] điểm để vẽ. */
     private fun waveformSnapshot(): List<Float> {
         if (recent.size < 2) return emptyList()
         val peak = recent.maxOf { abs(it.value) }
@@ -400,11 +327,7 @@ class PpgAnalyzer {
         /** Cửa sổ tính ngưỡng đỉnh thích ứng (~2 giây). */
         const val AC_WINDOW_MS = 2_000L
 
-        /**
-         * Hệ số làm mượt AC. EMA chỉ giữ được khoảng `α/(2−α) = 1/3` phương sai của nhiễu trắng (giảm
-         * độ lệch chuẩn ~42%), trong khi độ trễ không đổi nên **không** làm lệch khoảng cách giữa hai
-         * nhịp.
-         */
+        /** Hệ số làm mượt AC (EMA): giảm nhiễu trắng nhưng không làm lệch khoảng cách giữa hai nhịp. */
         const val AC_SMOOTHING_ALPHA = 0.5
 
         /** Cửa sổ để tính tự tương quan (~8 giây — đủ chứa ~5–10 nhịp). */
@@ -440,20 +363,7 @@ class PpgAnalyzer {
     }
 }
 
-/**
- * Tình trạng đo sau một khung hình — đủ để màn đo hiển thị số nhịp, dạng sóng và **hướng dẫn** người
- * dùng đang đo.
- *
- * @property elapsedMs Thời gian đã đo (ms, tính từ khung hình đầu tiên).
- * @property beats Số nhịp đã xác nhận trong chuỗi đang đo (mất ngón tay là đếm lại từ đầu).
- * @property bpm Nhịp ước lượng hiện tại; `null` khi chưa đủ dữ liệu hoặc tín hiệu không đủ rõ.
- * @property quality Độ tin cậy `0..1` = kết hợp **tính chu kỳ** của tín hiệu và **độ đều** của nhịp.
- * @property signalStrength Độ mạnh tương đối của tín hiệu `0..1` (chỉ để nhắc người dùng ấn/giữ tay).
- * @property fingerDetected Ngón tay đã che camera + đèn flash chưa (theo ngưỡng
- *   [HeartRateMath.MIN_FINGER_RED]).
- * @property waveform Dạng sóng AC gần đây, đã chuẩn hoá `-1..1`, để vẽ.
- * @property ready Đã đủ dữ liệu để **chốt** kết quả (đủ thời gian tối thiểu, đủ nhịp, chất lượng đạt).
- */
+/** Tình trạng đo sau một khung hình — đủ để màn đo hiển thị số nhịp, dạng sóng và hướng dẫn. */
 data class PpgProgress(
     val elapsedMs: Long,
     val beats: Int,

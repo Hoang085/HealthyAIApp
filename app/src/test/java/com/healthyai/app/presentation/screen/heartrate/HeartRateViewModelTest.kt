@@ -25,18 +25,7 @@ import org.junit.Before
 import org.junit.Test
 import java.util.Random
 
-/**
- * Unit test cho [HeartRateViewModel] — máy trạng thái của phép đo nhịp tim bằng camera + đèn flash.
- *
- * ViewModel nhận **giá trị đỏ trung bình của từng khung hình** (do màn hình đọc từ CameraX) nên test
- * chạy được hoàn toàn trên JVM bằng tín hiệu mạch đập giả lập ([PpgTestSignal]).
- *
- * Những hành vi được chốt ở đây:
- * - chỉ phân tích khi đang đo (khung hình lúc chờ không tạo ra số liệu);
- * - đủ thời gian + tín hiệu sạch → chốt kết quả và **tự lưu** vào lịch sử sức khỏe;
- * - tín hiệu nhiễu hết thời gian tối đa → **không** lưu một con số sai;
- * - câu hướng dẫn đổi theo tình trạng thật (chưa thấy ngón tay / tín hiệu yếu / đang đo).
- */
+/** Unit test cho [HeartRateViewModel]: máy trạng thái của phép đo nhịp tim bằng camera + đèn flash. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HeartRateViewModelTest {
 
@@ -76,7 +65,7 @@ class HeartRateViewModelTest {
         }
     }
 
-    // ── Bắt đầu đo ────────────────────────────────────────────
+    // Bắt đầu đo
 
     @Test
     fun `the screen starts idle with the instruction card`() = runTest {
@@ -118,7 +107,7 @@ class HeartRateViewModelTest {
         coVerify(exactly = 0) { saveMeasuredHeartRate(any()) }
     }
 
-    // ── Đo thành công ─────────────────────────────────────────
+    // Đo thành công
 
     @Test
     fun `a clean pulse finishes the measurement with a result`() = runTest {
@@ -186,7 +175,7 @@ class HeartRateViewModelTest {
         assertEquals(HeartRateZone.HIGH, result.zone)
     }
 
-    // ── Không đọc được nhịp ───────────────────────────────────
+    // Không đọc được nhịp
 
     @Test
     fun `noise is refused instead of saved as a wrong number`() = runTest {
@@ -222,7 +211,7 @@ class HeartRateViewModelTest {
         )
     }
 
-    // ── Dừng giữa chừng ───────────────────────────────────────
+    // Dừng giữa chừng
 
     @Test
     fun `stopping mid measurement saves nothing`() = runTest {
@@ -273,7 +262,7 @@ class HeartRateViewModelTest {
         assertFalse(state.saved)
     }
 
-    // ── Hướng dẫn cho người dùng ──────────────────────────────
+    // Hướng dẫn cho người dùng
 
     @Test
     fun `a dark frame asks the user to place the finger`() = runTest {
@@ -339,7 +328,7 @@ class HeartRateViewModelTest {
         assertEquals(HeartRateGuidance.ALMOST_DONE, state.guidance)
     }
 
-    // ── Lỗi camera & lỗi lưu ──────────────────────────────────
+    // Lỗi camera & lỗi lưu
 
     @Test
     fun `a camera failure returns to idle with an explanation`() = runTest {

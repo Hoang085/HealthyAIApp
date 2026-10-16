@@ -22,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
@@ -37,21 +36,12 @@ import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
 private val CardGreen = Color(0xFF2E7D32)
 
-/**
- * Thẻ **"Đồng bộ đám mây"** — nơi duy nhất bật/tắt việc tải nhật ký thói quen lên Firestore.
- *
- * **Mặc định TẮT** (mục 3 #31): chưa bật thì app chỉ lưu dữ liệu trên máy. Khi bật, app ghi một
- * **mốc đồng ý** và chỉ tải những log tạo **sau** mốc đó — bật xong **không** đẩy lịch sử cũ lên.
- *
- * Ở chế độ khách (chưa đăng nhập) thẻ vẫn cho bật, nhưng có thêm dòng nhắc rằng đồng bộ chỉ chạy
- * khi có tài khoản, để người dùng không hiểu nhầm là dữ liệu đã được sao lưu.
- */
+/** Thẻ "Đồng bộ đám mây": nơi duy nhất bật/tắt tải nhật ký thói quen lên Firestore; mặc định TẮT và chỉ tải log tạo sau mốc đồng ý. */
 @Composable
 fun CloudSyncCard(
     settings: CloudSyncSettings,
     isSignedIn: Boolean,
     onToggle: (Boolean) -> Unit,
-    onOpenPrivacyPolicy: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -104,13 +94,6 @@ fun CloudSyncCard(
                     style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFE65100))
                 )
             }
-
-            TextButton(
-                onClick = onOpenPrivacyPolicy,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text(stringResource(R.string.cloud_sync_open_privacy_policy))
-            }
         }
     }
 }
@@ -123,7 +106,6 @@ private fun CloudSyncCardOffPreview() {
             settings = CloudSyncSettings(),
             isSignedIn = true,
             onToggle = {},
-            onOpenPrivacyPolicy = {},
             modifier = Modifier
         )
     }
@@ -137,7 +119,6 @@ private fun CloudSyncCardGuestOnPreview() {
             settings = CloudSyncSettings(enabled = true, consentAtMillis = 1_700_000_000_000L),
             isSignedIn = false,
             onToggle = {},
-            onOpenPrivacyPolicy = {},
             modifier = Modifier
         )
     }

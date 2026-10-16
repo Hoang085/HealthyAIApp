@@ -57,8 +57,7 @@ class HealthDataRepositoryImplTest {
 
     @Test
     fun `getTodayHealthData returns correct data from data source`() = runTest {
-        // Arrange — hợp đồng nói rõ "hôm nay": tên hàm không còn nhận start/end nhưng bỏ qua chúng
-        // (phụ lục C #42)
+        // Arrange — tên hàm đã nói rõ "hôm nay"; start/end (nếu còn) bị bỏ qua
         fakeDataSource.steps = 1000
         fakeDataSource.sleepHours = 7.5
         fakeDataSource.heartRate = 72.0
@@ -105,7 +104,7 @@ class HealthDataRepositoryImplTest {
 
     @Test
     fun `getRecentHealthHistoryFlow asks the dao for the requested limit`() = runTest {
-        // Arrange — phụ lục C #16: DAO từng hard-code `LIMIT 30` nên tham số limit bị bỏ qua
+        // Arrange — DAO từng hard-code LIMIT 30 nên tham số limit từng bị bỏ qua
         every { healthDataDao.getRecentHealthData(7) } returns flowOf(emptyList<HealthDataEntity>())
 
         // Act
@@ -116,7 +115,7 @@ class HealthDataRepositoryImplTest {
         verify { healthDataDao.getRecentHealthData(7) }
     }
 
-    // ── Đồng bộ vào health_data_history (bước chân có thể đến từ cảm biến của máy) ──
+    // Đồng bộ vào health_data_history (bước chân có thể đến từ cảm biến của máy)
 
     @Test
     fun `sync uses the device step sensor when health connect is unavailable`() = runTest {
@@ -154,7 +153,7 @@ class HealthDataRepositoryImplTest {
         assertEquals(7.5, saved.captured.sleepHours, 0.01)
     }
 
-    // ── Giờ ngủ cũng có nguồn "tự lực" từ cảm biến của máy ──
+    // Giờ ngủ cũng có nguồn "tự lực" từ cảm biến của máy
 
     @Test
     fun `sync uses the device sleep estimate when health connect has no sleep`() = runTest {
@@ -258,8 +257,7 @@ class HealthDataRepositoryImplTest {
 
     @Test
     fun `sync keeps health connect data already recorded today when a later sync has no permissions`() = runTest {
-        // Arrange — hàng hôm nay đã có ngủ/nhịp tim từ Health Connect; lần này Health Connect thiếu quyền,
-        // chỉ có bước chân từ cảm biến → không được xoá dữ liệu cũ
+        // Arrange — hàng hôm nay đã có ngủ/nhịp tim; lần này chỉ có bước chân từ cảm biến, không được xoá dữ liệu cũ
         val existing = HealthDataEntity(
             id = 9L,
             steps = 500L,
@@ -288,12 +286,9 @@ class HealthDataRepositoryImplTest {
         .toInstant()
         .toEpochMilli()
 
-    // ── Vẽ lại widget màn hình chính "Sức khỏe hôm nay" ──
+    // Vẽ lại widget màn hình chính "Sức khỏe hôm nay"
 
-    /**
-     * Widget chỉ đọc dữ liệu **một lần** lúc vẽ và nhịp vẽ định kỳ là 30 phút, nên sau khi đồng bộ xong
-     * phải yêu cầu vẽ lại ngay — nếu không, bước chân / giấc ngủ / nhịp tim trên widget vẫn là số cũ.
-     */
+    /** Widget chỉ đọc dữ liệu một lần lúc vẽ và nhịp vẽ 30 phút, nên phải vẽ lại ngay sau khi đồng bộ. */
     @Test
     fun `a successful sync refreshes the home screen widget`() = runTest {
         // Arrange — có dữ liệu thật để lần đồng bộ này thực sự ghi vào Room
@@ -306,10 +301,7 @@ class HealthDataRepositoryImplTest {
         coVerify(exactly = 1) { widgetRefresher.refresh() }
     }
 
-    /**
-     * Lần đồng bộ **không có số liệu nào** thì không ghi DB (xem test phía trên) và cũng không cần vẽ lại
-     * widget — dữ liệu widget vẫn đúng như trước.
-     */
+    /** Đồng bộ không có số liệu thì không ghi DB và cũng không cần vẽ lại widget. */
     @Test
     fun `a sync without any data does not refresh the home screen widget`() = runTest {
         fakeDataSource.available = false
@@ -320,7 +312,7 @@ class HealthDataRepositoryImplTest {
         coVerify(exactly = 0) { widgetRefresher.refresh() }
     }
 
-    // ── Nhịp tim do app tự đo (màn "Đo nhịp tim" bằng camera) ──
+    // Nhịp tim do app tự đo (màn "Đo nhịp tim" bằng camera)
 
     @Test
     fun `a measurement is saved into today's row when there is none yet`() = runTest {
@@ -424,7 +416,7 @@ class HealthDataRepositoryImplTest {
         assertNull(repository.getLatestRecordedHeartRate())
     }
 
-    // ── Lịch sử tóm tắt sức khỏe 7 ngày (thẻ ở tab Phân tích) ──
+    // Lịch sử tóm tắt sức khỏe 7 ngày (thẻ ở tab Phân tích)
 
     @Test
     fun `the health history window reads every row written since the start of the window`() = runTest {
@@ -451,7 +443,7 @@ class HealthDataRepositoryImplTest {
         verify { healthDataDao.getHealthDataSince(startOfToday()) }
     }
 
-    // Fake implementation for testing
+    // Lớp giả (fake) phục vụ kiểm thử
     private class FakeHealthConnectDataSource : HealthConnectDataSource {
         var steps: Long = 0
         var sleepHours: Double = 0.0
