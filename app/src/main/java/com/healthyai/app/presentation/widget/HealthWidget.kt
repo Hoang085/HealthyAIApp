@@ -34,10 +34,13 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.healthyai.app.MainActivity
 import com.healthyai.app.R
+import com.healthyai.app.domain.model.HealthData
+import com.healthyai.app.domain.repository.SettingsRepository
 import com.healthyai.app.domain.repository.StepCounterRepository
 import com.healthyai.app.domain.repository.SleepTrackerRepository
 import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase
 import com.healthyai.app.domain.usecase.health.GetLatestRecordedHeartRateUseCase
+import com.healthyai.app.domain.usecase.health.GetStoredHealthDataUseCase
 import com.healthyai.app.domain.usecase.health.TodayHealthSummary
 import com.healthyai.app.presentation.ui.format.formatHeartRate
 import com.healthyai.app.presentation.ui.format.formatSleepDuration
@@ -83,7 +86,9 @@ class HealthWidget : GlanceAppWidget() {
     interface HealthWidgetEntryPoint {
         fun stepCounterRepository(): StepCounterRepository
         fun sleepTrackerRepository(): SleepTrackerRepository
+        fun settingsRepository(): SettingsRepository
         fun getHealthDataUseCase(): GetHealthDataUseCase
+        fun getStoredHealthDataUseCase(): GetStoredHealthDataUseCase
         fun getLatestRecordedHeartRateUseCase(): GetLatestRecordedHeartRateUseCase
     }
 
@@ -101,12 +106,15 @@ class HealthWidget : GlanceAppWidget() {
         }
     }
 
-    /** Ghép ba chỉ số; thứ tự ưu tiên nằm trong TodayHealthSummary.build nên khớp thẻ Tóm tắt sức khỏe. */
+    /**
+     * Ghép ba chỉ số bằng đúng luật của thẻ "Tóm tắt sức khỏe" ([TodayHealthSummary.build]): đọc
+     * **cùng nguồn** mà thẻ đang chọn — switch "Dùng dữ liệu Health Connect" BẬT thì đọc thẳng Health
+     * Connect, TẮT (mặc định) thì đọc bản chụp đã lưu trong app — rồi mới rơi về số app tự đo.
+     */
     private suspend fun readSummary(entryPoint: HealthWidgetEntryPoint): TodayHealthSummary {
         val stepCounter = entryPoint.stepCounterRepository()
         val stepCounterStatus = stepCounter.getStatus()
         val sleepTracker = entryPoint.sleepTrackerRepository()
-        val todayHealthData = entryPoint.getHealthDataUseCase()
         val latestRecordedHeartRate = entryPoint.getLatestRecordedHeartRateUseCase()
 
         val sensorSteps = if (stepCounterStatus.isReady) {
@@ -119,12 +127,28 @@ class HealthWidget : GlanceAppWidget() {
         }.getOrDefault(0.0)
 
         return TodayHealthSummary.build(
-            healthConnect = todayHealthData().getOrNull(),
-            sensorStepsReady = stepCounterStatus.isReady,
+            primary = readPrimaryHealthData(entryPoint),
             sensorSteps = sensorSteps,
             sensorSleepHours = sensorSleepHours,
             recordedHeartRate = latestRecordedHeartRate()
         )
+    }
+
+    /**
+     * Nguồn số liệu đang chọn trên Trang chủ. Đọc lỗi coi như rỗng để widget vẫn hiện được phần số
+     * app tự đo (bước chân từ cảm biến, giờ ngủ ước lượng, nhịp tim đã ghi) thay vì trắng cả widget.
+     */
+    private suspend fun readPrimaryHealthData(entryPoint: HealthWidgetEntryPoint): HealthData {
+        val useHealthConnect = runCatchingCancellable {
+            entryPoint.settingsRepository().getHealthConnectData().enabled
+        }.getOrDefault(false)
+
+        return if (useHealthConnect) {
+            runCatchingCancellable { entryPoint.getHealthDataUseCase()() }.getOrNull()
+                ?.getOrNull() ?: HealthData()
+        } else {
+            runCatchingCancellable { entryPoint.getStoredHealthDataUseCase()() }.getOrDefault(HealthData())
+        }
     }
 
     @Composable

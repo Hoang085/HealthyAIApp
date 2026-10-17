@@ -21,6 +21,7 @@ import com.healthyai.app.domain.usecase.health.GetHealthConnectPermissionStatusU
 import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase
 import com.healthyai.app.domain.usecase.health.GetLatestRecordedHeartRateUseCase
 import com.healthyai.app.domain.usecase.health.GetStoredHealthDataUseCase
+import com.healthyai.app.domain.usecase.health.TodayHealthSummary
 import com.healthyai.app.domain.usecase.notification.GetNotificationPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.steps.GetStepCounterStatusUseCase
 import com.healthyai.app.util.runCatchingCancellable
@@ -82,26 +83,33 @@ data class HomeUiState(
     val showStepCounterCard: Boolean
         get() = stepCounter.sensorAvailable && !stepCounter.permissionGranted
 
+    /** Nguồn đang chọn cho thẻ "Tóm tắt sức khỏe": switch BẬT = Health Connect, TẮT (mặc định) = bản chụp đã lưu trong app. */
+    private val primaryHealthData: HealthData
+        get() = if (healthConnectData.enabled) healthData else storedHealthData
+
+    /**
+     * Ba chỉ số hiển thị, ghép bằng đúng luật dùng chung với widget
+     * ([TodayHealthSummary.build]): nguồn đang chọn trước, không có số mới rơi về số app tự đo.
+     */
+    private val displaySummary: TodayHealthSummary
+        get() = TodayHealthSummary.build(
+            primary = primaryHealthData,
+            sensorSteps = sensorSteps,
+            sensorSleepHours = sensorSleepHours,
+            recordedHeartRate = recordedHeartRate
+        )
+
     /** Số bước hiển thị: theo switch (Health Connect hoặc bản chụp đã lưu), không có số thì lấy cảm biến đếm bước. */
     val displaySteps: Long
-        get() = primarySteps.takeIf { it > 0L } ?: sensorSteps
-
-    private val primarySteps: Long
-        get() = if (healthConnectData.enabled) healthData.steps else storedHealthData.steps
+        get() = displaySummary.steps
 
     /** Số giờ ngủ hiển thị: theo switch, không có số thì dùng ước lượng từ cảm biến. */
     val displaySleepHours: Double
-        get() = primarySleepHours.takeIf { it > 0.0 } ?: sensorSleepHours
-
-    private val primarySleepHours: Double
-        get() = if (healthConnectData.enabled) healthData.sleepHours else storedHealthData.sleepHours
+        get() = displaySummary.sleepHours
 
     /** Nhịp tim hiển thị: theo switch, không có số thì dùng nhịp tim ghi gần nhất trong ngày; 0 nghĩa là hôm nay chưa có. */
     val displayHeartRate: Double
-        get() = primaryHeartRate.takeIf { it > 0.0 } ?: recordedHeartRate
-
-    private val primaryHeartRate: Double
-        get() = if (healthConnectData.enabled) healthData.heartRate else storedHealthData.heartRate
+        get() = displaySummary.heartRateBpm
 
     /** Hộp thoại "Khung giờ ngủ" đang mở hay không. */
     val isSleepScheduleEditorOpen: Boolean

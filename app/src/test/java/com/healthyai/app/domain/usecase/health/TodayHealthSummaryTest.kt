@@ -4,43 +4,41 @@ import com.healthyai.app.domain.model.HealthData
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Test cho [TodayHealthSummary]: thứ tự ưu tiên nguồn (cảm biến/Health Connect) cho ba chỉ số trên widget. */
+/** Test cho [TodayHealthSummary]: nguồn đang chọn trên Trang chủ đi trước, số app tự đo chỉ là dự phòng. */
 class TodayHealthSummaryTest {
 
-    private val healthConnect = HealthData(steps = 8_000L, sleepHours = 6.5, heartRate = 74.0)
+    /** Bản chụp của nguồn đang chọn (Health Connect khi switch BẬT, dữ liệu đã lưu khi TẮT). */
+    private val primary = HealthData(steps = 8_000L, sleepHours = 6.5, heartRate = 74.0)
 
     @Test
-    fun `steps come from the device sensor while the sensor is ready`() {
+    fun `the selected source wins for steps even when the app counted fewer`() {
         val summary = TodayHealthSummary.build(
-            healthConnect = healthConnect,
-            sensorStepsReady = true,
+            primary = primary,
             sensorSteps = 1_200L,
             sensorSleepHours = 0.0,
             recordedHeartRate = 0.0
         )
 
-        // Cảm biến đã sẵn sàng ⇒ KHÔNG lấy 8 000 bước của Health Connect dù nó lớn hơn.
-        assertEquals(1_200L, summary.steps)
+        // Cảm biến chỉ đếm được phần đi bộ trong lúc app đang chạy ⇒ KHÔNG được đè số 8 000 của nguồn đang chọn.
+        assertEquals(8_000L, summary.steps)
     }
 
     @Test
-    fun `steps fall back to health connect when the sensor is not ready`() {
+    fun `steps fall back to the app sensor when the selected source has no number`() {
         val summary = TodayHealthSummary.build(
-            healthConnect = healthConnect,
-            sensorStepsReady = false,
+            primary = primary.copy(steps = 0L),
             sensorSteps = 1_200L,
             sensorSleepHours = 0.0,
             recordedHeartRate = 0.0
         )
 
-        assertEquals(8_000L, summary.steps)
+        assertEquals(1_200L, summary.steps)
     }
 
     @Test
     fun `steps are zero when neither source has a number`() {
         val summary = TodayHealthSummary.build(
-            healthConnect = null,
-            sensorStepsReady = false,
+            primary = HealthData(),
             sensorSteps = 0L,
             sensorSleepHours = 0.0,
             recordedHeartRate = 0.0
@@ -50,52 +48,9 @@ class TodayHealthSummaryTest {
     }
 
     @Test
-    fun `sleep prefers health connect and only falls back to the sensors estimate`() {
-        val fromHealthConnect = TodayHealthSummary.build(
-            healthConnect = healthConnect,
-            sensorStepsReady = true,
-            sensorSteps = 0L,
-            sensorSleepHours = 7.5,
-            recordedHeartRate = 0.0
-        )
-        val fromSensor = TodayHealthSummary.build(
-            healthConnect = healthConnect.copy(sleepHours = 0.0),
-            sensorStepsReady = true,
-            sensorSteps = 0L,
-            sensorSleepHours = 7.5,
-            recordedHeartRate = 0.0
-        )
-
-        assertEquals(6.5, fromHealthConnect.sleepHours, 0.001)
-        assertEquals(7.5, fromSensor.sleepHours, 0.001)
-    }
-
-    @Test
-    fun `heart rate prefers health connect and only falls back to the recorded measurement`() {
-        val fromHealthConnect = TodayHealthSummary.build(
-            healthConnect = healthConnect,
-            sensorStepsReady = true,
-            sensorSteps = 0L,
-            sensorSleepHours = 0.0,
-            recordedHeartRate = 68.0
-        )
-        val fromHistory = TodayHealthSummary.build(
-            healthConnect = healthConnect.copy(heartRate = 0.0),
-            sensorStepsReady = true,
-            sensorSteps = 0L,
-            sensorSleepHours = 0.0,
-            recordedHeartRate = 68.0
-        )
-
-        assertEquals(74.0, fromHealthConnect.heartRateBpm, 0.001)
-        assertEquals(68.0, fromHistory.heartRateBpm, 0.001)
-    }
-
-    @Test
-    fun `a snapshot without health connect still uses both self measured sources`() {
+    fun `an empty selected source still uses every self measured number`() {
         val summary = TodayHealthSummary.build(
-            healthConnect = null,
-            sensorStepsReady = true,
+            primary = HealthData(),
             sensorSteps = 4_321L,
             sensorSleepHours = 6.0,
             recordedHeartRate = 70.0
@@ -107,10 +62,35 @@ class TodayHealthSummaryTest {
     }
 
     @Test
+    fun `the selected source wins for sleep and heart rate too`() {
+        val summary = TodayHealthSummary.build(
+            primary = primary,
+            sensorSteps = 0L,
+            sensorSleepHours = 7.5,
+            recordedHeartRate = 68.0
+        )
+
+        assertEquals(6.5, summary.sleepHours, 0.001)
+        assertEquals(74.0, summary.heartRateBpm, 0.001)
+    }
+
+    @Test
+    fun `sleep and heart rate fall back to the numbers the app measured`() {
+        val summary = TodayHealthSummary.build(
+            primary = HealthData(),
+            sensorSteps = 0L,
+            sensorSleepHours = 7.5,
+            recordedHeartRate = 68.0
+        )
+
+        assertEquals(7.5, summary.sleepHours, 0.001)
+        assertEquals(68.0, summary.heartRateBpm, 0.001)
+    }
+
+    @Test
     fun `missing numbers are reported as zero so the widget can show a placeholder`() {
         val summary = TodayHealthSummary.build(
-            healthConnect = null,
-            sensorStepsReady = false,
+            primary = HealthData(),
             sensorSteps = 0L,
             sensorSleepHours = 0.0,
             recordedHeartRate = 0.0

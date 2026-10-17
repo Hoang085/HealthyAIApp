@@ -9,6 +9,7 @@ import com.healthyai.app.data.local.steps.StepCounterStore
 import com.healthyai.app.data.steps.StepCounterSensor
 import com.healthyai.app.domain.model.StepCounterStatus
 import com.healthyai.app.domain.repository.StepCounterRepository
+import com.healthyai.app.domain.widget.HealthWidgetRefresher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -26,8 +27,15 @@ import javax.inject.Singleton
 class StepCounterRepositoryImpl @Inject constructor(
     private val sensor: StepCounterSensor,
     private val store: StepCounterStore,
+    private val healthWidgetRefresher: HealthWidgetRefresher,
     @ApplicationContext private val context: Context
 ) : StepCounterRepository {
+
+    /**
+     * Nhịp vẽ lại widget "Sức khỏe hôm nay" theo bước chân: widget chỉ tự vẽ lại 30 phút/lần nên
+     * không có cổng này thì ô bước chân trên màn hình chính sẽ tụt lại sau số đang hiện trên app.
+     */
+    private val widgetRefreshThrottle = StepWidgetRefreshThrottle()
 
     override fun getStatus(): StepCounterStatus = StepCounterStatus(
         sensorAvailable = sensor.isAvailable,
@@ -53,8 +61,20 @@ class StepCounterRepositoryImpl @Inject constructor(
         sensor.observeCumulativeSteps()
             // Lỗi cảm biến chỉ làm dừng cập nhật, không được làm crash màn Trang chủ.
             .catch { }
-            .collect { cumulative -> send(store.onSample(cumulative)) }
+            .collect { cumulative ->
+                val todaySteps = store.onSample(cumulative)
+                send(todaySteps)
+                refreshWidgetIfStepsChanged(todaySteps)
+            }
     }.distinctUntilChanged()
+
+    /** Vẽ lại widget khi số bước đổi; cổng chặn giữ nhịp tối đa một lần mỗi phút để không tốn pin. */
+    private suspend fun refreshWidgetIfStepsChanged(todaySteps: Long) {
+        if (!widgetRefreshThrottle.shouldRefresh(todaySteps, System.currentTimeMillis())) return
+
+        // refresh() không bao giờ ném lỗi (impl bắt hết), nên luồng cảm biến không bị ảnh hưởng.
+        healthWidgetRefresher.refresh()
+    }
 
     /** Đọc một lần cho worker ghi lịch sử: chờ mẫu cảm biến trong [timeoutMs], hết hạn thì dùng giá trị đã lưu của hôm nay. */
     override suspend fun readTodaySteps(timeoutMs: Long): Long {

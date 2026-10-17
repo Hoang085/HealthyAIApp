@@ -13,17 +13,24 @@ data class TodayHealthSummary(
 ) {
     companion object {
 
-        /** Ghép ba chỉ số từ các nguồn thô mà widget đọc được. */
+        /**
+         * Ghép ba chỉ số từ nguồn đang chọn trên Trang chủ ([primary]) và các số app tự đo.
+         *
+         * Đây là **luật dùng chung** của thẻ "Tóm tắt sức khỏe" và widget: nguồn đang chọn ưu tiên
+         * trước (Health Connect hoặc bản chụp đã lưu trong app — tuỳ switch), chỉ số nào nguồn đó
+         * không có số mới rơi về số app tự đo (bước chân từ cảm biến của máy, giờ ngủ ước lượng,
+         * nhịp tim đã ghi trong ngày). Nhờ vậy hai nơi không còn lệch nhau khi cảm biến chỉ đếm
+         * được phần đi bộ trong lúc app đang chạy.
+         */
         fun build(
-            healthConnect: HealthData?,
-            sensorStepsReady: Boolean,
+            primary: HealthData,
             sensorSteps: Long,
             sensorSleepHours: Double,
             recordedHeartRate: Double
         ): TodayHealthSummary = TodayHealthSummary(
-            steps = if (sensorStepsReady) sensorSteps else healthConnect?.steps ?: 0L,
-            sleepHours = (healthConnect?.sleepHours ?: 0.0).takeIf { it > 0.0 } ?: sensorSleepHours,
-            heartRateBpm = (healthConnect?.heartRate ?: 0.0).takeIf { it > 0.0 } ?: recordedHeartRate
+            steps = primary.steps.takeIf { it > 0L } ?: sensorSteps,
+            sleepHours = primary.sleepHours.takeIf { it > 0.0 } ?: sensorSleepHours,
+            heartRateBpm = primary.heartRate.takeIf { it > 0.0 } ?: recordedHeartRate
         )
     }
 }
