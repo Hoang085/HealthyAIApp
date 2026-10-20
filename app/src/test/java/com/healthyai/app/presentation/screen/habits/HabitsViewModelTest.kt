@@ -1,6 +1,5 @@
 package com.healthyai.app.presentation.screen.habits
 
-import androidx.lifecycle.SavedStateHandle
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.repository.HabitRepository
@@ -27,13 +26,7 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
-/**
- * Unit test cho phản hồi "Đã ghi nhận" ở màn Thói quen.
- *
- * Trước đây `HabitsViewModel` đặt `showLogSuccessFor` nhưng **UI không dùng** nên người dùng không
- * nhận được phản hồi nào sau khi ghi nhận. Test này chốt lại hợp đồng giữa ViewModel và UI:
- * ghi thành công → phát sự kiện một lần; UI hiện xong → gọi `onLogSuccessShown()` để xoá sự kiện.
- */
+/** Unit test cho phản hồi "Đã ghi nhận" ở màn Thói quen. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HabitsViewModelTest {
 
@@ -138,7 +131,7 @@ class HabitsViewModelTest {
         assertNull(viewModel.uiState.value.error)
     }
 
-    // ── Chặn giá trị không hợp lệ (phụ lục C #11) ────
+    // Chặn giá trị không hợp lệ
 
     @Test
     fun `logging a zero or negative value is rejected before writing`() = runTest {
@@ -155,32 +148,47 @@ class HabitsViewModelTest {
         coVerify(exactly = 0) { logHabitUseCase(any()) }
     }
 
-    // ── Yêu cầu ghi nhận từ màn Phân tích (mục 3 #14) ────
+    // Yêu cầu ghi nhận từ màn Phân tích / màn Ghi chép
 
     @Test
     fun `log request opens the dialog for the matching category`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val handle = SavedStateHandle(mapOf(KEY_LOG_CATEGORY to HabitCategory.WATER.name))
-        val viewModel = createViewModel(handle)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        // Màn Phân tích gửi yêu cầu ghi nhận cho danh mục "Dinh dưỡng"
+        viewModel.onLogRequest(HabitCategory.NUTRITION.name)
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals(LogRequest.Open(waterHabit), state.logRequest)
-        // Đã xoá khoá trong SavedStateHandle → không mở lại hộp thoại khi màn hình tạo lại
-        assertNull(handle.get<String>(KEY_LOG_CATEGORY))
+        assertEquals(LogRequest.Missing(HabitCategory.NUTRITION), state.logRequest)
 
         viewModel.onLogRequestHandled()
         assertNull(viewModel.uiState.value.logRequest)
     }
 
     @Test
+    fun `log request for a category that has a habit opens it`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.WATER.name)
+        advanceUntilIdle()
+
+        assertEquals(LogRequest.Open(waterHabit), viewModel.uiState.value.logRequest)
+    }
+
+    @Test
     fun `log request without a matching habit asks the user to create one`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val handle = SavedStateHandle(mapOf(KEY_LOG_CATEGORY to HabitCategory.MINDFULNESS.name))
-        val viewModel = createViewModel(handle)
+        val viewModel = createViewModel()
         advanceUntilIdle()
 
         // Chỉ có thói quen Uống nước → gợi ý về Thiền định không có thói quen tương ứng
+        viewModel.onLogRequest(HabitCategory.MINDFULNESS.name)
+        advanceUntilIdle()
+
         assertEquals(
             LogRequest.Missing(HabitCategory.MINDFULNESS),
             viewModel.uiState.value.logRequest
@@ -190,20 +198,85 @@ class HabitsViewModelTest {
     @Test
     fun `unknown category in the log request is ignored`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val handle = SavedStateHandle(mapOf(KEY_LOG_CATEGORY to "KHONG_CO_TON_TAI"))
-        val viewModel = createViewModel(handle)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest("KHONG_CO_TON_TAI")
         advanceUntilIdle()
 
         assertNull(viewModel.uiState.value.logRequest)
-        assertNull(handle.get<String>(KEY_LOG_CATEGORY))
     }
 
-    private fun createViewModel(
-        savedStateHandle: SavedStateHandle = SavedStateHandle()
-    ) = HabitsViewModel(
+    // Hợp đồng của "Thêm vào nhật ký" / nút gợi ý AI
+
+    /** Yêu cầu ghi nhận phải mở đúng thói quen của danh mục, không lấy thói quen đứng trước danh sách. */
+    @Test
+    fun `log request never opens a habit from another category`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val saladHabit = Habit(
+            id = 2L,
+            name = "Ăn salad",
+            category = HabitCategory.NUTRITION,
+            targetValue = 600f,
+            unit = "calo"
+        )
+        every { habitRepository.getAllActiveHabits() } returns flowOf(listOf(waterHabit, saladHabit))
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.NUTRITION.name)
+        advanceUntilIdle()
+
+        assertEquals(
+            "Phải mở đúng thói quen Dinh dưỡng, không phải 'Uống nước' đứng trước",
+            LogRequest.Open(saladHabit),
+            viewModel.uiState.value.logRequest
+        )
+    }
+
+    /** Yêu cầu ghi nhận là sự kiện một lần: xử lý xong thì cùng danh mục vẫn kích hoạt lại được. */
+    @Test
+    fun `the same log request can be triggered again after being handled`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.WATER.name)
+        advanceUntilIdle()
+        assertEquals(LogRequest.Open(waterHabit), viewModel.uiState.value.logRequest)
+
+        viewModel.onLogRequestHandled()
+        assertNull(viewModel.uiState.value.logRequest)
+
+        // Bấm "Thêm vào nhật ký" lần thứ hai cho cùng danh mục → phải mở lại, không bị "dính"
+        viewModel.onLogRequest(HabitCategory.WATER.name)
+        advanceUntilIdle()
+
+        assertEquals(LogRequest.Open(waterHabit), viewModel.uiState.value.logRequest)
+    }
+
+    /** Chưa có thói quen nào cả → vẫn là nhánh "nhắc tạo mới", không phải im lặng hay crash. */
+    @Test
+    fun `log request with no habit at all asks the user to create one`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        every { habitRepository.getAllActiveHabits() } returns flowOf(emptyList())
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.onLogRequest(HabitCategory.NUTRITION.name)
+        advanceUntilIdle()
+
+        assertEquals(
+            LogRequest.Missing(HabitCategory.NUTRITION),
+            viewModel.uiState.value.logRequest
+        )
+    }
+
+    private fun createViewModel() = HabitsViewModel(
         getTodayHabitsUseCase = getTodayHabitsUseCase,
         logHabitUseCase = logHabitUseCase,
-        habitRepository = habitRepository,
-        savedStateHandle = savedStateHandle
+        habitRepository = habitRepository
     )
 }

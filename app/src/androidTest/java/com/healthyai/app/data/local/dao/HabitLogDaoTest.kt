@@ -41,7 +41,7 @@ class HabitLogDaoTest {
     @Test
     @Throws(Exception::class)
     fun insertAndGetLogs() = runBlocking {
-        // Must insert a habit first due to ForeignKey
+        // Phải chèn habit trước do ràng buộc ForeignKey.
         val habitId = habitDao.insertHabit(
             HabitEntity(name = "Water", category = HabitCategory.WATER, targetValue = 2000f, unit = "ml")
         )

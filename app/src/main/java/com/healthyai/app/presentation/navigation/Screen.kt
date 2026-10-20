@@ -11,13 +11,7 @@ import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.healthyai.app.R
 
-/**
- * Một destination của NavHost.
- *
- * [titleRes] là **id tài nguyên** (không phải chuỗi viết cứng) để màn hình luôn hiển thị nhãn theo
- * ngôn ngữ/`values-<locale>` của hệ thống (phụ lục C #41): người dùng đọc nhãn qua
- * `stringResource(screen.titleRes)` ở `AppNavigation`.
- */
+/** Một destination của NavHost; titleRes là id tài nguyên để nhãn hiển thị theo ngôn ngữ hệ thống. */
 sealed class Screen(
     val route: String,
     @StringRes val titleRes: Int,
@@ -36,10 +30,7 @@ sealed class Screen(
     /** Đo nhịp tim bằng camera + đèn flash — mở từ ô "Tim" ở thẻ "Tóm tắt sức khỏe". */
     object MeasureHeartRate : Screen("measure_heart_rate", R.string.nav_heart_rate, Icons.Filled.Favorite)
 
-    /**
-     * Chính sách bảo mật — mở từ thẻ "Đồng bộ đám mây" ở Trang chủ, và **cả** khi Health Connect gửi
-     * `ACTION_SHOW_PERMISSIONS_RATIONALE` (mục 3 #31).
-     */
+    /** Chính sách bảo mật — mở từ thẻ Đồng bộ đám mây ở Trang chủ và khi Health Connect gửi ACTION_SHOW_PERMISSIONS_RATIONALE. */
     object PrivacyPolicy : Screen("privacy_policy", R.string.nav_privacy_policy, Icons.Filled.PrivacyTip)
 }
 

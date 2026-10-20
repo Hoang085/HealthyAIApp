@@ -11,13 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho [AuthRepositoryImpl.signOut] (mục 3 #19).
- *
- * Cần có `signOut()` ở tầng repository vì trước đây app **không có UI đăng xuất**: `AuthGateViewModel`
- * chỉ chuyển về màn đăng nhập khi `authState` phát `null`, mà điều đó chỉ xảy ra nếu phiên Firebase
- * thực sự bị xoá — xem **TC-AUTH-15/16**.
- */
+/** Test [AuthRepositoryImpl.signOut]; trước đây app không có UI đăng xuất nên cần signOut ở tầng repository. */
 class AuthRepositoryImplTest {
 
     @Test
@@ -31,7 +25,7 @@ class AuthRepositoryImplTest {
         verify(exactly = 1) { auth.signOut() }
     }
 
-    // ── Tên hiển thị trên lời chào (phụ lục C #30) ─────────────
+    // Tên hiển thị trên lời chào
 
     @Test
     fun `currentUserName dùng displayName khi có`() {

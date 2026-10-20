@@ -29,16 +29,7 @@ class HabitRepositoryImpl @Inject constructor(
             .map { list -> list.map { it.toDomain() } }
     }
 
-    /**
-     * Mốc bắt đầu khoảng thời gian, **căn theo đầu ngày (00:00)** của [daysBack] ngày trước.
-     *
-     * - `daysBack = 0` → từ 00:00 hôm nay (nghĩa là "hôm nay").
-     * - `daysBack = 7` → từ 00:00 của 7 ngày trước.
-     *
-     * Trước đây mốc được tính là `now - daysBack ngày`, nên với `daysBack = 0` mốc bằng đúng
-     * thời điểm gọi hàm → mọi log đã ghi trong ngày (trước thời điểm đó) đều bị loại, khiến
-     * tiến độ/trạng thái hoàn thành về 0 mỗi lần mở lại màn hình.
-     */
+    /** Mốc 00:00 của [daysBack] ngày trước; cố ý căn đầu ngày vì mốc "now - daysBack ngày" từng làm log trong ngày bị loại, tiến độ về 0. */
     private fun startOfDayEpochMillis(daysBack: Int): Long =
         LocalDate.now()
             .minusDays(daysBack.coerceAtLeast(0).toLong())
@@ -46,15 +37,13 @@ class HabitRepositoryImpl @Inject constructor(
             .toInstant()
             .toEpochMilli()
 
-    /**
-     * Ghi thói quen mới **hoặc** cập nhật thói quen đã có (`OnConflictStrategy.REPLACE`).
-     *
-     * Không còn phải vẽ lại widget màn hình chính: widget nay hiển thị **chỉ số sức khỏe** (bước chân,
-     * giấc ngủ, nhịp tim) chứ không hiển thị tiến độ thói quen nữa, nên thay đổi thói quen không làm nội
-     * dung widget khác đi.
-     */
+    /** Tạo thói quen mới; không cần vẽ lại widget vì widget chỉ hiển thị chỉ số sức khỏe, không hiển thị tiến độ thói quen. */
     override suspend fun insertHabit(habit: Habit): Long =
         habitDao.insertHabit(habit.toEntity())
+
+    /** Cập nhật bằng UPDATE theo khoá chính; không dùng lại insertHabit vì REPLACE = DELETE + INSERT sẽ CASCADE xoá hết log của thói quen. */
+    override suspend fun updateHabit(habit: Habit) =
+        habitDao.updateHabit(habit.toEntity())
 
     /** Ghi nhận một lần thực hiện thói quen (bảng `habit_logs`) — widget không hiển thị dữ liệu này. */
     override suspend fun logHabit(log: HabitLog) {
@@ -72,7 +61,7 @@ class HabitRepositoryImpl @Inject constructor(
     override suspend fun markHabitLogSynced(id: Long) =
         habitLogDao.markAsSynced(id)
 
-    // ── Mappers (Entity ↔ Domain) ───────────────────────────
+    // Mappers (Entity ↔ Domain)
     private fun HabitEntity.toDomain() = Habit(
         id = id,
         name = name,

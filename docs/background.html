@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="background.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chạy nền &amp; phân quyền — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 7</div>
+      <h1>Chạy nền &amp; phân quyền</h1>
+      <p class="page-lead">
+        Bốn <code>WorkManager</code> worker chạy định kỳ (đồng bộ sức khỏe, đồng bộ đám mây, nhắc nhở, lấy mẫu
+        giấc ngủ), cùng toàn bộ quyền mà app xin và cách nó xin — gồm cả cơ chế rationale bắt buộc của
+        Health Connect.
+      </p>
+
+      <h2>1. Tổng quan: bốn worker</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Worker</th><th>Chu kỳ</th><th>Làm gì</th><th><code>WORK_NAME</code></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>HealthSyncWorker</code></td>
+            <td>6 giờ</td>
+            <td>Đọc Health Connect + cảm biến → gộp vào hàng của hôm nay trong <code>health_data_history</code> → vẽ lại widget</td>
+            <td><code>periodic_health_sync_worker</code></td>
+          </tr>
+          <tr>
+            <td><code>SyncWorker</code></td>
+            <td>6 giờ</td>
+            <td>Đẩy nhật ký thói quen chưa đồng bộ lên Firestore — <strong>chỉ</strong> khi đã bật đồng bộ và log tạo sau mốc đồng ý</td>
+            <td><code>periodic_sync_worker</code></td>
+          </tr>
+          <tr>
+            <td><code>ReminderWorker</code></td>
+            <td>24 giờ</td>
+            <td>Gửi thông báo "HealthMate 💪 Nhắc nhở thói quen" trên kênh <code>healthy_ai_reminders</code></td>
+            <td><code>daily_reminder_worker</code></td>
+          </tr>
+          <tr>
+            <td><code>SleepTrackingWorker</code></td>
+            <td><strong>15 phút</strong></td>
+            <td>Nghe cảm biến 3 giây → phân loại "đang ngủ" → cộng dồn vào <code>healthy_ai_sleep_tracker</code></td>
+            <td><code>periodic_sleep_tracking_worker</code></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">
+        15 phút là khoảng định kỳ <strong>nhỏ nhất</strong> WorkManager cho phép — vì vậy <code>SleepTrackingWorker</code>
+        không thể chạy dày hơn, và đó cũng là lý do <code>SleepTrackerMath</code> phải cộng <em>toàn bộ</em>
+        khoảng giữa hai mẫu "đang ngủ".
+      </p>
+
+      <h3>1.1. Ai lên lịch?</h3>
+<pre><code><span class="c">// MainActivity.onCreate — gọi schedule() của cả 4 worker</span>
+<span class="k">val</span> workManager = WorkManager.getInstance(applicationContext)
+HealthSyncWorker.schedule(workManager)
+SyncWorker.schedule(workManager)
+ReminderWorker.schedule(workManager)
+SleepTrackingWorker.schedule(workManager)</code></pre>
+      <p>
+        Cả bốn dùng <code>enqueueUniquePeriodicWork(…, ExistingPeriodicWorkPolicy.KEEP, …)</code> ⇒
+        <strong>mở app nhiều lần không tạo job trùng</strong>; job cũ được giữ nguyên (kể cả chu kỳ đã trôi qua).
+      </p>
+
+      <h3>1.2. WorkManager + Hilt</h3>
+      <p>
+        Worker cần được tiêm dependency (<code>@HiltWorker</code> + <code>@AssistedInject</code>), nên
+        WorkManager <strong>không</strong> được tự khởi tạo. Manifest tắt auto-init:
+      </p>
+<pre><code><span class="c">&lt;!-- AndroidManifest.xml --&gt;</span>
+<span class="k">&lt;provider</span> android:name=<span class="s">"androidx.startup.InitializationProvider"</span>
+          android:authorities=<span class="s">"${applicationId}.androidx-startup"</span>
+          android:exported=<span class="s">"false"</span>
+          tools:node=<span class="s">"merge"</span><span class="k">&gt;</span>
+    <span class="k">&lt;meta-data</span> android:name=<span class="s">"androidx.work.WorkManagerInitializer"</span>
+               android:value=<span class="s">"androidx.startup"</span>
+               tools:node=<span class="s">"remove"</span> <span class="k">/&gt;</span>
+<span class="k">&lt;/provider&gt;</span></code></pre>
+      <p>Thay vào đó, Application cung cấp cấu hình qua <code>Configuration.Provider</code>:</p>
+<pre><code><span class="k">@HiltAndroidApp</span>
+<span class="k">class</span> HiltApplication : Application(), Configuration.Provider {
+    <span class="k">@Inject lateinit var</span> workerFactory: HiltWorkerFactory
+
+    <span class="k">override val</span> workManagerConfiguration: Configuration
+        <span class="k">get</span>() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)                 <span class="c">// ⭐ cho phép tiêm vào worker</span>
+            .setMinimumLoggingLevel(android.util.Log.INFO)
+            .build()
+}</code></pre>
+
+      <h2>2. Chi tiết từng worker</h2>
+
+      <h3>2.1. <code>HealthSyncWorker</code> — đồng bộ dữ liệu sức khỏe</h3>
+<pre><code><span class="k">fun</span> schedule(workManager: WorkManager) {
+    <span class="k">val</span> constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.NOT_REQUIRED)   <span class="c">// Health Connect là offline</span>
+        .setRequiresBatteryNotLow(<span class="k">true</span>)
+        .setRequiresDeviceIdle(<span class="k">false</span>)                   <span class="c">// không cần idle để dữ liệu cập nhật thường xuyên hơn chút</span>
+        .build()
+
+    <span class="k">val</span> syncRequest = PeriodicWorkRequestBuilder&lt;HealthSyncWorker&gt;(<span class="n">6</span>, TimeUnit.HOURS)
+        .setConstraints(constraints)
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, <span class="n">30</span>, TimeUnit.MINUTES)
+        .addTag(<span class="s">"health_sync"</span>)
+        .build()
+
+    workManager.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, syncRequest)
+}</code></pre>
+      <p>Việc thật nằm ở repository — xem <code>HealthDataRepositoryImpl.syncHealthData()</code>:</p>
+      <ol>
+        <li>Đọc snapshot Health Connect (<code>null</code> nếu thiếu quyền / chưa cài).</li>
+        <li>Đọc số bước từ cảm biến của máy + giờ ngủ ước lượng.</li>
+        <li>Trộn theo quy tắc ưu tiên nguồn.</li>
+        <li><strong>Nếu không có dữ liệu thật ⇒ return sớm</strong>, không ghi hàng toàn số 0 (sẽ làm nhiễu phân tích của AI).</li>
+        <li>Gộp vào hàng của hôm nay (<code>upsertToday</code>).</li>
+        <li>Dọn dữ liệu cũ hơn 30 ngày.</li>
+        <li>Vẽ lại widget.</li>
+      </ol>
+      <p><strong>Kết quả trả về</strong> có phân biệt thật/giả:</p>
+<pre><code><span class="k">override suspend fun</span> doWork(): Result {
+    <span class="k">return try</span> {
+        <span class="k">val</span> syncResult = healthDataRepository.syncHealthData()
+        <span class="c">// … log …</span>
+        <span class="k">if</span> (syncResult.isSuccess) Result.success()
+        <span class="c">// Đồng bộ thất bại THẬT → trả retry để WorkManager dùng backoff đã đặt,</span>
+        <span class="c">// thay vì luôn "thành công" khiến backoff không bao giờ chạy.</span>
+        <span class="k">else</span> retryOrFail()
+    } <span class="k">catch</span> (e: CancellationException) {
+        <span class="k">throw</span> e         <span class="c">// WorkManager dừng worker = huỷ coroutine → ném tiếp</span>
+    } <span class="k">catch</span> (e: Exception) {
+        retryOrFail()
+    }
+}
+
+<span class="c">/** Thử lại tối đa MAX_ATTEMPTS (3) lần rồi báo thất bại hẳn */</span>
+<span class="k">private fun</span> retryOrFail(): Result =
+    <span class="k">if</span> (runAttemptCount &lt; MAX_ATTEMPTS) Result.retry() <span class="k">else</span> Result.failure()</code></pre>
+      <div class="callout note">
+        <span class="callout__title">Một chi tiết nhỏ nhưng đúng đắn</span>
+        <p>
+          Trước đây worker <strong>luôn</strong> trả <code>success</code> dù đồng bộ lỗi ⇒
+          <code>BackoffPolicy.EXPONENTIAL</code> không bao giờ chạy. Nay phân biệt rõ ba trạng thái:
+          <code>success</code> (xong, kể cả khi <em>không có gì để đồng bộ</em>),
+          <code>retry</code> (lỗi tạm thời), <code>failure</code> (đã thử 3 lần).
+        </p>
+      </div>
+
+      <h3>2.2. <code>SyncWorker</code> — đẩy nhật ký lên Firestore</h3>
+<pre><code><span class="k">override suspend fun</span> doWork(): Result {
+    <span class="k">val</span> userId = authRepository.currentUserId
+    <span class="k">if</span> (userId == <span class="k">null</span>) {
+        <span class="c">// Chế độ khách: bỏ qua và trả success — job vẫn chạy lại theo chu kỳ 6 giờ</span>
+        <span class="k">return</span> Result.success()
+    }
+
+    <span class="k">return try</span> {
+        <span class="k">val</span> cloudSync = settingsRepository.getCloudSync()
+        <span class="k">val</span> logsToUpload = CloudSyncPolicy.logsToUpload(
+            logs = habitRepository.getUnsyncedHabitLogs(),
+            settings = cloudSync
+        )
+
+        <span class="k">if</span> (logsToUpload.isEmpty()) <span class="k">return</span> Result.success()   <span class="c">// chưa bật đồng bộ / không có log nào hợp lệ</span>
+
+        logsToUpload.forEach { log -&gt;
+            firestoreSyncDataSource.uploadHabitLog(userId, log)
+                .onSuccess { habitRepository.markHabitLogSynced(log.id) }
+                .onFailure { <span class="k">throw</span> it }               <span class="c">// một log lỗi → cả lần chạy coi là lỗi để retry</span>
+        }
+
+        Result.success()
+    } <span class="k">catch</span> (e: CancellationException) {
+        <span class="k">throw</span> e
+    } <span class="k">catch</span> (e: Exception) {
+        <span class="k">if</span> (runAttemptCount &lt; <span class="n">3</span>) Result.retry() <span class="k">else</span> Result.failure()
+    }
+}</code></pre>
+      <div class="callout warn">
+        <span class="callout__title">Một cái bẫy WorkManager đã gặp thật</span>
+<pre><code><span class="k">val</span> constraints = Constraints.Builder()
+    .setRequiredNetworkType(NetworkType.CONNECTED)
+    .setRequiresBatteryNotLow(<span class="k">true</span>)
+    <span class="c">// KHÔNG dùng setRequiresDeviceIdle(true) ở đây: WorkManager ném</span>
+    <span class="c">// IllegalArgumentException("Cannot set backoff criteria on an idle mode job")</span>
+    <span class="c">// khi vừa requiresDeviceIdle(true) vừa setBackoffCriteria() → CRASH NGAY KHI MỞ APP.</span>
+    <span class="c">// Giữ backoff (như KDoc mô tả) và để hệ thống tự hoãn khi máy vào Doze.</span>
+    .setRequiresDeviceIdle(<span class="k">false</span>)
+    .build()</code></pre>
+        <p>
+          Đây là loại lỗi chỉ xuất hiện <em>lúc runtime</em> và làm app crash ngay khi khởi động, nên comment
+          trong code ghi rõ để không ai "tối ưu" thêm <code>setRequiresDeviceIdle(true)</code> lần nữa.
+        </p>
+      </div>
+      <p class="small">
+        Cổng riêng tư <code>CloudSyncPolicy</code> được giải thích đầy đủ ở
+        <a href="logic-ai.html#9-cong-rieng-tu-khi-nao-nhat-ky-duoc-phep-roi-may">trang Logic · mục 9</a>.
+      </p>
+
+      <h3>2.3. <code>ReminderWorker</code> — nhắc nhở hàng ngày</h3>
+<pre><code><span class="k">override suspend fun</span> doWork(): Result {
+    <span class="c">// Kênh đã được tạo lúc app khởi động (HiltApplication.onCreate); gọi lại cho chắc trong</span>
+    <span class="c">// trường hợp app chỉ chạy nền. Hàm này idempotent nên KHÔNG tạo kênh trùng.</span>
+    ReminderNotifications.ensureChannel(context)
+    showNotification()
+    <span class="k">return</span> Result.success()
+}
+
+<span class="k">private fun</span> showNotification() {
+    <span class="k">val</span> notification = NotificationCompat.Builder(context, ReminderNotifications.CHANNEL_ID)
+        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setContentTitle(context.getString(R.string.notification_title))
+        .setContentText(context.getString(R.string.notification_text))
+        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        .setAutoCancel(<span class="k">true</span>)
+        .build()
+    <span class="k">try</span> {
+        NotificationManagerCompat.from(context).notify(NOTIF_ID, notification)
+    } <span class="k">catch</span> (_: SecurityException) {
+        <span class="c">// POST_NOTIFICATIONS chưa được cấp — bỏ qua, KHÔNG crash</span>
+    }
+}</code></pre>
+      <p>Ràng buộc duy nhất: <code>setRequiresBatteryNotLow(true)</code>. Chu kỳ 24 giờ, <code>KEEP</code>.</p>
+
+      <h3>2.4. <code>SleepTrackingWorker</code> — lấy mẫu giấc ngủ</h3>
+      <p>
+        Worker này khác ba worker kia một điểm quan trọng: nó <strong>nghe cảm biến</strong>. Nghe liên tục sẽ
+        tốn pin, nên nó chỉ nghe trong vài giây rồi gỡ listener — đó là lý do chạy thưa 15 phút/lần vẫn
+        <strong>không cần foreground service</strong> và không tốn pin suốt đêm.
+      </p>
+<pre><code><span class="k">override suspend fun</span> doWork(): Result {
+    <span class="k">return try</span> {
+        <span class="k">val</span> minutes = sleepTrackerRepository.sampleAndStore()
+        android.util.Log.d(TAG, <span class="s">"Lấy mẫu giấc ngủ xong: $minutes phút cho đêm đang xét"</span>)
+        Result.success()
+    } <span class="k">catch</span> (e: CancellationException) {
+        <span class="k">throw</span> e
+    } <span class="k">catch</span> (e: Exception) {
+        <span class="k">if</span> (runAttemptCount &lt; <span class="n">3</span>) Result.retry() <span class="k">else</span> Result.failure()
+    }
+}
+
+<span class="k">val</span> constraints = Constraints.Builder()
+    .setRequiredNetworkType(NetworkType.NOT_REQUIRED)   <span class="c">// đọc cảm biến là hoàn toàn offline</span>
+    .setRequiresBatteryNotLow(<span class="k">true</span>)                   <span class="c">// không đánh thức máy khi pin yếu</span>
+    .build()
+
+PeriodicWorkRequestBuilder&lt;SleepTrackingWorker&gt;(<span class="n">15</span>, TimeUnit.MINUTES)
+    .setConstraints(constraints)
+    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, <span class="n">5</span>, TimeUnit.MINUTES)
+    .addTag(<span class="s">"sleep_tracking"</span>)
+    .build()</code></pre>
+      <p>
+        <code>SleepTrackerRepositoryImpl.sampleAndStore()</code> được viết để <strong>không bao giờ ném</strong>:
+        máy không có cảm biến gia tốc (hoặc cảm biến không trả về gì) thì chỉ trả số đã lưu. Cùng nguyên tắc
+        với <code>StepCounterRepositoryImpl.readTodaySteps()</code>.
+      </p>
+
+      <h2>3. Quy ước chung của ba worker "có thể lỗi"</h2>
+      <p>
+        Ba worker (<code>HealthSync</code>, <code>Sync</code>, <code>SleepTracking</code>) theo cùng một khuôn
+        ba nhánh:
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nhánh</th><th>Trả về</th><th>Vì sao</th></tr></thead>
+        <tbody>
+          <tr><td>Thành công, hoặc "không có gì để làm"</td><td><code>Result.success()</code></td><td>"Không có gì để đồng bộ" <strong>không</strong> phải lỗi — retry sẽ vô ích</td></tr>
+          <tr><td><code>CancellationException</code></td><td><strong><code>throw</code> tiếp</strong></td><td>WorkManager dừng worker = huỷ coroutine. Biến nó thành "retry/failure" sẽ che mất tín hiệu huỷ và coroutine không kết thúc đúng</td></tr>
+          <tr><td><code>Exception</code> khác</td><td><code>retry</code> nếu <code>runAttemptCount &lt; 3</code>, ngược lại <code>failure</code></td><td>Dùng backoff đã đặt, rồi chịu thua thay vì thử mãi</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout note">
+        <span class="callout__title">Vì sao phải rethrow <code>CancellationException</code></span>
+        <p>
+          Nếu bắt nó thành <code>Result.retry()</code>, mỗi lần người dùng tắt mạng / hệ thống dừng job sẽ bị
+          ghi nhận là "lỗi cần thử lại", làm backoff tăng vô ích. Tệ hơn, coroutine bị huỷ nhưng khối mã vẫn
+          chạy tiếp sau điểm chờ. Quy ước này được áp dụng ở <strong>14 chỗ</strong>
+          <code>catch (e: Exception)</code> trong hàm <code>suspend</code>/worker, và <strong>18 chỗ</strong>
+        <code>runCatching</code> đổi sang <code>runCatchingCancellable</code>.
+        </p>
+      </div>
+
+      <h2>4. Ràng buộc pin, Doze và WorkManager</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Cơ chế</th><th>Ý nghĩa</th><th>Ai dùng</th></tr></thead>
+        <tbody>
+          <tr><td><code>setRequiresBatteryNotLow(true)</code></td><td>Không chạy khi pin yếu</td><td>Cả bốn worker</td></tr>
+          <tr><td><code>setRequiredNetworkType(NOT_REQUIRED)</code></td><td>Không cần mạng</td><td><code>HealthSync</code>, <code>SleepTracking</code> (và <code>Reminder</code> không đặt gì)</td></tr>
+          <tr><td><code>setRequiredNetworkType(CONNECTED)</code></td><td>Chỉ chạy khi có mạng</td><td><code>SyncWorker</code></td></tr>
+          <tr><td><code>setRequiresDeviceIdle(false)</code></td><td>Không đòi máy rảnh</td><td>Tường minh ở <code>HealthSync</code> và <code>Sync</code> — <strong>bắt buộc</strong> khi có backoff</td></tr>
+          <tr><td><code>BackoffPolicy.EXPONENTIAL</code></td><td>Giãn cách tăng dần giữa các lần thử lại</td><td>30 phút (HealthSync, Sync), 5 phút (SleepTracking)</td></tr>
+          <tr><td><code>ExistingPeriodicWorkPolicy.KEEP</code></td><td>Job đã có thì giữ, không tạo mới</td><td>Cả bốn worker</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout warn">
+        <span class="callout__title">Doze ảnh hưởng tới giấc ngủ — và app cố tình bù lại</span>
+        <p>
+          Ban đêm máy không sạc, đứng yên ⇒ hệ thống vào <strong>Doze</strong> và WorkManager có thể bị hoãn:
+          khoảng cách giữa hai mẫu giấc ngủ có thể là <em>vài giờ</em>. Đây là lý do
+          <code>SleepTrackerMath.sample</code> cộng <strong>toàn bộ</strong> khoảng giữa hai mẫu "đang ngủ" liên
+          tiếp thay vì giả định các mẫu cách đều 15 phút. Nhờ vậy khoảng bị hoãn
+          <strong>không mất</strong> thời gian ngủ.
+        </p>
+        <p class="small">Xem <a href="logic-sensors.html#25-cong-don-chi-tinh-giua-hai-mau-dang-ngu-lien-tiep">trang Thuật toán cảm biến · mục 2.5</a>.</p>
+      </div>
+
+      <h2>5. Phân quyền — toàn bộ những gì app xin</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Quyền</th><th>Dùng cho</th><th>Bắt buộc?</th><th>Ai xin / khi nào</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>INTERNET</code><br><code>ACCESS_NETWORK_STATE</code></td>
+            <td>Gọi Gemini phân tích món ăn; Firebase Auth/Firestore</td>
+            <td>Khai trong manifest</td>
+            <td>Không hỏi người dùng (quyền thường)</td>
+          </tr>
+          <tr>
+            <td><code>CAMERA</code></td>
+            <td>Màn Ghi chép bữa ăn + màn Đo nhịp tim</td>
+            <td>Cần để chụp/đo</td>
+            <td>Hộp thoại hệ thống; chưa cấp thì màn tương ứng hiện thẻ "Cần quyền Camera"</td>
+          </tr>
+          <tr>
+            <td><code>ACTIVITY_RECOGNITION</code></td>
+            <td>Đếm bước chân bằng cảm biến của máy</td>
+            <td>Chỉ từ Android 10 (API 29)</td>
+            <td>Thẻ <strong>"Bật đếm bước chân"</strong> ở Trang chủ — chỉ hiện khi máy <em>có</em> cảm biến mà app <em>chưa</em> được cấp quyền</td>
+          </tr>
+          <tr>
+            <td><code>POST_NOTIFICATIONS</code></td>
+            <td>Thông báo nhắc nhở hàng ngày</td>
+            <td>Chỉ từ Android 13 (API 33)</td>
+            <td>Thẻ <strong>"Bật nhắc nhở hàng ngày"</strong> ở Trang chủ</td>
+          </tr>
+          <tr>
+            <td><code>health.READ_STEPS</code><br><code>health.READ_SLEEP</code><br><code>health.READ_HEART_RATE</code><br><code>health.READ_ACTIVE_CALORIES_BURNED</code></td>
+            <td>Đọc 4 loại dữ liệu từ Health Connect</td>
+            <td>Cần để có dữ liệu Health Connect</td>
+            <td>Thẻ <strong>"Cấp quyền Health Connect"</strong> — mở hộp thoại quyền của Health Connect</td>
+          </tr>
+          <tr>
+            <td><code>RECEIVE_BOOT_COMPLETED</code><br><code>SCHEDULE_EXACT_ALARM</code></td>
+            <td>—</td>
+            <td colspan="2"><span class="badge amber">Quyền thừa đã ghi nhận, chưa dọn</span> — xem mục 9</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">
+        Manifest <strong>không</strong> khai <code>WRITE_STEPS</code>/<code>WRITE_SLEEP</code>: không có code
+        nào ghi lên Health Connect, nên xin quyền ghi chỉ làm người dùng và Play review nghi ngờ. Trước đây
+        hai quyền này được khai "cho đủ bộ" — nay đã bỏ.
+      </p>
+
+      <h3>5.1. Khai báo khả năng phần cứng (đều <code>required="false"</code>)</h3>
+      <p>
+        Các <code>uses-feature</code> đều để <code>required="false"</code> vì app hoạt động (giảm tính năng)
+        trên máy thiếu phần cứng đó — và quan trọng hơn, để Google Play không loại máy khỏi danh sách cài đặt:
+      </p>
+<pre><code><span class="k">&lt;uses-feature</span> android:name=<span class="s">"android.hardware.camera"</span>              android:required=<span class="s">"false"</span> <span class="k">/&gt;</span>
+<span class="k">&lt;uses-feature</span> android:name=<span class="s">"android.hardware.camera.flash"</span>        android:required=<span class="s">"false"</span> <span class="k">/&gt;</span>  <span class="c">&lt;!-- PPG --&gt;</span>
+<span class="k">&lt;uses-feature</span> android:name=<span class="s">"android.hardware.sensor.stepcounter"</span>  android:required=<span class="s">"false"</span> <span class="k">/&gt;</span>
+<span class="k">&lt;uses-feature</span> android:name=<span class="s">"android.hardware.sensor.accelerometer"</span>android:required=<span class="s">"false"</span> <span class="k">/&gt;</span>
+<span class="k">&lt;uses-feature</span> android:name=<span class="s">"android.hardware.sensor.light"</span>        android:required=<span class="s">"false"</span> <span class="k">/&gt;</span></code></pre>
+
+      <h3>5.2. Truy vấn gói của Health Connect (bắt buộc từ Android 11+)</h3>
+<pre><code><span class="k">&lt;queries&gt;</span>
+    <span class="k">&lt;package</span> android:name=<span class="s">"com.google.android.apps.healthdata"</span> <span class="k">/&gt;</span>
+    <span class="k">&lt;intent&gt;</span>
+        <span class="k">&lt;action</span> android:name=<span class="s">"androidx.health.ACTION_HEALTH_PERMISSIONS"</span> <span class="k">/&gt;</span>
+    <span class="k">&lt;/intent&gt;</span>
+<span class="k">&lt;/queries&gt;</span></code></pre>
+      <p class="small">
+        Thiếu khai báo này, app không "thấy" được app Health Connect để gọi hộp thoại quyền.
+      </p>
+
+      <h2>6. Luồng xin quyền trong app</h2>
+      <p>
+        Nguyên tắc chung: <strong>trạng thái quyền luôn được đọc lại từ hệ thống</strong> (nguồn đúng duy
+        nhất), không tin vào tham số <code>granted</code> của launcher. Nhờ vậy cả trường hợp người dùng bật
+        quyền trong Settings rồi quay lại app cũng đúng.
+      </p>
+
+      <h3>6.1. Health Connect</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th><code>HealthConnectStatus</code></th><th>UI hiện gì</th></tr></thead>
+        <tbody>
+          <tr><td><code>AVAILABLE</code> + chưa đủ quyền</td><td>Thẻ <strong>"Cấp quyền Health Connect"</strong></td></tr>
+          <tr><td><code>AVAILABLE</code> + đã đủ quyền</td><td>Không hiện thẻ; số liệu được nạp</td></tr>
+          <tr><td><code>NOT_INSTALLED</code></td><td>Thẻ có nút <strong>mở Play Store</strong> để cài Health Connect</td></tr>
+          <tr><td><code>UPDATE_REQUIRED</code></td><td>Thẻ có nút <strong>mở Play Store</strong> để cập nhật Health Connect</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Việc dịch mã trạng thái SDK của Health Connect sang enum domain được tách thành hàm thuần để test được
+        trên JVM, không cần thiết bị:
+      </p>
+<pre><code><span class="k">internal fun</span> sdkStatusToHealthConnectStatus(sdkStatus: Int): HealthConnectStatus = <span class="k">when</span> (sdkStatus) {
+    HealthConnectClient.SDK_AVAILABLE                          -&gt; HealthConnectStatus.AVAILABLE          <span class="c">// = 3</span>
+    HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -&gt; HealthConnectStatus.UPDATE_REQUIRED  <span class="c">// = 2</span>
+    <span class="k">else</span>                                                       -&gt; HealthConnectStatus.NOT_INSTALLED     <span class="c">// = 1</span>
+}</code></pre>
+      <p>Khi nhận kết quả hộp thoại quyền, chỉ đọc lại dữ liệu nếu đã đủ quyền:</p>
+<pre><code><span class="k">fun</span> onHealthConnectPermissionsResult(granted: Set&lt;String&gt;) {
+    <span class="k">val</span> required = _uiState.value.healthConnect.requiredPermissions
+    loadHealthConnect(
+        showLoading = <span class="k">false</span>,
+        <span class="c">// tham số `granted` CHỈ dùng để quyết định có nạp lại số liệu ngay hay không —</span>
+        <span class="c">// trạng thái quyền vẫn luôn được đọc lại từ Health Connect</span>
+        forceDataRead = required.isNotEmpty() &amp;&amp; granted.containsAll(required)
+    )
+}</code></pre>
+      <p class="small">
+        Màn Home <strong>không</strong> hiện banner lỗi đỏ cho hai trường hợp "chưa cài" và "cần cập nhật" —
+        chỉ còn khi Health Connect sẵn sàng nhưng lời gọi đọc dữ liệu thất bại.
+      </p>
+
+      <h3>6.2. Đếm bước chân — và "cái bẫy thẻ không bao giờ hiện"</h3>
+      <div class="callout danger">
+        <span class="callout__title">Nghịch lý tự chặn</span>
+        <p>
+          Từ Android 10, cảm biến bước chân <strong>bị ẩn</strong> với app chưa có
+          <code>ACTIVITY_RECOGNITION</code>: <code>getDefaultSensor(TYPE_STEP_COUNTER)</code> trả
+          <code>null</code>. Nếu <code>isAvailable</code> chỉ dựa vào đó thì nó luôn <code>false</code>
+          <em>trước khi</em> cấp quyền ⇒ thẻ xin quyền không bao giờ hiện ⇒ người dùng không có cách nào cấp
+          quyền. Thế bế tắc <em>"muốn cấp quyền phải thấy thẻ, muốn thấy thẻ phải có quyền"</em>.
+        </p>
+<pre><code><span class="k">override val</span> isAvailable: Boolean
+    <span class="k">get</span>() = stepCounterSensor != <span class="k">null</span> ||
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_COUNTER)
+        <span class="c">// ⭐ cờ khả năng phần cứng KHÔNG phụ thuộc quyền</span></code></pre>
+      </div>
+      <p>Quy tắc hiện thẻ và xử lý kết quả:</p>
+<pre><code><span class="c">// HomeUiState — máy CÓ cảm biến nhưng CHƯA cấp quyền → hiện thẻ</span>
+<span class="k">val</span> showStepCounterCard: Boolean
+    <span class="k">get</span>() = stepCounter.sensorAvailable &amp;&amp; !stepCounter.permissionGranted
+
+<span class="c">// HomeViewModel — đọc lại trạng thái từ HỆ THỐNG, không tin launcher</span>
+<span class="k">fun</span> onStepPermissionResult() = loadStepCounter()
+
+<span class="c">// StepCounterRepositoryImpl — Android < 10 không cần quyền này → luôn coi là đã có</span>
+<span class="k">private fun</span> hasActivityRecognitionPermission(): Boolean =
+    Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.Q ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED</code></pre>
+      <p class="small">
+        Thẻ còn có nút phụ <em>"Không thấy hộp thoại? Mở cài đặt quyền"</em> cho trường hợp Android không hiện
+        hộp thoại nữa (người dùng đã từ chối vĩnh viễn).
+      </p>
+
+      <h3>6.3. Nhận thông báo — ba trường hợp phải phân biệt</h3>
+      <p>Việc suy ra trạng thái được viết thành hàm <strong>thuần</strong> để ba lối vào của thẻ đều khoá được bằng test:</p>
+<pre><code><span class="k">fun</span> from(sdkInt: Int, postNotificationsPermissionGranted: Boolean, appNotificationsEnabled: Boolean): NotificationPermissionStatus {
+    <span class="k">val</span> requiresRuntimePermission = sdkInt &gt;= ANDROID_13_API
+    <span class="c">// Android ≤ 12 không có quyền runtime → coi như đã có, chỉ còn công tắc cấp app</span>
+    <span class="k">val</span> permissionGranted = !requiresRuntimePermission || postNotificationsPermissionGranted
+
+    <span class="k">return</span> NotificationPermissionStatus(
+        notificationsEnabled = permissionGranted &amp;&amp; appNotificationsEnabled,
+        canRequestPermission = requiresRuntimePermission &amp;&amp; !permissionGranted
+    )
+}</code></pre>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Trường hợp</th><th><code>isBlocked</code></th><th><code>canRequestPermission</code></th><th>Thẻ hiện gì</th></tr></thead>
+        <tbody>
+          <tr><td>Android 13+, <strong>chưa cấp quyền</strong></td><td><code>true</code></td><td><code>true</code></td><td>Nút <strong>"Bật thông báo"</strong> mở hộp thoại hệ thống; từ chối thì thẻ vẫn còn</td></tr>
+          <tr><td>Đã cấp quyền nhưng <strong>tắt thông báo trong Settings</strong></td><td><code>true</code></td><td><code>false</code></td><td>"Thông báo đang bị tắt" + nút <strong>"Mở cài đặt thông báo"</strong></td></tr>
+          <tr><td>Android ≤ 12</td><td>Theo công tắc cấp app</td><td><code>false</code></td><td>Không có quyền runtime để xin</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Vì sao phải kiểm <strong>cả hai</strong> tín hiệu: chỉ kiểm <code>areNotificationsEnabled()</code> là
+        không đủ trên Android 13+ — app chưa từng xin quyền thì công tắc chưa bị đặt và hàm đó trả
+        <code>true</code>, khiến thẻ không hiện dù thực tế không thể gửi thông báo.
+      </p>
+
+      <h3>6.4. Quyền thông báo cũng ảnh hưởng lúc khởi động</h3>
+      <p>
+        <code>HiltApplication.onCreate()</code> gọi <code>ReminderNotifications.ensureChannel(this)</code>.
+        Trên Android 8+, app <em>chưa có kênh nào</em> thì trạng thái thông báo là "chưa xác định" và
+        <code>areNotificationsEnabled()</code> trả kết quả khác nhau tuỳ bản Android/OEM ⇒ hành vi thẻ thay
+        đổi theo máy. Tạo kênh ngay lúc khởi động (thay vì đợi <code>ReminderWorker</code> chạy — tối đa 24
+        giờ) làm hành vi <strong>giống nhau trên mọi phiên bản Android ngay từ lần mở app đầu tiên</strong>.
+      </p>
+
+      <h2>7. Health Connect rationale — đường vào bắt buộc phải có</h2>
+      <p>
+        Health Connect yêu cầu app cung cấp màn hình giải thích quyền riêng tư, và nó gọi app qua một intent.
+        App phải xử lý <strong>hai</strong> hành động:
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Hành động</th><th>Áp dụng cho</th><th>Khai ở đâu</th></tr></thead>
+        <tbody>
+          <tr><td><code>androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE</code></td><td>Android &lt; 14</td><td><code>intent-filter</code> thứ hai trên <code>MainActivity</code></td></tr>
+          <tr><td><code>android.intent.action.VIEW_PERMISSION_USAGE</code> (category <code>HEALTH_PERMISSIONS</code>)</td><td>Android 14+</td><td><code>activity-alias</code> <code>ViewPermissionUsageActivity</code> trỏ vào <code>MainActivity</code>, với quyền <code>START_VIEW_PERMISSION_USAGE</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+<pre><code><span class="c">// MainActivity — nhận diện và ĐI VÒNG QUA cổng đăng nhập</span>
+<span class="k">private fun</span> Intent.isHealthPermissionsRationale(): Boolean =
+    action == ACTION_SHOW_PERMISSIONS_RATIONALE || action == ACTION_VIEW_PERMISSION_USAGE
+
+<span class="cmt">// vì: Health Connect sẽ TỪ CHỐI DUYỆT nếu thấy app hiện màn Đăng nhập</span></code></pre>
+
+      <h2>8. Bảng "việc gì chạy khi nào"</h2>
+      <div class="diagram">
+<pre>MỞ APP (lần đầu tiên)
+  HiltApplication.onCreate
+      └─ ReminderNotifications.ensureChannel            → kênh thông báo có ngay
+  MainActivity.onCreate
+      ├─ HealthSyncWorker.schedule    (6 giờ,  KEEP)
+      ├─ SyncWorker.schedule          (6 giờ,  KEEP)
+      ├─ ReminderWorker.schedule      (24 giờ, KEEP)
+      ├─ SleepTrackingWorker.schedule (15 phút, KEEP)
+      └─ Room mở DB lần đầu (SQLCipher + Keystore)
+
+APP ĐANG MỞ / Ở NỀN TRONG TÁC VỤ
+  HomeViewModel còn sống
+      └─ listener cảm biến bước chân VẪN CHẠY  → số bước đếm tiếp
+
+APP ĐÓNG HẲN (vuốt khỏi tác vụ)
+  └─ listener bước chân DỪNG (phiên kết thúc)
+
+LUÔN CHẠY DÙ APP ĐÓNG (WorkManager)
+  ├─ mỗi 15 phút : SleepTrackingWorker   → nghe cảm biến 3 giây → cộng dồn giấc ngủ
+  ├─ mỗi 6 giờ   : HealthSyncWorker      → gộp dữ liệu sức khỏe hôm nay + vẽ lại widget
+  ├─ mỗi 6 giờ   : SyncWorker            → đẩy log lên Firestore (nếu đã bật đồng bộ)
+  └─ mỗi 24 giờ  : ReminderWorker        → gửi thông báo nhắc nhở
+
+KHI MÀN HOME HIỆN LẠI
+  HomeViewModel.refreshSystemPermissions()
+      ├─ kiểm tra lại quyền Health Connect
+      ├─ kiểm tra lại trạng thái quyền thông báo
+      ├─ đọc lại trạng thái cảm biến bước chân
+      ├─ đọc lại giờ ngủ ước lượng
+      └─ đọc lại nhịp tim GHI TRONG NGÀY   → đo xong quay về là thấy ngay
+
+KHI MÀN PHÂN TÍCH HIỆN LẠI
+  InsightsViewModel.refresh()
+      └─ đọc lại chi tiết pha giấc ngủ (Health Connect không có Flow)
+
+KHI APP GHI DỮ LIỆU SỨC KHỎE (đồng bộ xong / vừa đo nhịp tim)
+  HealthWidget().updateAll(context)        → widget hiện số mới ngay (không chờ 30 phút)</pre>
+      </div>
+
+      <h2>9. Những điều đã ghi nhận nhưng chưa dọn</h2>
+      <div class="callout warn">
+        <span class="callout__title">Hai quyền thừa trong manifest</span>
+        <ul>
+          <li><code>SCHEDULE_EXACT_ALARM</code> — <strong>không</strong> được dùng ở đâu: dự án không có
+              <code>AlarmManager</code> hay <code>setExact*()</code> nào. Thẻ nhắc nhở dùng
+              <code>ReminderWorker</code> (WorkManager), không dùng báo thức chính xác.</li>
+          <li><code>RECEIVE_BOOT_COMPLETED</code> — <strong>trùng</strong> khai báo của thư viện
+              <code>work-runtime</code> (WorkManager tự thêm khi cần để lên lịch lại sau khi khởi động).</li>
+        </ul>
+        <p>
+          Cả hai <strong>không</strong> ảnh hưởng build hay hành vi của app. Dọn bằng cách xoá hai dòng trong
+          <code>AndroidManifest.xml</code>.
+        </p>
+      </div>
+      <div class="callout warn">
+        <span class="callout__title">Widget vẽ lại theo 30 phút — vì sao không nhanh hơn</span>
+        <p>
+          <code>updatePeriodMillis</code> của AppWidget có mức tối thiểu do hệ thống áp đặt là 30 phút. App bù
+          lại bằng cách <strong>chủ động</strong> gọi <code>updateAll()</code> mỗi khi dữ liệu sức khỏe đổi —
+          nên trong thực tế widget cập nhật ngay sau khi đồng bộ hoặc sau khi đo nhịp tim.
+        </p>
+      </div>
+      <div class="callout warn">
+        <span class="callout__title">Phần cần máy thật/emulator để kiểm thử</span>
+        <ul>
+          <li>CameraX và <code>PreviewView</code> (chụp ảnh, bind lifecycle) — không chạy được trên JVM.</li>
+          <li>Cảm biến đếm bước và cảm biến ánh sáng/gia tốc — emulator không có; muốn thử Health Connect thì
+              phải bơm dữ liệu bằng <strong>Health Connect Toolbox</strong> (chỉ có trên emulator
+              <em>with Google Play</em>).</li>
+          <li>Thông báo và Workspace scheduling thực tế — xem ở WorkManager Inspector trong Android Studio.</li>
+        </ul>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

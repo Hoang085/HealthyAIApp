@@ -16,12 +16,7 @@ import androidx.compose.ui.unit.sp
 
 private val CardGreen = Color(0xFF2E7D32)
 
-/**
- * Thẻ hướng dẫn dùng chung cho những việc người dùng cần làm để app hoạt động đầy đủ:
- * icon tròn + tiêu đề + mô tả + một nút hành động (cấp quyền, cài/cập nhật ứng dụng, mở Settings…).
- *
- * Được dùng cho thẻ quyền Health Connect và thẻ quyền thông báo trên màn Home.
- */
+/** Thẻ hướng dẫn: icon tròn + tiêu đề + mô tả + nút hành động (cấp quyền, cài/cập nhật, mở Settings…). */
 @Composable
 fun InfoActionCard(
     icon: ImageVector,

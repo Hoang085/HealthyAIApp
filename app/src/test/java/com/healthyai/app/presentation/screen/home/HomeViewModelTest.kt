@@ -4,6 +4,7 @@ import com.healthyai.app.domain.model.CloudSyncSettings
 import com.healthyai.app.domain.model.Habit
 import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitLog
+import com.healthyai.app.domain.model.HealthConnectDataSettings
 import com.healthyai.app.domain.model.HealthConnectPermissionStatus
 import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.HealthData
@@ -19,6 +20,7 @@ import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthConnectPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase
 import com.healthyai.app.domain.usecase.health.GetLatestRecordedHeartRateUseCase
+import com.healthyai.app.domain.usecase.health.GetStoredHealthDataUseCase
 import com.healthyai.app.domain.usecase.notification.GetNotificationPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.steps.GetStepCounterStatusUseCase
 import io.mockk.coEvery
@@ -44,14 +46,7 @@ import org.junit.Before
 import org.junit.Test
 import java.time.LocalTime
 
-/**
- * Unit test cho trạng thái hoàn thành của thói quen trên màn Home và cho luồng
- * xin quyền Health Connect / quyền thông báo.
- *
- * Trước đây `HomeScreen` gọi `HabitItem(habit, isCompleted = false)` nên Home **không bao giờ**
- * hiển thị thói quen đã đạt mục tiêu. Test này chốt lại hành vi đúng: hoàn thành được suy ra
- * từ tổng giá trị log **trong ngày** so với `Habit.targetValue`.
- */
+/** Unit test cho trạng thái hoàn thành thói quen trên màn Home và luồng xin quyền Health Connect / thông báo. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
 
@@ -68,12 +63,16 @@ class HomeViewModelTest {
     private val sleepTrackerRepository = mockk<SleepTrackerRepository>()
     private val settingsRepository = mockk<SettingsRepository>()
     private val getLatestRecordedHeartRateUseCase = mockk<GetLatestRecordedHeartRateUseCase>()
+    private val getStoredHealthDataUseCase = mockk<GetStoredHealthDataUseCase>()
 
     /** Khung giờ ngủ "trong DB" — test đổi giá trị này rồi cho `advanceUntilIdle()` để mô phỏng Room phát lại. */
     private val scheduleFlow = MutableStateFlow(SleepSchedule.DEFAULT)
 
     /** Thiết lập "Đồng bộ đám mây" trong DB — mặc định TẮT, đúng như lần cài đầu. */
     private val cloudSyncFlow = MutableStateFlow(CloudSyncSettings())
+
+    /** Thiết lập nguồn dữ liệu sức khỏe trong DB — mặc định TẮT (dùng dữ liệu đã lưu trong app). */
+    private val healthConnectDataFlow = MutableStateFlow(HealthConnectDataSettings())
 
     private val waterHabit = Habit(
         id = 1L,
@@ -91,8 +90,16 @@ class HomeViewModelTest {
         givenStepCounter(sensorAvailable = false, permissionGranted = false)
         givenSleepTracker(hours = 0.0)
         givenRecordedHeartRate(bpm = 0.0)
+        givenStoredHealthData(HealthData())
         every { settingsRepository.observeSleepSchedule() } returns scheduleFlow
         every { settingsRepository.observeCloudSync() } returns cloudSyncFlow
+        every { settingsRepository.observeHealthConnectData() } returns healthConnectDataFlow
+        coEvery { settingsRepository.getHealthConnectData() } answers { healthConnectDataFlow.value }
+        // Ghi thiết lập nguồn dữ liệu cũng cập nhật lại Flow — mô phỏng Room phát lại sau khi ghi.
+        coEvery { settingsRepository.setHealthConnectDataEnabled(any()) } answers {
+            healthConnectDataFlow.value =
+                HealthConnectDataSettings(enabled = invocation.args[0] as Boolean)
+        }
     }
 
     @After
@@ -167,7 +174,7 @@ class HomeViewModelTest {
         assertFalse(habits.first { it.habit.id == 2L }.isCompleted)
     }
 
-    // ── Xin quyền Health Connect ────────────────────────────────
+    // Xin quyền Health Connect
 
     @Test
     fun `missing permissions show the permission card without a red error banner`() = runTest {
@@ -179,6 +186,7 @@ class HomeViewModelTest {
             hasAllPermissions = false,
             requiredPermissions = REQUIRED_PERMISSIONS
         )
+        givenHealthConnectData(enabled = true)
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -188,7 +196,7 @@ class HomeViewModelTest {
         assertTrue(state.healthConnect.needsPermission)
         assertEquals(REQUIRED_PERMISSIONS, state.healthConnect.requiredPermissions)
         assertNull(state.error)
-        // Health Connect vẫn sẵn sàng → vẫn đọc số liệu (thiếu quyền thì Health Connect trả 0).
+        // Nguồn Health Connect đang BẬT → vẫn đọc số liệu (thiếu quyền thì Health Connect trả 0).
         coVerify(exactly = 1) { getHealthDataUseCase() }
     }
 
@@ -240,6 +248,7 @@ class HomeViewModelTest {
             hasAllPermissions = false,
             requiredPermissions = REQUIRED_PERMISSIONS
         )
+        givenHealthConnectData(enabled = true)
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -289,6 +298,7 @@ class HomeViewModelTest {
             hasAllPermissions = false,
             requiredPermissions = REQUIRED_PERMISSIONS
         )
+        givenHealthConnectData(enabled = true)
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -303,7 +313,7 @@ class HomeViewModelTest {
         coVerify(exactly = 2) { getHealthDataUseCase() }
     }
 
-    // ── Xin quyền thông báo nhắc nhở ─────────────────────────────
+    // Xin quyền thông báo nhắc nhở
 
     @Test
     fun `blocked notifications show the reminder card`() = runTest {
@@ -385,13 +395,15 @@ class HomeViewModelTest {
         assertFalse(viewModel.uiState.value.showReminderNotificationCard)
     }
 
-    // ── Đếm bước bằng cảm biến của máy ─────────────────────────
+    // Đếm bước bằng cảm biến của máy
 
     @Test
-    fun `sensor steps are used when health connect has no steps`() = runTest {
+    fun `sensor steps are used when the app has no stored steps`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
-        givenTodayLogs() // Health Connect trả về 0 bước
+        givenTodayLogs()
+        givenHealthConnectData(enabled = false)
+        givenStoredHealthData(HealthData()) // Bản chụp trong app chưa có bước nào
         givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 4_230L)
 
         val viewModel = createViewModel()
@@ -399,35 +411,64 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertEquals(4_230L, state.sensorSteps)
-        assertEquals("Số bước hiển thị lấy từ cảm biến của máy", 4_230L, state.displaySteps)
+        assertEquals(
+            "Nguồn TẮT và bản chụp trống → lấy số bước live từ cảm biến của máy",
+            4_230L,
+            state.displaySteps
+        )
         assertFalse(state.showStepCounterCard)
     }
 
     @Test
-    fun `sensor steps win over health connect because health connect is only read once`() = runTest {
+    fun `steps come from the stored snapshot when the health connect source is off`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
-        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(steps = 3_000L))
-        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 4_230L)
+        givenHealthConnectData(enabled = false)
+        givenStoredHealthData(HealthData(steps = 3_000L))
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 1_200L)
 
         val viewModel = createViewModel()
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertEquals(
-            "Cảm biến của máy là nguồn live nên được ưu tiên; Health Connect chỉ đọc 1 lần nên bị đóng băng",
-            4_230L,
+            "Nguồn TẮT → lấy bản chụp đã lưu trong app; cảm biến chỉ là dự phòng",
+            3_000L,
+            state.displaySteps
+        )
+        coVerify(exactly = 0) { getHealthDataUseCase() }
+    }
+
+    @Test
+    fun `steps come from health connect when the health connect source is on`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        givenHealthConnectData(enabled = true)
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(steps = 3_000L))
+        givenStoredHealthData(HealthData(steps = 1_000L))
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 1_200L)
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            "Nguồn BẬT → ưu tiên số của Health Connect thay vì bản chụp / cảm biến",
+            3_000L,
             state.displaySteps
         )
     }
 
     @Test
-    fun `health connect steps are the fallback when the device has no usable step sensor`() = runTest {
+    fun `health connect steps are used when the app has no stored steps and no usable sensor`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
+        givenHealthConnectData(enabled = true)
         coEvery { getHealthDataUseCase() } returns Result.success(HealthData(steps = 3_000L))
+        givenStoredHealthData(HealthData())
         givenStepCounter(sensorAvailable = false, permissionGranted = false, steps = 0L)
 
         val viewModel = createViewModel()
@@ -435,7 +476,7 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertEquals(
-            "Máy không có cảm biến (hoặc chưa cấp quyền) thì lấy số của Health Connect",
+            "Nguồn BẬT, bản chụp trống và máy không có cảm biến → lấy số của Health Connect",
             3_000L,
             state.displaySteps
         )
@@ -513,14 +554,15 @@ class HomeViewModelTest {
         assertEquals(800L, state.sensorSteps)
     }
 
-    // ── Tự ước lượng giờ ngủ bằng cảm biến của máy ─────────────
+    // Tự ước lượng giờ ngủ bằng cảm biến của máy
 
     @Test
-    fun `device sleep estimate is used when health connect has no sleep data`() = runTest {
+    fun `device sleep estimate is used when the app has no stored sleep data`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
-        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(sleepHours = 0.0))
+        givenHealthConnectData(enabled = false)
+        givenStoredHealthData(HealthData(sleepHours = 0.0))
         givenSleepTracker(hours = 6.5)
 
         val viewModel = createViewModel()
@@ -528,14 +570,43 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertEquals(6.5, state.sensorSleepHours, 0.001)
-        assertEquals("Giờ ngủ hiển thị lấy từ bộ ước lượng của app", 6.5, state.displaySleepHours, 0.001)
+        assertEquals(
+            "Nguồn TẮT và bản chụp trống → lấy ước lượng giờ ngủ của app",
+            6.5,
+            state.displaySleepHours,
+            0.001
+        )
     }
 
     @Test
-    fun `health connect sleep wins over the device estimate`() = runTest {
+    fun `stored sleep is used when the health connect source is off`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
+        givenHealthConnectData(enabled = false)
+        givenStoredHealthData(HealthData(sleepHours = 7.0))
+        givenSleepTracker(hours = 6.0)
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(sleepHours = 8.0))
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            "Nguồn TẮT → lấy giờ ngủ của bản chụp trong app, không đọc Health Connect",
+            7.0,
+            state.displaySleepHours,
+            0.001
+        )
+        coVerify(exactly = 0) { getHealthDataUseCase() }
+    }
+
+    @Test
+    fun `health connect sleep wins when the health connect source is on`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits(waterHabit)
+        givenTodayLogs()
+        givenHealthConnectData(enabled = true)
         coEvery { getHealthDataUseCase() } returns Result.success(HealthData(sleepHours = 7.5))
         givenSleepTracker(hours = 6.0)
 
@@ -544,7 +615,7 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertEquals(
-            "Số của Health Connect (đồng hồ đeo tay) được ưu tiên; bộ ước lượng chỉ là dự phòng",
+            "Nguồn BẬT → số của Health Connect (đồng hồ đeo tay) được ưu tiên; bộ ước lượng chỉ là dự phòng",
             7.5,
             state.displaySleepHours,
             0.001
@@ -586,14 +657,15 @@ class HomeViewModelTest {
         assertEquals(7.2, viewModel.uiState.value.sensorSleepHours, 0.001)
     }
 
-    // ── Nhịp tim ghi trên máy (đo bằng camera) ────────────────
+    // Nhịp tim ghi trên máy (đo bằng camera)
 
     @Test
-    fun `the heart rate recorded on the device is shown when health connect has none`() = runTest {
+    fun `the heart rate recorded on the device is shown when the app has no stored heart rate`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
-        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 0.0))
+        givenHealthConnectData(enabled = false)
+        givenStoredHealthData(HealthData())
         givenRecordedHeartRate(bpm = 88.0)
 
         val viewModel = createViewModel()
@@ -601,7 +673,7 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertEquals(
-            "Health Connect chưa có nhịp tim thì lấy số đo trong ngày trên máy",
+            "Nguồn TẮT và bản chụp không có nhịp tim → lấy số đo trong ngày trên máy",
             88.0,
             state.displayHeartRate,
             0.001
@@ -609,10 +681,11 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `health connect heart rate wins over the one recorded on the device`() = runTest {
+    fun `health connect heart rate wins when the health connect source is on`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
+        givenHealthConnectData(enabled = true)
         // Health Connect có thể có số của đồng hồ đeo tay nên được ưu tiên
         coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 62.0))
         givenRecordedHeartRate(bpm = 88.0)
@@ -622,7 +695,7 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertEquals(
-            "Số của Health Connect được ưu tiên",
+            "Nguồn BẬT → số của Health Connect được ưu tiên",
             62.0,
             state.displayHeartRate,
             0.001
@@ -634,9 +707,7 @@ class HomeViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         givenHabits(waterHabit)
         givenTodayLogs()
-        // Sang ngày mới: cả Health Connect lẫn nhịp tim ghi trong ngày đều chưa có số nào.
-        // Số của hôm qua KHÔNG được hiện lại (getLatestRecordedHeartRate chỉ đọc hàng của hôm nay),
-        // nên UI hiện "-- bpm" thay vì một nhịp tim cũ.
+        // Sang ngày mới: chỉ đọc số của hôm nay nên UI hiện "-- bpm", không hiện nhịp tim cũ
         coEvery { getHealthDataUseCase() } returns Result.success(HealthData(heartRate = 0.0))
         givenRecordedHeartRate(bpm = 0.0)
 
@@ -667,7 +738,7 @@ class HomeViewModelTest {
         assertEquals(76.0, state.displayHeartRate, 0.001)
     }
 
-    // ── Khung giờ ngủ do người dùng đặt ────────────────────────
+    // Khung giờ ngủ do người dùng đặt
 
     @Test
     fun `the default window is 23 to 7 when the user has not set anything`() = runTest {
@@ -794,7 +865,7 @@ class HomeViewModelTest {
         coVerify(exactly = 0) { settingsRepository.setSleepSchedule(any()) }
     }
 
-    // ── Lời chào: tên thật, không hard-code (phụ lục C #30) ─────
+    // Lời chào: tên thật, không hard-code
 
     @Test
     fun `greeting name comes from the signed in user`() = runTest {
@@ -822,9 +893,9 @@ class HomeViewModelTest {
         assertNull("Chế độ khách không hiện tên nào (không còn 'Alex' cứng)", viewModel.uiState.value.userName)
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
-    // ── Đồng bộ đám mây (mục 3 #31) ───────────────────────────
+    // Đồng bộ đám mây
 
     @Test
     fun `cloud sync is off by default`() = runTest {
@@ -870,6 +941,72 @@ class HomeViewModelTest {
         coVerify(exactly = 1) { settingsRepository.setCloudSyncEnabled(true, any()) }
     }
 
+    // Nguồn dữ liệu sức khỏe của Trang chủ (switch)
+
+    @Test
+    fun `the health connect source is off by default`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(
+            "Mặc định TẮT → thẻ Tóm tắt sức khỏe dùng dữ liệu đã lưu trong app",
+            viewModel.uiState.value.healthConnectData.enabled
+        )
+    }
+
+    @Test
+    fun `the stored source setting is reflected in the state`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        givenHealthConnectData(enabled = true)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.healthConnectData.enabled)
+    }
+
+    @Test
+    fun `toggling the health data source writes it through the settings repository`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.setHealthConnectDataEnabled(true)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { settingsRepository.setHealthConnectDataEnabled(true) }
+    }
+
+    @Test
+    fun `turning the health connect source on reloads health connect data`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        givenHabits()
+        givenTodayLogs()
+        givenStoredHealthData(HealthData(steps = 111L))
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        // Nguồn đang TẮT: chưa đọc Health Connect lần nào.
+        coVerify(exactly = 0) { getHealthDataUseCase() }
+
+        coEvery { getHealthDataUseCase() } returns Result.success(HealthData(steps = 999L))
+        viewModel.setHealthConnectDataEnabled(true)
+        advanceUntilIdle()
+
+        assertEquals(
+            "Bật switch → nạp ngay số của Health Connect",
+            999L,
+            viewModel.uiState.value.displaySteps
+        )
+        coVerify(exactly = 1) { getHealthDataUseCase() }
+    }
+
     @Test
     fun `a signed in user is reported as signed in`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -905,7 +1042,8 @@ class HomeViewModelTest {
         stepCounterRepository = stepCounterRepository,
         sleepTrackerRepository = sleepTrackerRepository,
         settingsRepository = settingsRepository,
-        getLatestRecordedHeartRateUseCase = getLatestRecordedHeartRateUseCase
+        getLatestRecordedHeartRateUseCase = getLatestRecordedHeartRateUseCase,
+        getStoredHealthDataUseCase = getStoredHealthDataUseCase
     )
 
     private fun givenHabits(vararg habits: Habit) {
@@ -962,6 +1100,16 @@ class HomeViewModelTest {
     /** Nhịp tim ghi gần nhất trên máy (`health_data_history`) mà màn Trang chủ đọc được. */
     private fun givenRecordedHeartRate(bpm: Double) {
         coEvery { getLatestRecordedHeartRateUseCase() } returns bpm
+    }
+
+    /** Bản chụp sức khỏe hôm nay đã lưu trong app (`health_data_history`) mà màn Trang chủ đọc được. */
+    private fun givenStoredHealthData(data: HealthData) {
+        coEvery { getStoredHealthDataUseCase() } returns data
+    }
+
+    /** Đổi nguồn dữ liệu như thể DB đã đổi; gọi TRƯỚC `createViewModel()` để áp dụng cho lần nạp đầu. */
+    private fun givenHealthConnectData(enabled: Boolean) {
+        healthConnectDataFlow.value = HealthConnectDataSettings(enabled = enabled)
     }
 
     private fun waterLog(value: Float) = HabitLog(

@@ -7,5 +7,6 @@ import javax.inject.Inject
 class UpdateHabitUseCase @Inject constructor(
     private val repository: HabitRepository
 ) {
-    suspend operator fun invoke(habit: Habit) = repository.insertHabit(habit)
+    /** Sửa thói quen qua updateHabit (UPDATE theo khoá chính); không dùng insertHabit vì REPLACE+CASCADE sẽ xoá sạch log. */
+    suspend operator fun invoke(habit: Habit) = repository.updateHabit(habit)
 }

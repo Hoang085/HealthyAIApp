@@ -7,10 +7,7 @@ import com.healthyai.app.domain.model.HabitCategory
 import com.healthyai.app.domain.model.HabitFrequency
 import com.healthyai.app.domain.model.HabitTimeOfDay
 
-/**
- * Room Entity — bảng "habits".
- * Ánh xạ 1-1 với bảng trong SQLite database (được mã hóa bởi SQLCipher).
- */
+/** Room Entity ánh xạ 1-1 bảng "habits" trong SQLite (mã hóa bằng SQLCipher). */
 @Entity(tableName = "habits")
 data class HabitEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

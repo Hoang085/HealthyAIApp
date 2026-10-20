@@ -14,9 +14,11 @@ interface HabitDao {
     @Query("SELECT * FROM habits WHERE id = :id")
     suspend fun getHabitById(id: Long): HabitEntity?
 
+    /** Chỉ tạo hàng mới (id = 0); REPLACE = DELETE + INSERT nên xoá log qua CASCADE — hàng đã có phải dùng [updateHabit]. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHabit(habit: HabitEntity): Long
 
+    /** Cập nhật thói quen theo khoá chính — giữ nguyên hàng cũ và mọi `habit_logs` của nó. */
     @Update
     suspend fun updateHabit(habit: HabitEntity)
 

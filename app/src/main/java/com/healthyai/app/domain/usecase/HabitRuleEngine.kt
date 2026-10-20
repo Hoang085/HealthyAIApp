@@ -12,42 +12,11 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * ╔══════════════════════════════════════════════════════════════════════════╗
- * ║  HabitRuleEngine — On-device AI (Rule-Based Recommendation)              ║
- * ╠══════════════════════════════════════════════════════════════════════════╣
- * ║  - Chạy hoàn toàn offline trên thiết bị (Privacy-first)                  ║
- * ║  - Không cần model phức tạp, hiệu quả với data ít                        ║
- * ║  - Dễ viết Unit Test để chứng minh logic hoạt động chính xác             ║
- * ╚══════════════════════════════════════════════════════════════════════════╝
- *
- * ### Feed gợi ý: đa dạng & xoay vòng (thay cho "một thẻ cảnh báo cố định")
- *
- * Trước đây mỗi điều kiện chỉ sinh **một** thẻ cảnh báo cố định, và vì điều kiện còn đúng thì thẻ
- * vẫn còn — nếu người dùng chưa xử lý xong thì thấy mãi **cùng một gợi ý**, gây cảm giác bị ép buộc.
- *
- * Nay engine **không** dựng thẻ cảnh báo nữa mà:
- * 1. **Xác định danh mục đang có vấn đề** (ngủ ít, uống thiếu nước, ít vận động, nhịp tim cao) từ nhật
- *    ký thói quen và dữ liệu sức khỏe — chỉ dùng để **chọn nhóm mẹo** ([SuggestionCatalog.TipFocus]).
- * 2. **Chọn mẹo xoay vòng theo ngày** từ kho mẹo của từng danh mục ([SuggestionCatalog]) nên feed luôn
- *    đổi mới; người dùng thấy nhiều **gợi ý liên quan khác nhau** thay vì một lời nhắc lặp lại.
- * 3. Ưu tiên danh mục đang có vấn đề, rồi tới các danh mục còn lại mà người dùng **có thói quen**
- *    (luôn có gợi ý tích cực để cải thiện), cuối cùng giới hạn [MAX_SUGGESTIONS] thẻ.
- */
+/** Engine gợi ý thói quen chạy offline (rule-based), chọn mẹo xoay vòng theo ngày. */
 @Singleton
 class HabitRuleEngine @Inject constructor() {
 
-    /**
-     * Sinh danh sách gợi ý để hiển thị ở tab Phân tích.
-     *
-     * @param activeHabits các thói quen người dùng đang theo dõi — quyết định **danh mục nào** được
-     *   gợi ý (feed bám theo thói quen người dùng thật sự có), và dùng để tính mức hoàn thành mục tiêu.
-     * @param recentLogs nhật ký thói quen gần đây (dùng để phát hiện danh mục đang có vấn đề).
-     * @param healthHistory lịch sử `health_data_history` (bước chân, giờ ngủ, nhịp tim) — cũng dùng để
-     *   phát hiện danh mục cần chú ý.
-     * @param rotationSeed mốc xoay vòng mẹo. Mặc định theo **ngày trong năm** nên trong cùng một ngày
-     *   feed ổn định, sang ngày mới thì đổi mẹo; test truyền số cố định để tất định.
-     */
+    /** Sinh danh sách gợi ý cho tab Phân tích; rotationSeed đổi mẹo xoay vòng theo ngày. */
     fun generateSuggestions(
         activeHabits: List<Habit>,
         recentLogs: List<HabitLog>,
@@ -56,8 +25,7 @@ class HabitRuleEngine @Inject constructor() {
     ): List<Suggestion> {
         val flagged = flaggedCategories(recentLogs, healthHistory)
 
-        // Danh mục gợi ý = danh mục người dùng có thói quen ∪ danh mục đang có vấn đề.
-        // Nếu chưa có gì (app mới) → mở toàn bộ kho mẹo để người dùng có gợi ý khởi đầu.
+        // Danh mục gợi ý = thói quen người dùng ∪ danh mục có vấn đề; nếu trống thì mở toàn bộ kho mẹo.
         val userCategories = activeHabits.map { it.category }.toSet()
         val relevant = SuggestionCatalog.categories.filter { it in userCategories || it in flagged }
             .ifEmpty { SuggestionCatalog.categories }
@@ -83,17 +51,14 @@ class HabitRuleEngine @Inject constructor() {
             .take(MAX_SUGGESTIONS)
     }
 
-    /**
-     * Các danh mục đang nổi lên là **cần chú ý**, dựa trên cùng những ngưỡng đã dùng trước đây
-     * (nhưng nay chỉ để chọn nhóm mẹo, không còn dựng thẻ cảnh báo cố định).
-     */
+    /** Các danh mục đang cần chú ý — chỉ để chọn nhóm mẹo, không dựng thẻ cảnh báo. */
     private fun flaggedCategories(
         recentLogs: List<HabitLog>,
         healthHistory: List<HealthData>
     ): Set<HabitCategory> {
         val flagged = mutableSetOf<HabitCategory>()
 
-        // ── Từ nhật ký thói quen ───────────────────────────────
+        // Từ nhật ký thói quen
         val recentSleep = recentLogs.filter { it.category == HabitCategory.SLEEP }
             .sortedByDescending { it.loggedAt }
             .take(7)
@@ -110,7 +75,7 @@ class HabitRuleEngine @Inject constructor() {
 
         if (isExerciseBelowTarget(recentLogs)) flagged += HabitCategory.EXERCISE
 
-        // ── Từ dữ liệu sức khỏe cứng (Health Connect / cảm biến của máy) ──
+        // Từ dữ liệu sức khỏe cứng (Health Connect / cảm biến máy)
         val dailyHistory = latestRowPerDay(healthHistory)
 
         val recent3Sleep = dailyHistory.take(3)
@@ -139,12 +104,7 @@ class HabitRuleEngine @Inject constructor() {
         return flagged
     }
 
-    /**
-     * Vận động có dưới mục tiêu không. Log đo bằng **bước** dùng ngưỡng bước của WHO; log đo bằng đơn
-     * vị khác (phút, km, calo…) so theo **tỉ lệ `value / targetValueAtTime`** của chính thói quen
-     * (phụ lục C #17 — trước đây so `value` với 5000/8000 bất kể đơn vị nên "Chạy bộ 30 phút" ghi 10
-     * bị đọc thành "10 bước").
-     */
+    /** Vận động dưới mục tiêu: log "bước" so ngưỡng WHO, đơn vị khác so tỉ lệ value/targetValueAtTime. */
     private fun isExerciseBelowTarget(exerciseLogs: List<HabitLog>): Boolean {
         val byNewestFirst = exerciseLogs.filter { it.category == HabitCategory.EXERCISE }
             .sortedByDescending { it.loggedAt }
@@ -170,13 +130,7 @@ class HabitRuleEngine @Inject constructor() {
         return false
     }
 
-    /**
-     * Mỗi ngày chỉ giữ **hàng mới nhất** (theo `recordedAt`), sắp xếp mới nhất → cũ nhất.
-     *
-     * Hàng mới nhất trong ngày là hàng đầy đủ dữ liệu nhất (bước chân/calo tích luỹ cả ngày).
-     * `health_data_history` ghi 1 hàng cho **mỗi lần sync** (6 giờ/lần), nên phải gom theo ngày trước
-     * khi phân tích (phụ lục C #16).
-     */
+    /** Mỗi ngày chỉ giữ hàng mới nhất (đầy đủ dữ liệu nhất) vì history ghi 1 hàng mỗi lần sync. */
     private fun latestRowPerDay(history: List<HealthData>): List<HealthData> =
         history.groupBy { it.localDate() }
             .map { (_, rowsInDay) -> rowsInDay.maxByOrNull { it.recordedAt }!! }
@@ -224,14 +178,14 @@ class HabitRuleEngine @Inject constructor() {
         /** Uống dưới mức này (ml) coi là thiếu nước. */
         const val WATER_ENOUGH_ML = 1500.0
 
-        /** Ngưỡng khuyến nghị tính bằng **bước chân** cho mỗi ngày (WHO). */
+        /** Ngưỡng khuyến nghị bước chân mỗi ngày (WHO). */
         const val STEP_DAILY_LOW = 5000f
         const val STEP_DAILY_RECOMMENDED = 8000
 
-        /** Các cách viết đơn vị "bước" được chấp nhận (xem `AddEditHabitViewModel`/Data set A). */
+        /** Các cách viết đơn vị "bước" được chấp nhận. */
         val STEP_UNITS = setOf("bước", "bước chân", "bước/ngày", "steps", "step")
 
-        /** Số ngày liên tiếp đi bộ dưới ngưỡng thì nhắc nhở (nguồn: `health_data_history`). */
+        /** Số ngày liên tiếp đi bộ dưới ngưỡng thì nhắc nhở. */
         const val STEP_TREND_DAYS = 3
 
         /** Dưới ngưỡng bước/ngày này (và có dữ liệu) thì coi là ít vận động. */

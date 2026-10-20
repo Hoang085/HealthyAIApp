@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="testing.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiểm thử &amp; chất lượng — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 8</div>
+      <h1>Kiểm thử &amp; chất lượng</h1>
+      <p class="page-lead">
+        <strong>455 unit test trên 42 file, chạy trên JVM — không cần emulator.</strong> Đây là kết quả trực
+        tiếp của quyết định kiến trúc: mọi thuật toán nằm ở tầng <code>domain</code> dưới dạng hàm thuần Kotlin.
+        Trang này giải thích bộ test được tổ chức thế nào, cái gì test được, cái gì không, và cách chạy.
+      </p>
+
+      <h2>1. Triết lý: kiến trúc quyết định khả năng kiểm thử</h2>
+      <div class="grid">
+        <div class="card">
+          <span class="card__icon">🧮</span>
+          <h4>Thuật toán phức tạp nhất vẫn test được</h4>
+          <p>Thuật toán PPG (<code>PpgAnalyzer</code>) — bỏ DC, tìm đỉnh, tự tương quan — chạy <strong>20 + 15
+             test</strong> trên JVM bằng tín hiệu mạch đập <em>giả lập</em> ở nhịp đã biết. Không cần camera.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">🕐</span>
+          <h4>Thời gian là tham số, không phải "bây giờ"</h4>
+          <p>Các hàm nhận <code>nowMs</code>, <code>today</code>, <code>zone</code> qua tham số. Test truyền giá
+             trị cố định ⇒ kết quả <strong>xác định</strong>, không phụ thuộc giờ máy hay ngày chạy.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">🧩</span>
+          <h4>Phần chạm phần cứng được đẩy ra rìa</h4>
+          <p>Chỉ những lớp cuối (<code>Android*Sensor</code>, <code>CameraPpgAnalyzer</code>, <code>Room</code>)
+             mới chạm Android — và chúng mỏng đến mức ít logic để sai.</p>
+        </div>
+        <div class="card">
+          <span class="card__icon">🔗</span>
+          <h4>Interface ở biên ⇒ mock được</h4>
+          <p><code>HttpPost</code>, <code>FoodInsightSource</code>, <code>HealthConnectDataSource</code>,
+             các repository đều là interface ⇒ test ViewModel không cần mạng, camera hay khoá API.</p>
+        </div>
+      </div>
+
+      <h2>2. Con số tổng quan</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tầng</th><th>File test</th><th><code>@Test</code></th><th>Chạy được trên JVM?</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain/</code></td><td>21 file (+1 helper)</td><td><strong>196</strong></td><td>✅ Hoàn toàn</td></tr>
+          <tr><td><code>data/</code></td><td>8 file</td><td><strong>92</strong></td><td>✅ (dùng mock + <code>isReturnDefaultValues</code>)</td></tr>
+          <tr><td><code>presentation/</code></td><td>12 file</td><td><strong>167</strong></td><td>✅ (ViewModel + hàm định dạng)</td></tr>
+          <tr><td><code>androidTest/</code></td><td>2 file</td><td>—</td><td>❌ Cần thiết bị (kiểm thử DAO thật)</td></tr>
+          <tr><td><strong>Tổng</strong></td><td><strong>41 lớp + 1 helper</strong></td><td><strong>455</strong></td><td></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout note">
+        <span class="callout__title">Vì sao test <code>data/</code> và ViewModel chạy được trên JVM</span>
+        <p>
+          <code>app/build.gradle.kts</code> bật <code>testOptions { unitTests { isReturnDefaultValues = true } }</code>.
+          Nhờ vậy unit test JVM gọi được API framework như <code>android.util.Log</code> mà không bị ném
+          "Method d in android.util.Log not mocked" — nó trả giá trị mặc định thay vì lỗi.
+        </p>
+      </div>
+
+      <h2>3. Danh sách đầy đủ 42 file test</h2>
+      <p class="small">Tra nhanh: tìm file bạn muốn hiểu, xem nó được chốt bằng bao nhiêu test.</p>
+
+      <h3>3.1. Domain — thuật toán &amp; logic (21 file · 196 test)</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>File test</th><th>Test</th><th>Chốt điều gì</th></tr></thead>
+        <tbody>
+          <tr><td><code>usecase/steps/StepCounterMathTest</code></td><td>12</td><td>5 nhánh của <code>sample()</code>, nội suy 00:00, máy restart; có ca <em>"bước đi lúc app đã đóng <strong>không bao giờ</strong> được cộng"</em> và <em>"đóng app rồi mở lại trong cùng ngày vẫn giữ số đã đếm"</em></td></tr>
+          <tr><td><code>usecase/sleep/SleepTrackerMathTest</code></td><td><strong>26</strong></td><td>Khung vắt / không vắt nửa đêm, <code>nightIsoOf</code>, cộng dồn chỉ giữa hai mẫu "đang ngủ", <code>displaySleepMinutes</code> ba nhánh, ngưỡng 45 phút / 12 giờ</td></tr>
+          <tr><td><code>usecase/heartrate/HeartRateMathTest</code></td><td><strong>20</strong></td><td>Trung vị, MAD, độ đều của RR, độ mạnh tín hiệu, nội suy parabol, <code>redFromYuvMeans</code>, phân loại <code>HeartRateZone</code></td></tr>
+          <tr><td><code>usecase/heartrate/PpgAnalyzerTest</code></td><td><strong>15</strong></td><td>Chạy trên <strong>tín hiệu mạch đập giả lập</strong> (<code>PpgTestSignal.kt</code>) ở nhịp đã biết: nhận đúng bpm, từ chối khi tín hiệu yếu/nhiễu, tự quên khi mất ngón tay</td></tr>
+          <tr><td><code>usecase/HabitRuleEngineTest</code></td><td>16</td><td>Các luật cơ bản: ngủ ít, uống thiếu, vận động, nhịp tim cao; thứ tự ưu tiên; giới hạn 4 thẻ</td></tr>
+          <tr><td><code>usecase/HabitRuleEngineExtendedTest</code></td><td>4</td><td>Các ca mở rộng của engine</td></tr>
+          <tr><td><code>usecase/HabitRuleEnginePersonalizedTest</code></td><td>6</td><td>Feed bám theo danh mục thói quen <strong>người dùng thật sự có</strong></td></tr>
+          <tr><td><code>usecase/HabitRuleEngineStepTrendTest</code></td><td>6</td><td>Luật "3 ngày liên tiếp" từ <code>health_data_history</code> — chốt việc <strong>phải</strong> cắt theo mốc thời gian</td></tr>
+          <tr><td><code>usecase/SuggestionCatalogTest</code></td><td>6</td><td>Mỗi danh mục có mẹo cho cả hai <code>TipFocus</code>; <code>concernTips</code> rơi về <code>generalTips</code> khi cần</td></tr>
+          <tr><td><code>usecase/food/FoodAnalysisTest</code></td><td><strong>17</strong></td><td>Prompt chứa các ràng buộc quan trọng; <code>toInsight</code> cắt độ dài, bỏ mục rỗng/trùng, giới hạn 3 gạch, thay emoji mặc định</td></tr>
+          <tr><td><code>usecase/health/VitalityScoreMathTest</code></td><td>10</td><td>Công thức 0.4/0.3/0.3, chuẩn hoá <code>weightSum</code> khi thiếu nguồn, trả <code>null</code> khi không có gì để chấm, tính theo từng ngày</td></tr>
+          <tr><td><code>usecase/health/HealthSummaryHistoryTest</code></td><td>8</td><td>Mỗi ngày lấy hàng mới nhất; <strong>luôn đủ 7 dòng</strong>; ngày trống có <code>hasData = false</code></td></tr>
+          <tr><td><code>usecase/health/TodayHealthSummaryTest</code></td><td>7</td><td>Quy tắc ưu tiên nguồn cho cả ba chỉ số — bộ test bảo vệ "app và widget không được nói hai số khác nhau"</td></tr>
+          <tr><td><code>usecase/health/SleepTrendMathTest</code></td><td>4</td><td>Bốn mức xếp loại giấc ngủ theo giờ trung bình</td></tr>
+          <tr><td><code>usecase/health/GetVitalityScoreUseCaseTest</code></td><td>7</td><td>Cửa sổ 14 ngày, <code>delta</code> chỉ tính khi tuần trước có quan sát</td></tr>
+          <tr><td><code>usecase/health/GetHealthConnectPermissionStatusUseCaseTest</code></td><td>4</td><td>Ánh xạ trạng thái quyền Health Connect</td></tr>
+          <tr><td><code>usecase/habit/GetWeeklyConsistencyUseCaseTest</code></td><td>6</td><td>Mẫu số là snapshot theo <code>createdAt</code> — tạo thói quen mới <strong>không</strong> làm tụt tỉ lệ các ngày trước</td></tr>
+          <tr><td><code>usecase/sync/CloudSyncPolicyTest</code></td><td>5</td><td>Cổng riêng tư: tắt đồng bộ / thiếu mốc đồng ý / log tạo trước mốc ⇒ rỗng</td></tr>
+          <tr><td><code>model/SleepScheduleTest</code></td><td>6</td><td><code>contains</code>, <code>wrapsMidnight</code>, <code>durationMinutes</code>, <code>isValid</code></td></tr>
+          <tr><td><code>model/SleepStageBreakdownTest</code></td><td>3</td><td>Ba trạng thái: có pha / chỉ có tổng thời lượng / không có dữ liệu</td></tr>
+          <tr><td><code>model/NotificationPermissionStatusTest</code></td><td>8</td><td>Ba trường hợp của quyền thông báo — khoá được cả ba lối vào của thẻ</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>3.2. Data (8 file · 92 test)</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>File test</th><th>Test</th><th>Chốt điều gì</th></tr></thead>
+        <tbody>
+          <tr><td><code>vision/GeminiFoodInsightSourceTest</code></td><td><strong>28</strong></td><td>Dựng body request (có/không <code>thinkingConfig</code>), ánh xạ <strong>8 loại lỗi HTTP</strong>, nhận diện model từ chối <code>thinkingConfig</code>, parse envelope → payload → <code>toInsight</code>, chuyển model khi quá tải. Chạy với <code>HttpPost</code> giả ⇒ không cần mạng, không cần khoá</td></tr>
+          <tr><td><code>repository/HealthDataRepositoryImplTest</code></td><td><strong>23</strong></td><td>Luật gộp <code>upsertToday</code> (bước chân lấy max, các chỉ số khác lấy số mới nếu &gt; 0), bỏ qua khi không có dữ liệu, dọn 30 ngày, gọi vẽ lại widget, đọc bản chụp hôm nay (<code>getTodayStoredHealthData</code>)</td></tr>
+          <tr><td><code>repository/SettingsRepositoryImplTest</code></td><td><strong>16</strong></td><td>Đọc/ghi khung giờ ngủ dạng <strong>phút trong ngày</strong>; mọi dữ liệu thiếu/hỏng rơi về mặc định 23:00–07:00; đọc/ghi <strong>nguồn dữ liệu sức khỏe</strong> (<code>health_connect_data_enabled</code>, hỏng ⇒ TẮT)</td></tr>
+          <tr><td><code>repository/HabitRepositoryImplTest</code></td><td>7</td><td>Mapper Entity ↔ Domain; đường cập nhật dùng <code>updateHabit</code>; xoá mềm</td></tr>
+          <tr><td><code>repository/AuthRepositoryImplTest</code></td><td>4</td><td>Tên hiển thị: <code>displayName</code> → phần trước <code>@</code>; chế độ khách trả <code>null</code></td></tr>
+          <tr><td><code>local/security/DatabasePassphraseProviderTest</code></td><td>6</td><td>Sinh đúng <strong>một lần</strong> rồi đọc lại; <code>newlyCreated</code> đúng; khoá Keystore hỏng ⇒ sinh mới; không lộ khoá trong <code>toString()</code></td></tr>
+          <tr><td><code>local/migration/DatabaseMigrationsTest</code></td><td>4</td><td>Dãy migration phải <strong>liên tục</strong> từ 1 tới <code>DATABASE_VERSION</code> — test <em>fail</em> nếu ai thêm version mà quên migration</td></tr>
+          <tr><td><code>healthconnect/HealthConnectStatusMappingTest</code></td><td>4</td><td><code>sdkStatusToHealthConnectStatus</code>: 3 → AVAILABLE, 2 → UPDATE_REQUIRED, còn lại → NOT_INSTALLED</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>3.3. Presentation (12 file · 167 test)</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>File test</th><th>Test</th><th>Chốt điều gì</th></tr></thead>
+        <tbody>
+          <tr><td><code>screen/home/HomeViewModelTest</code></td><td><strong>51</strong></td><td>File test lớn nhất: <strong>nguồn số theo switch "Dùng dữ liệu Health Connect"</strong> (BẬT = Health Connect, TẮT = bản chụp trong app + cảm biến dự phòng), ba thẻ cấp quyền, hộp thoại khung giờ ngủ (kể cả khung rỗng), đồng bộ đám mây, vòng đời nạp dữ liệu có điều kiện</td></tr>
+          <tr><td><code>screen/heartrate/HeartRateViewModelTest</code></td><td><strong>21</strong></td><td>Máy trạng thái phép đo: chưa đủ dữ liệu, mất ngón tay, tín hiệu yếu, quá hạn 30 giây, từ chối kết luận khi chất lượng thấp, tự lưu kết quả</td></tr>
+          <tr><td><code>screen/camera/CameraViewModelTest</code></td><td>15</td><td>Nhận ra món / ảnh không có đồ ăn / 6 loại lỗi / <code>canRetry</code>; dùng <code>FoodInsightSource</code> giả nên không cần mạng</td></tr>
+          <tr><td><code>screen/auth/LoginViewModelTest</code></td><td>15</td><td>Đăng nhập, đăng ký, validate, xử lý lỗi Firebase</td></tr>
+          <tr><td><code>screen/habits/addedit/AddEditHabitViewModelTest</code></td><td>16</td><td>Chống trùng tên, chống double-submit (<code>isSaving</code>), dữ liệu mẫu theo danh mục</td></tr>
+          <tr><td><code>screen/habits/HabitsViewModelTest</code></td><td>13</td><td>Tiến độ trong ngày, lọc theo buổi, lưới an toàn cho giá trị ≤ 0/NaN, sự kiện dùng-một-lần, <code>LogRequest</code></td></tr>
+          <tr><td><code>ui/format/NumberDisplayTest</code></td><td>13</td><td>Số gọn: <code>2000</code> thay vì <code>2000.0</code>, giữ <code>7.5</code></td></tr>
+          <tr><td><code>navigation/AuthGateViewModelTest</code></td><td>6</td><td>Bốn nhánh <code>SessionState</code>, đăng xuất xoá <em>cả</em> phiên <em>và</em> cờ khách</td></tr>
+          <tr><td><code>screen/insights/InsightsViewModelTest</code></td><td>6</td><td>Hai trường lỗi độc lập (<code>error</code> / <code>sleepStagesError</code>), <code>visibleError</code>, <code>refresh()</code>, <code>dismissError()</code></td></tr>
+          <tr><td><code>screen/habits/HabitLogInputTest</code></td><td>5</td><td><code>parseLogValue</code>: rỗng / không phải số / NaN / âm / bằng 0</td></tr>
+          <tr><td><code>ui/theme/ThemeSurfaceColorsTest</code></td><td>4</td><td>Cặp màu nền/chữ của theme — bảo vệ độ tương phản khi sửa palette</td></tr>
+          <tr><td><code>screen/tracking/CoreTrackingViewModelTest</code></td><td>2</td><td>Luồng refresh của màn Core Tracking (không còn dùng trong app chính)</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>4. Cách chạy</h2>
+<pre><code><span class="c"># Repo KHÔNG commit Gradle wrapper (không có gradlew/gradlew.bat) ⇒ dùng Gradle đã cài,</span>
+<span class="c"># hoặc Gradle tool window của Android Studio. Bắt buộc JDK 21.</span>
+<span class="c"># Chạy từ thư mục gốc dự án (nơi có settings.gradle.kts):</span>
+gradle testDebugUnitTest
+
+<span class="c"># Hoặc chỉ một lớp test:</span>
+gradle testDebugUnitTest --tests <span class="s">"com.healthyai.app.domain.usecase.steps.StepCounterMathTest"</span>
+
+<span class="c"># Kiểm thử DAO cần emulator/máy thật:</span>
+gradle connectedAndroidTest</code></pre>
+      <p>Trong Android Studio: chuột phải một lớp test → <strong>Run Tests</strong>; hoặc nút ▶ ở gutter của từng hàm test.</p>
+      <div class="callout note">
+        <span class="callout__title">Lưu ý khi chạy</span>
+        <p>
+          Phần lớn test hoàn toàn tất định. Một vài test phụ thuộc múi giờ hệ thống hoặc dữ liệu mẫu theo danh
+          mục; nếu chạy trên CI ở múi giờ khác, hãy để ý các test liên quan tới ranh giới ngày
+          (<code>startOfDay</code>) — chúng dùng <code>ZoneId.systemDefault()</code> giống code sản phẩm.
+        </p>
+      </div>
+
+      <h2>5. Ba ví dụ test đáng đọc</h2>
+
+      <h3>5.1. <code>StepCounterMathTest</code> — chốt "luật đếm"</h3>
+      <p>
+        Đây là ví dụ điển hình của việc <strong>biến một quyết định thiết kế thành test</strong>. Quyết định:
+        <em>chỉ đếm phần quan sát được trong lúc app đang chạy</em>. Hệ quả không hiển nhiên nên phải có test:
+      </p>
+      <ul>
+        <li>Bước đi lúc app đã bị đóng hẳn <strong>không bao giờ</strong> được cộng vào.</li>
+        <li>Đóng app rồi mở lại trong <strong>cùng ngày</strong> vẫn giữ số đã đếm.</li>
+        <li>Sang ngày mới <strong>trong lúc app chạy</strong> thì dùng mốc luỹ kế nội suy tại 00:00.</li>
+        <li>Máy khởi động lại (bộ đếm về 0) thì số trong ngày <strong>không bị tụt</strong>.</li>
+      </ul>
+      <p class="small">
+        Nhờ tất cả 12 ca này, người đọc code biết ngay hành vi nào là <em>đúng</em> và hành vi nào là lỗi —
+        thay vì phải suy luận từ code.
+      </p>
+
+      <h3>5.2. <code>PpgAnalyzerTest</code> + <code>PpgTestSignal</code> — test tín hiệu "thật"</h3>
+      <p>
+        Đây là phần thú vị nhất của bộ test. File <code>PpgTestSignal.kt</code> là một <strong>bộ sinh tín hiệu
+        giả lập</strong> (helper, không chứa <code>@Test</code>): nó dựng chuỗi giá trị đỏ theo một nhịp tim đã
+        biết, kèm nhiễu và thành phần DC. <code>PpgAnalyzerTest</code> đưa chuỗi đó vào analyzer và kiểm tra:
+      </p>
+      <ul>
+        <li>Nhịp đo ra <strong>khớp nhịp đã cài</strong> (trong sai số cho phép).</li>
+        <li>Tín hiệu nhiễu / không có chu kỳ ⇒ app <strong>không</strong> kết luận (không hiện con số sai).</li>
+        <li>Mất ngón tay giữa chừng ⇒ <code>forgetSignal()</code> xoá sạch, kể cả "nhịp ước lượng" cũ.</li>
+        <li>Chất lượng tăng khi tín hiệu sạch và giảm khi tín hiệu nhiều nhiễu.</li>
+      </ul>
+      <div class="callout tip">
+        <span class="callout__title">Vì sao điều này quan trọng với một số liệu sức khỏe</span>
+        <p>
+          Không thể kiểm thử "đo nhịp tim đúng" bằng cách chạy trên máy thật một cách lặp lại được — tim
+          người không đập cùng nhịp mỗi lần. Bộ tín hiệu giả lập cho phép khẳng định <strong>chính xác</strong>
+          thuật toán hoạt động ở nhịp đã biết, rồi mới tin tưởng nó trên máy thật.
+        </p>
+      </div>
+
+      <h3>5.3. <code>DatabaseMigrationsTest</code> — test chống lỗi tương lai</h3>
+      <p>
+        Test này không kiểm tra dữ liệu mà kiểm tra <strong>tính đầy đủ của dãy migration</strong>: nó fail nếu
+        <code>DatabaseMigrations.ALL</code> không phủ liên tục từ version 1 tới
+        <code>DATABASE_VERSION</code>. Nhờ vậy, người lập trình thêm version 5 mà quên viết
+        <code>MIGRATION_4_5</code> sẽ biết <em>ngay khi chạy test</em>, chứ không phải khi người dùng cập nhật
+        app và bị crash vì schema lệch.
+      </p>
+      <p class="small">
+        Kèm theo: DDL trong migration phải khớp <strong>từng ký tự</strong> với <code>createSql</code> trong
+        <code>app/schemas/…/&lt;version&gt;.json</code> — repo commit các file schema JSON chính là để đối chiếu
+        việc này.
+      </p>
+
+      <h2>6. androidTest — hai file cần thiết bị</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Kiểm gì</th><th>Vì sao phải chạy trên máy</th></tr></thead>
+        <tbody>
+          <tr><td><code>data/local/dao/HabitDaoTest</code></td><td>Insert / update / soft-delete / truy vấn active</td><td>Cần engine SQLite thật của Android</td></tr>
+          <tr><td><code>data/local/dao/HabitLogDaoTest</code></td><td>Truy vấn theo mốc thời gian, <code>isDirty</code>, <code>markAsSynced</code>, hành vi CASCADE</td><td>Như trên</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">Runner: <code>androidx.test.runner.AndroidJUnitRunner</code>; dùng thư viện <code>androidx.test.ext:junit</code> + <code>espresso</code>.</p>
+
+      <h2>7. Cái gì KHÔNG test được trên JVM (và vì sao)</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Phần</th><th>Lý do</th><th>Cách kiểm chứng thay thế</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>CameraX</code> + <code>PreviewView</code> (chụp ảnh, bind lifecycle)</td>
+            <td>Cần camera thật và vòng đời Android</td>
+            <td>Chạy trên máy thật/emulator; phần còn lại của màn Ghi chép đã có unit test (<code>CameraViewModelTest</code>, <code>FoodAnalysisTest</code>, <code>GeminiFoodInsightSourceTest</code>)</td>
+          </tr>
+          <tr>
+            <td><code>AndroidKeystorePassphraseCipher</code></td>
+            <td>Android Keystore chỉ có trên thiết bị</td>
+            <td>Logic sinh/đọc passphrase được tách ra <code>DatabasePassphraseProvider</code> và test bằng vault + cipher <strong>giả</strong> (6 test)</td>
+          </tr>
+          <tr>
+            <td>Cảm biến bước chân / ánh sáng / gia tốc</td>
+            <td>Emulator không có (hoặc không có cả cờ <code>FEATURE_SENSOR_STEP_COUNTER</code>)</td>
+            <td>Toán quy đổi test trên JVM; muốn thử Health Connect thì bơm dữ liệu bằng Health Connect Toolbox</td>
+          </tr>
+          <tr>
+            <td>WorkManager chạy thật (Doze, backoff, ràng buộc pin)</td>
+            <td>Cần hệ thống Android và thời gian thực</td>
+            <td>WorkManager Inspector trong Android Studio; kiểm tra hành vi trả về bằng <code>runAttemptCount</code></td>
+          </tr>
+          <tr>
+            <td>Widget Glance hiển thị thật</td>
+            <td>Cần launcher</td>
+            <td>Quy tắc chọn số nằm ở <code>TodayHealthSummary</code> — đã có <code>TodayHealthSummaryTest</code></td>
+          </tr>
+          <tr>
+            <td>Health Connect (quyền, đọc dữ liệu)</td>
+            <td>Cần dịch vụ hệ thống</td>
+            <td>Ánh xạ trạng thái test được (<code>HealthConnectStatusMappingTest</code>); phần đọc dữ liệu dùng Health Connect Toolbox để bơm số liệu</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>8. Bộ test như một "hợp đồng hành vi"</h2>
+      <p>
+        Nhiều test trong dự án tồn tại để <strong>khoá lại một lỗi đã sửa</strong>, không chỉ để kiểm tra code
+        chạy đúng. Đọc chúng là cách nhanh nhất để hiểu các quyết định thiết kế:
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Test chốt điều gì</th><th>Lỗi cũ mà nó ngăn</th></tr></thead>
+        <tbody>
+          <tr><td><code>StepCounterMathTest</code>: "bước đi lúc app đã đóng không bao giờ được cộng"</td><td>Số bước "tự nhảy" mỗi lần mở app do lấy hiệu số luỹ kế</td></tr>
+          <tr><td><code>HabitRuleEngineStepTrendTest</code>: luật 3 ngày liên tiếp</td><td>Cắt lịch sử theo <strong>số hàng</strong> khiến các ngày không liền nhau ⇒ luật <em>âm thầm</em> không chạy</td></tr>
+          <tr><td><code>GetWeeklyConsistencyUseCaseTest</code>: mẫu số theo <code>createdAt</code></td><td>Tạo thói quen mới làm tụt tỉ lệ của cả 6 ngày trước đó</td></tr>
+          <tr><td><code>SettingsRepositoryImplTest</code>: dữ liệu hỏng → mặc định 23:00–07:00</td><td>Khung giờ ngủ không đọc được làm giấc ngủ đo sai</td></tr>
+          <tr><td><code>CloudSyncPolicyTest</code>: thiếu mốc đồng ý ⇒ rỗng</td><td>Đẩy toàn bộ lịch sử ghi ở chế độ khách lên đám mây khi vừa đăng nhập</td></tr>
+          <tr><td><code>HomeViewModelTest</code>: nguồn số theo switch "Dùng dữ liệu Health Connect"</td><td>Bật/tắt switch mà thẻ "Tóm tắt sức khỏe" vẫn hiện số cũ (hoặc vẫn đọc Health Connect khi đã TẮT)</td></tr>
+          <tr><td><code>HomeViewModelTest</code>: switch TẮT ⇒ đọc bản chụp trong app, <strong>không</strong> gọi Health Connect</td><td>Đã tắt nguồn Health Connect nhưng app vẫn gọi Health Connect để lấy số cho thẻ tóm tắt</td></tr>
+          <tr><td><code>InsightsViewModelTest</code>: hai trường lỗi tách biệt</td><td>Lỗi đọc pha giấc ngủ bị luồng dữ liệu chính xoá mất</td></tr>
+          <tr><td><code>NotificationPermissionStatusTest</code>: ba trường hợp</td><td>Thẻ "Bật nhắc nhở" hiện/ẩn sai trên Android 13+</td></tr>
+          <tr><td><code>DatabaseMigrationsTest</code>: dãy migration liên tục</td><td>Thêm version mà quên migration ⇒ crash khi cập nhật app</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>9. Kiểm thử theo kịch bản khách hàng</h2>
+      <p>
+        Ngoài unit test, dự án có một bộ <strong>kịch bản đóng vai khách hàng</strong> ở dạng bảng tính:
+      </p>
+      <div class="callout note">
+        <span class="callout__title"><code>KICHBAN_TEST_KHACH_HANG_HealthyAI.xlsx</code></span>
+        <ul>
+          <li>Một khách hàng duy nhất tên <strong>Quỳnh</strong>.</li>
+          <li><strong>11 hành trình A–K</strong>, tổng <strong>80 kịch bản</strong> mang mã <code>KB-01…KB-80</code>.</li>
+          <li>Cột <code>KQ</code> chọn một trong: <em>Đạt / Không đạt / Chưa test được / Không áp dụng</em>.</li>
+          <li>Sheet <strong>Tổng kết</strong> tự đếm theo trạng thái · mức độ · hành trình.</li>
+        </ul>
+        <p>
+          Nhiều lỗi đã sửa trong mã nguồn được truy vết bằng mã <code>KB-*</code> trong comment — ví dụ
+          <code>KB-13</code> (sửa mục tiêu thói quen xoá mất nhật ký do CASCADE), <code>KB-45</code> (nhảy
+          sang tab Thói quen mà không mở hộp thoại), <code>KB-77</code> (thẻ xin quyền đếm bước không bao giờ
+          hiện). Khi bạn thấy một chú thích kiểu <em>"(lỗi KB-45)"</em> trong code, đó là con trỏ tới kịch bản
+          tương ứng trong file Excel.
+        </p>
+      </div>
+      <p class="small">
+        Muốn thử Health Connect trên emulator: cài <strong>Health Connect Toolbox</strong> từ Google Play
+        (emulator phải là loại <em>with Google Play</em>), bơm dữ liệu giả (bước chân, giấc ngủ, nhịp tim),
+        rồi chạy app.
+      </p>
+
+      <h2>10. Thêm một test mới — chọn tầng nào?</h2>
+      <p>Quy tắc đơn giản: test ở tầng <strong>thấp nhất</strong> có thể kiểm tra được hành vi đó.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Muốn kiểm tra</th><th>Viết test ở</th><th>Ví dụ</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Một công thức / ngưỡng</td>
+            <td>Test cho <code>object</code> trong <code>domain/usecase/</code></td>
+            <td>"Nhịp tim 90 bpm phải được xếp loại NORMAL"</td>
+          </tr>
+          <tr>
+            <td>Một quyết định hiển thị (nên hiện gì)</td>
+            <td>Test cho thuộc tính dẫn xuất của <code>*UiState</code></td>
+            <td>"Chưa có Health Connect thì dùng số của cảm biến"</td>
+          </tr>
+          <tr>
+            <td>Một nhánh xử lý lỗi</td>
+            <td>Test cho ViewModel, tiêm dependency giả</td>
+            <td>"Đọc lỗi ⇒ <code>error</code> khác null và <code>isLoading = false</code>"</td>
+          </tr>
+          <tr>
+            <td>Một luật dữ liệu / ánh xạ</td>
+            <td>Test cho repository hoặc data source, mock DAO/nhà cung cấp</td>
+            <td>"<code>upsertToday</code> khi đã có hàng thì giữ nhịp tim cũ nếu lần này không có số"</td>
+          </tr>
+          <tr>
+            <td>SQL / hành vi bảng thật</td>
+            <td><code>androidTest/…/dao/</code></td>
+            <td>"Xoá mềm thói quen thì log vẫn còn"</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout tip">
+        <span class="callout__title">Dấu hiệu một thay đổi LÀM HỎNG kiến trúc</span>
+        <p>
+          Nếu bạn thấy mình phải viết một test cần <code>Context</code>, <code>SensorManager</code> hay
+          <code>Bitmap</code> để kiểm tra một phép tính, nhiều khả năng phép tính đó đang nằm sai tầng — hãy
+          tách phần toán thuần ra <code>domain/</code> như cách <code>StepCounterMath</code>,
+          <code>SleepTrackerMath</code> và <code>PpgAnalyzer</code> đang làm.
+        </p>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

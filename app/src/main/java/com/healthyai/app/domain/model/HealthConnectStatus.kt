@@ -1,10 +1,6 @@
 package com.healthyai.app.domain.model
 
-/**
- * Trạng thái của Health Connect trên thiết bị.
- *
- * Dùng để quyết định màn Home hiển thị thẻ nào: xin quyền, cài Health Connect, hay cập nhật.
- */
+/** Trạng thái Health Connect trên thiết bị, dùng để quyết định màn Home hiện thẻ xin quyền/cài/cập nhật. */
 enum class HealthConnectStatus {
     /** Chưa kiểm tra xong (màn hình đang tải). */
     UNKNOWN,

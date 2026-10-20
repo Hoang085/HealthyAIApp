@@ -15,18 +15,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
 
-/**
- * Đọc cảm biến thật của thiết bị để suy ra giấc ngủ — **không cần quyền nào** (khác quyền
- * `ACTIVITY_RECOGNITION` của phần đếm bước):
- *
- * - `Sensor.TYPE_LIGHT` → độ sáng phòng;
- * - `Sensor.TYPE_ACCELEROMETER` → điện thoại có bất động không;
- * - `PowerManager.isInteractive` → màn hình có đang được dùng không.
- *
- * ⚠️ Nghe cảm biến liên tục sẽ tốn pin, nên lớp này **chỉ lấy mẫu theo yêu cầu**: nghe trong
- * [sampleWindowMs] rồi **gỡ listener** trong `finally` (kể cả khi coroutine bị huỷ) — nhờ vậy worker
- * có thể chạy thưa (15 phút/lần) mà không giữ cảm biến suốt đêm.
- */
+/** Đọc cảm biến thật (ánh sáng, gia tốc, màn hình) suy ra giấc ngủ, không cần quyền; chỉ lấy mẫu trong [sampleWindowMs] rồi gỡ listener để không tốn pin. */
 @Singleton
 class AndroidSleepSensor @Inject constructor(
     @ApplicationContext context: Context
@@ -51,8 +40,7 @@ class AndroidSleepSensor @Inject constructor(
         val manager = sensorManager ?: return null
         val accel = accelerometer ?: return null
 
-        // Máy không có cảm biến ánh sáng (hoặc không kịp phát giá trị) → coi như "tối"; khi đó hai
-        // tín hiệu còn lại (màn hình tắt + bất động) vẫn phải đúng mới kết luận là ngủ.
+        // Không có cảm biến ánh sáng (hoặc không kịp phát) → coi như "tối"; vẫn phải hội đủ màn hình tắt + bất động mới kết luận là ngủ.
         val lightLux = readLastValue(manager, lightSensor, SleepSensor.LIGHT_SETTLE_MS) ?: NO_LIGHT_LUX
         val maxMotionG = readPeakMotion(manager, accel, sampleWindowMs)
 
@@ -63,7 +51,7 @@ class AndroidSleepSensor @Inject constructor(
         )
     }
 
-    /** Giá trị **cuối cùng** cảm biến phát trong [windowMs]; `null` nếu cảm biến không có/không phát gì. */
+    /** Giá trị cuối cùng cảm biến phát trong [windowMs]; `null` nếu cảm biến không có/không phát gì. */
     private suspend fun readLastValue(
         manager: SensorManager,
         sensor: Sensor?,
@@ -89,12 +77,7 @@ class AndroidSleepSensor @Inject constructor(
         return last
     }
 
-    /**
-     * Độ lệch **lớn nhất** khỏi 1g (gia tốc trọng trường) trong [windowMs].
-     *
-     * Điện thoại nằm yên cho giá trị rất nhỏ; cầm lên, đi lại hay rung lắc cho giá trị lớn. Dùng
-     * giá trị **lớn nhất** (không phải trung bình) để một cử động ngắn cũng đủ kết luận "đang thức".
-     */
+    /** Độ lệch lớn nhất khỏi 1g trong [windowMs]; dùng giá trị lớn nhất để một cử động ngắn cũng đủ kết luận "đang thức". */
     private suspend fun readPeakMotion(manager: SensorManager, sensor: Sensor, windowMs: Long): Float {
         var peak = 0f
         val listener = object : SensorEventListener {

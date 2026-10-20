@@ -36,13 +36,7 @@ import com.healthyai.app.presentation.screen.home.HomeScreen
 import com.healthyai.app.presentation.screen.insights.InsightsScreen
 import com.healthyai.app.presentation.screen.privacy.PrivacyPolicyScreen
 
-/**
- * Điểm vào của UI.
- *
- * Trước hết là "cổng xác thực" ([SessionState]): app hiện màn đăng nhập nếu người dùng
- * chưa đăng nhập và chưa chọn chế độ khách; ngược lại mới dựng [MainNavigation] (bottom
- * nav + NavHost của 4 màn hình chính).
- */
+/** Điểm vào của UI: hiện màn đăng nhập nếu chưa đăng nhập/chưa chọn khách, ngược lại dựng MainNavigation. */
 @Composable
 fun AppNavigation(viewModel: AuthGateViewModel = hiltViewModel()) {
     val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
@@ -58,17 +52,7 @@ fun AppNavigation(viewModel: AuthGateViewModel = hiltViewModel()) {
     }
 }
 
-/**
- * Mở tab Thói quen và yêu cầu `HabitsViewModel` mở sẵn hộp thoại ghi nhận cho [category].
- *
- * Dùng chung cho hai lối vào:
- * - nút hành động trong thẻ gợi ý AI ở màn Phân tích (mục 3 #14);
- * - nút "Thêm vào nhật ký" ở thẻ kết quả nhận diện món ăn của màn Ghi chép — danh mục DINH DƯỠNG
- *   (phụ lục C #22).
- *
- * Điều hướng dùng đúng tuỳ chọn như bottom bar để không phá vỡ trạng thái tab, sau đó gửi danh mục
- * qua `SavedStateHandle` của destination Thói quen.
- */
+/** Mở tab Thói quen và yêu cầu HabitsViewModel mở sẵn hộp thoại ghi nhận cho category. */
 private fun NavHostController.openHabitLogFor(category: HabitCategory) {
     navigate(Screen.Habits.route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
@@ -149,33 +133,38 @@ private fun MainNavigation(onLogout: () -> Unit) {
                 HomeScreen(
                     onLogout = onLogout,
                     // Ô "Tim" trên thẻ "Tóm tắt sức khỏe" mở màn đo nhịp tim bằng camera + đèn flash
-                    onMeasureHeartRate = { navController.navigate(Screen.MeasureHeartRate.route) },
-                    // Thẻ "Đồng bộ đám mây" → màn Chính sách bảo mật (mục 3 #31)
-                    onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) }
+                    onMeasureHeartRate = { navController.navigate(Screen.MeasureHeartRate.route) }
                 )
             }
-            composable(Screen.Habits.route)   { 
+            composable(Screen.Habits.route) { backStackEntry ->
+                // Đọc yêu cầu ghi nhận ngay tại đây từ SavedStateHandle; để ViewModel tự nghe thì giá trị bị mất khi entry dựng lại.
+                val pendingLogCategory by backStackEntry.savedStateHandle
+                    .getStateFlow<String?>(KEY_LOG_CATEGORY, null)
+                    .collectAsStateWithLifecycle()
+
                 HabitsScreen(
                     onNavigateToAddHabit = { 
                         navController.navigate(Screen.AddEditHabit.createRoute()) 
                     },
                     onNavigateToEditHabit = { habitId ->
                         navController.navigate(Screen.AddEditHabit.createRoute(habitId))
+                    },
+                    pendingLogCategory = pendingLogCategory,
+                    onPendingLogCategoryConsumed = {
+                        backStackEntry.savedStateHandle.remove<String>(KEY_LOG_CATEGORY)
                     }
                 ) 
             }
             composable(Screen.Camera.route)   {
                 CameraScreen(
-                    // Phụ lục C #22: kết quả camera giờ ghi được vào `habit_logs` thông qua thói quen
-                    // dinh dưỡng đang hoạt động (cùng luồng với nút hành động của màn Phân tích).
+                    // Kết quả camera ghi vào habit_logs qua thói quen dinh dưỡng đang hoạt động (cùng luồng với màn Phân tích).
                     onAddToJournal = { navController.openHabitLogFor(HabitCategory.NUTRITION) }
                 )
             }
             composable(Screen.Insights.route) {
                 InsightsScreen(
                     onOpenHabitLog = { category -> navController.openHabitLogFor(category) },
-                    // Lối vào Chính sách bảo mật của phần AI đã chuyển từ màn Ghi chép bữa ăn về tab
-                    // "Phân tích AI" (mục 3 #43) — nơi người dùng cần đọc về việc ảnh gửi tới Gemini.
+                    // Lối vào Chính sách bảo mật của phần AI nay ở tab Phân tích, nơi người dùng đọc về việc ảnh gửi tới Gemini.
                     onOpenPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) }
                 )
             }

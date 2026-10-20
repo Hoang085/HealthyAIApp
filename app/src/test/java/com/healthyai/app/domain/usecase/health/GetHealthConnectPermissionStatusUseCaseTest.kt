@@ -11,10 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Test cho use case đọc trạng thái quyền Health Connect — dữ liệu đầu vào để màn Home
- * quyết định hiện thẻ "Cấp quyền" / "Cài" / "Cập nhật" Health Connect.
- */
+/** Test cho use case đọc trạng thái quyền Health Connect. */
 class GetHealthConnectPermissionStatusUseCaseTest {
 
     private val repository = mockk<HealthDataRepository>()

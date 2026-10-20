@@ -1,9 +1,6 @@
 package com.healthyai.app.domain.model
 
-/**
- * Domain model đại diện cho một thói quen của người dùng.
- * Đây là model thuần túy, không phụ thuộc vào framework nào (Room, Firebase...).
- */
+/** Domain model thuần túy mô tả một thói quen, không phụ thuộc framework (Room, Firebase...). */
 data class Habit(
     val id: Long = 0,
     val name: String,

@@ -3,16 +3,7 @@ package com.healthyai.app.domain.usecase.health
 import com.healthyai.app.domain.repository.HealthDataRepository
 import javax.inject.Inject
 
-/**
- * Lưu nhịp tim **do app tự đo bằng camera + đèn flash** vào lịch sử sức khỏe của hôm nay
- * (`health_data_history`).
- *
- * Nhờ ghi vào đúng bảng mà `HealthSyncWorker` dùng, số đo vừa xong **xuất hiện ngay** ở ô "Tim" trên
- * màn Trang chủ (khi Health Connect chưa có nhịp tim) và được **Rule Engine ở tab Phân tích** dùng cho
- * các gợi ý/cảnh báo về nhịp tim.
- *
- * Nhịp tim không hợp lệ (≤ 0) bị từ chối ngay tại đây để không bao giờ ghi một hàng vô nghĩa vào DB.
- */
+/** Lưu nhịp tim do app tự đo (camera + đèn flash) vào `health_data_history` của hôm nay. */
 class SaveMeasuredHeartRateUseCase @Inject constructor(
     private val repository: HealthDataRepository
 ) {

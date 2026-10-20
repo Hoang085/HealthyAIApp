@@ -11,20 +11,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/**
- * Lưu passphrase SQLCipher **đã mã hoá** vào SharedPreferences riêng của app.
- *
- * File prefs không chứa passphrase dạng thô: nội dung là `Base64(IV ‖ ciphertext+tag)` do
- * [AndroidKeystorePassphraseCipher] sinh ra, muốn giải mã phải có khoá AES nằm trong Android
- * Keystore của chính thiết bị.
- *
- * ⚠️ Ghi bằng `commit()` (**đồng bộ**, khác `apply()` bất đồng bộ) là cố ý: passphrase được lưu
- * *ngay trước khi* Room tạo/mở file DB. Nếu tiến trình bị hệ thống kill trong lúc bản ghi còn nằm
- * trong hàng đợi của `apply()`, lần mở sau sẽ không tìm thấy passphrase → sinh khoá mới → DB cũ
- * không mở được nữa (bị `LegacyDatabaseKeyMigration` xoá) ⇒ **mất dữ liệu**. Ghi đồng bộ loại bỏ
- * khe thời gian đó; chi phí chỉ là một lần ghi file XML rất nhỏ, chỉ xảy ra ở lần chạy đầu hoặc khi
- * khoá Keystore đã mất.
- */
+/** Lưu passphrase SQLCipher đã mã hoá vào SharedPreferences riêng; ghi đồng bộ bằng commit() để không mất khoá trước khi Room mở DB. */
 class SharedPreferencesPassphraseVault(context: Context) : PassphraseVault {
 
     private val prefs = context.applicationContext
@@ -43,14 +30,7 @@ class SharedPreferencesPassphraseVault(context: Context) : PassphraseVault {
     }
 }
 
-/**
- * Bọc passphrase bằng khoá **AES-256 sinh và giữ trong Android Keystore** — khoá không nằm trong
- * APK, không nằm trong file prefs, không xuất ra được khỏi thiết bị (trên thiết bị có Secure
- * Element/TEE, khoá còn không rời khỏi phần cứng).
- *
- * Định dạng bản mã: `Base64(IV ‖ ciphertext+tag)`, mã hoá `AES/GCM/NoPadding` (IV 12 byte, tag 128
- * bit) nên mỗi lần ghi lại ra bản mã khác nhau.
- */
+/** Bọc passphrase bằng khoá AES-256 sinh và giữ trong Android Keystore, không rời khỏi thiết bị. */
 class AndroidKeystorePassphraseCipher : PassphraseCipher {
 
     override fun encrypt(plain: ByteArray): String {
@@ -98,10 +78,7 @@ class AndroidKeystorePassphraseCipher : PassphraseCipher {
     }
 
     companion object {
-        /**
-         * Alias khoá trong Keystore. Giữ nguyên khi nâng cấp app — đổi alias nghĩa là mất khả năng
-         * giải mã passphrase cũ (xem `DatabasePassphraseProvider.getOrCreate`).
-         */
+        /** Alias khoá Keystore; đổi alias sẽ mất khả năng giải mã passphrase cũ. */
         const val KEY_ALIAS = "healthy_ai_sqlcipher_key_v1"
 
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"

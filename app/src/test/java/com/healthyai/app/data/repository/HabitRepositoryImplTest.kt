@@ -19,19 +19,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Test cho `HabitRepositoryImpl`:
- *
- * - mốc thời gian của `getHabitLogsForPeriod` — bug cũ `fromTs = now - daysBack ngày` khiến
- *   `daysBack = 0` lọc bằng đúng thời điểm gọi hàm → tiến độ trong ngày về 0 mỗi lần mở lại app.
- *   Mốc đúng phải căn theo **đầu ngày (00:00)**;
- * - xóa mềm thói quen.
- *
- * Trước đây repository này còn phải gọi `HabitWidgetRefresher.refresh()` sau mỗi lần ghi vì widget màn
- * hình chính hiển thị tiến độ thói quen. Widget đó nay là widget **"Sức khỏe hôm nay"** (bước chân /
- * giấc ngủ / nhịp tim) nên thay đổi thói quen không còn ảnh hưởng tới nội dung widget; việc vẽ lại
- * widget theo dữ liệu sức khỏe nằm ở `HealthDataRepositoryImpl` (`HealthDataRepositoryImplTest`).
- */
+/** Test `HabitRepositoryImpl`: mốc thời gian `getHabitLogsForPeriod` phải căn theo đầu ngày (00:00) và xoá mềm thói quen. */
 class HabitRepositoryImplTest {
 
     private val habitDao = mockk<HabitDao>(relaxed = true)
@@ -82,10 +70,7 @@ class HabitRepositoryImplTest {
         assertEquals(startOfToday, fromTimestamp.captured)
     }
 
-    /**
-     * Xóa thói quen là **xóa mềm**: repository phải gọi `softDeleteHabit` (đặt `isActive = 0`),
-     * không được xóa hàng khỏi bảng `habits` — nếu không log và lịch sử sẽ mất.
-     */
+    /** Xoá thói quen là xoá mềm: phải gọi `softDeleteHabit` (đặt `isActive = 0`), không xoá hàng để giữ log/lịch sử. */
     @Test
     fun `deleteHabit soft deletes through the dao`() = runTest {
         repository.deleteHabit(7L)
@@ -93,8 +78,7 @@ class HabitRepositoryImplTest {
         coVerify(exactly = 1) { habitDao.softDeleteHabit(7L) }
     }
 
-    /** Tạo/sửa thói quen (cùng đi qua `insertHabit`) vẫn ghi qua DAO và trả về id của hàng. */
-    @Test
+    /** Tạo/sửa thói quen (cùng đi qua `insertHabit`) vẫn ghi qua DAO và trả về id của hàng. */    @Test
     fun `insertHabit writes through the dao and returns the new id`() = runTest {
         coEvery { habitDao.insertHabit(any()) } returns 42L
 
@@ -110,6 +94,23 @@ class HabitRepositoryImplTest {
 
         assertEquals(42L, id)
         coVerify(exactly = 1) { habitDao.insertHabit(any()) }
+    }
+
+    /** Sửa thói quen phải qua `updateHabit`, không qua REPLACE: REPLACE = DELETE+INSERT sẽ xoá log do FK CASCADE. */
+    @Test
+    fun `updateHabit updates through the dao and never replaces the row`() = runTest {
+        repository.updateHabit(
+            Habit(
+                id = 5,
+                name = "Chạy bộ buổi sáng",
+                category = HabitCategory.EXERCISE,
+                targetValue = 45f,
+                unit = "phút"
+            )
+        )
+
+        coVerify(exactly = 1) { habitDao.updateHabit(any()) }
+        coVerify(exactly = 0) { habitDao.insertHabit(any()) }
     }
 
     /** Ghi nhận một lần thực hiện thói quen chỉ đi qua bảng `habit_logs`. */

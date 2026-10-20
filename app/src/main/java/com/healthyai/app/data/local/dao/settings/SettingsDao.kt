@@ -18,7 +18,7 @@ interface SettingsDao {
     @Query("SELECT * FROM app_settings")
     fun observeAll(): Flow<List<SettingEntity>>
 
-    /** Ghi/đè một hoặc nhiều thiết lập trong **một** câu lệnh. */
+    /** Ghi/đè một hoặc nhiều thiết lập trong một câu lệnh. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putAll(settings: List<SettingEntity>)
 }

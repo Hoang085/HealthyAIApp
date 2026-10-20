@@ -1,9 +1,6 @@
 package com.healthyai.app.domain.model
 
-/**
- * Bản ghi thói quen theo ngày.
- * isDirty = true nghĩa là chưa được đồng bộ lên Firebase cloud.
- */
+/** Bản ghi thói quen theo ngày; isDirty = true nghĩa là chưa đồng bộ lên Firebase cloud. */
 data class HabitLog(
     val id: Long = 0,
     val habitId: Long,
@@ -11,8 +8,8 @@ data class HabitLog(
     val category: HabitCategory,
     val value: Float,
     val unit: String,
-    val targetValueAtTime: Float, // Lưu mục tiêu tại thời điểm log để phân tích lịch sử
+    val targetValueAtTime: Float, // Mục tiêu tại thời điểm log, phục vụ phân tích lịch sử
     val loggedAt: Long = System.currentTimeMillis(),
     val note: String = "",
-    val isDirty: Boolean = true // Flag cho offline-first sync strategy
+    val isDirty: Boolean = true // Cờ cho chiến lược sync offline-first
 )

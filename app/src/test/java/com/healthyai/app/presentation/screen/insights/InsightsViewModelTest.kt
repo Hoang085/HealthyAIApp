@@ -35,10 +35,7 @@ import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
 
-/**
- * Test cho `InsightsViewModel` (phụ lục C #43): màn Phân tích trước đây **không có** unit test nào và
- * `.catch { // Log error }` nuốt ngoại lệ nên flow lỗi thì màn hình im lặng ở trạng thái rỗng.
- */
+/** Test cho `InsightsViewModel`: màn Phân tích phải báo lỗi thay vì im lặng ở trạng thái rỗng. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class InsightsViewModelTest {
 
@@ -137,7 +134,7 @@ class InsightsViewModelTest {
 
         assertEquals(4, viewModel.uiState.value.sleepStages.totalMinutes / 60)
 
-        viewModel.refresh() // mỗi lần quay lại màn Phân tích (phụ lục C #26)
+        viewModel.refresh() // mỗi lần quay lại màn Phân tích
         advanceUntilIdle()
 
         coVerify(exactly = 2) { getSleepStageBreakdownUseCase() }

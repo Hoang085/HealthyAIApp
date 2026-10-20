@@ -28,29 +28,15 @@ data class InsightsUiState(
     val vitality: VitalityScore = VitalityScore(),
     val weeklyConsistency: List<DailyConsistency> = emptyList(),
     val sleepStages: SleepStageBreakdown = SleepStageBreakdown(),
-    /**
-     * Xu hướng giờ ngủ **7 đêm gần nhất** (cũ → mới) — nguồn của biểu đồ giờ ngủ ở thẻ "Xu hướng chất
-     * lượng giấc ngủ". Dựng từ chính [healthHistory] nên thẻ này hoạt động trên mọi máy.
-     */
+    /** Xu hướng giờ ngủ 7 đêm gần nhất (cũ → mới), dựng từ healthHistory nên thẻ hoạt động trên mọi máy. */
     val sleepTrend: SleepTrend = SleepTrend(),
-    /**
-     * Lịch sử tóm tắt sức khỏe **7 ngày gần nhất** (cũ → mới, luôn đủ 7 dòng) — nguồn của thẻ
-     * "Lịch sử sức khỏe 7 ngày". Rỗng khi chưa đọc xong lần đầu.
-     */
+    /** Lịch sử tóm tắt sức khỏe 7 ngày gần nhất (cũ → mới, luôn đủ 7 dòng). */
     val healthHistory: List<DailyHealthSummary> = emptyList(),
     val isLoading: Boolean = true,
     val lastAnalyzedDays: Int = 7,
-    /**
-     * Lỗi khi đọc **luồng dữ liệu chính** (gợi ý AI / chỉ số sinh lực / nhất quán / lịch sử sức khỏe)
-     * — màn Phân tích hiện thẻ lỗi đỏ có nút đóng thay vì **im lặng** ở trạng thái rỗng
-     * (phụ lục C #43). Xoá khi luồng đọc được dữ liệu trở lại.
-     */
+    /** Lỗi đọc luồng dữ liệu chính; màn Phân tích hiện thẻ lỗi đỏ thay vì im lặng, xoá khi đọc được dữ liệu trở lại. */
     val error: String? = null,
-    /**
-     * Lỗi khi đọc **chi tiết pha giấc ngủ** từ Health Connect — tách khỏi [error] vì đây là phép đọc
-     * một lần, không thuộc luồng dữ liệu chính (nếu gộp chung, mỗi lần luồng chính phát dữ liệu sẽ
-     * xoá mất lỗi này).
-     */
+    /** Lỗi đọc chi tiết pha giấc ngủ, tách khỏi error vì là phép đọc một lần không thuộc luồng dữ liệu chính. */
     val sleepStagesError: String? = null
 ) {
     /** Lỗi đang hiển thị trên màn hình (ưu tiên lỗi của luồng dữ liệu chính). */
@@ -93,7 +79,7 @@ class InsightsViewModel @Inject constructor(
             InsightsSnapshot(suggestions, vitality, consistency, healthHistory)
         }.onStart { _uiState.update { it.copy(isLoading = true) } }
         .catch { e ->
-            // Huỷ scope KHÔNG phải lỗi dữ liệu (phụ lục C #39): ném tiếp thay vì hiện thẻ lỗi.
+            // Huỷ scope không phải lỗi dữ liệu: ném tiếp thay vì hiện thẻ lỗi.
             if (e is CancellationException) throw e
 
             android.util.Log.e(TAG, "Không đọc được dữ liệu phân tích", e)
@@ -119,12 +105,7 @@ class InsightsViewModel @Inject constructor(
         }.launchIn(viewModelScope)
     }
 
-    /**
-     * Health Connect không cung cấp Flow → đọc chi tiết pha giấc ngủ một lần khi mở màn hình
-     * (và mỗi lần [refresh] — tức mỗi lần người dùng quay lại màn Phân tích, phụ lục C #26).
-     *
-     * Lỗi đọc cũng được **báo ra UI** thay vì nuốt im lặng (phụ lục C #43).
-     */
+    /** Health Connect không cung cấp Flow nên đọc chi tiết pha giấc ngủ một lần (và mỗi lần refresh); lỗi được báo ra UI. */
     private fun loadSleepStages() {
         viewModelScope.launch {
             runCatchingCancellable { getSleepStageBreakdownUseCase() }

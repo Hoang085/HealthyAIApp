@@ -9,15 +9,7 @@ import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Triển khai [SleepTrackerRepository]: đọc môi trường bằng [SleepSensor], lấy **khung giờ ngủ người dùng
- * đặt** từ [SettingsRepository], phân loại "đang ngủ" bằng `SleepTrackerMath.isAsleep` rồi cộng dồn vào
- * [SleepTrackerStore].
- *
- * Không ném ngoại lệ ra ngoài: máy không có cảm biến gia tốc (hoặc cảm biến không trả về gì) thì chỉ
- * trả số đã lưu — nhờ vậy `SleepTrackingWorker` và `HealthSyncWorker` không bao giờ thất bại vì tính
- * năng ước lượng này (cùng nguyên tắc với `StepCounterRepositoryImpl.readTodaySteps`).
- */
+/** Triển khai [SleepTrackerRepository]: cộng dồn giờ ngủ từ cảm biến vào [SleepTrackerStore]; không ném ngoại lệ, thiếu cảm biến thì trả số đã lưu. */
 @Singleton
 class SleepTrackerRepositoryImpl @Inject constructor(
     private val sensor: SleepSensor,

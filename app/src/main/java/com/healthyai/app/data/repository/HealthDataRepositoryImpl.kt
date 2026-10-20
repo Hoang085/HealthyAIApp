@@ -7,6 +7,7 @@ import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.SleepStageBreakdown
 import com.healthyai.app.domain.repository.HealthDataRepository
+import com.healthyai.app.domain.repository.SettingsRepository
 import com.healthyai.app.domain.repository.SleepTrackerRepository
 import com.healthyai.app.domain.repository.StepCounterRepository
 import com.healthyai.app.domain.widget.HealthWidgetRefresher
@@ -19,29 +20,31 @@ import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Triển khai [HealthDataRepository].
- *
- * Ngoài Health Connect, repository này còn dùng hai nguồn **"tự lực" của chính app** làm dự phòng:
- * **cảm biến đếm bước của máy** ([StepCounterRepository]) cho bước chân và **bộ ước lượng giấc ngủ từ
- * cảm biến** ([SleepTrackerRepository]) cho giờ ngủ — nhờ vậy `health_data_history` vẫn có dữ liệu
- * (và AI ở tab Phân tích dùng được) ngay cả khi máy không cài ứng dụng sức khỏe nào.
- *
- * Thứ tự ưu tiên luôn là **Health Connect trước** (dữ liệu có thể gồm cả đồng hồ đeo tay, và với giấc
- * ngủ còn có chi tiết pha Sâu/Nông/REM), chỉ khi Health Connect không có số mới dùng nguồn tự đo.
- *
- * Repository này cũng là nơi **báo cho widget màn hình chính vẽ lại**: mọi lần ghi dữ liệu sức khỏe của
- * hôm nay đều đi qua [upsertToday] — sau đó gọi [HealthWidgetRefresher.refresh] để widget "Sức khỏe hôm
- * nay" hiện số mới ngay, không phải chờ tới nhịp vẽ định kỳ 30 phút.
- */
+/** Triển khai [HealthDataRepository]: ưu tiên Health Connect khi nguồn này đang bật, còn lại dùng cảm biến của máy; mọi lần ghi hôm nay đều vẽ lại widget. */
 @Singleton
 class HealthDataRepositoryImpl @Inject constructor(
     private val dataSource: HealthConnectDataSource,
     private val healthDataDao: HealthDataDao,
     private val stepCounterRepository: StepCounterRepository,
     private val sleepTrackerRepository: SleepTrackerRepository,
-    private val healthWidgetRefresher: HealthWidgetRefresher
+    private val healthWidgetRefresher: HealthWidgetRefresher,
+    private val settingsRepository: SettingsRepository?
 ) : HealthDataRepository {
+
+    constructor(
+        dataSource: HealthConnectDataSource,
+        healthDataDao: HealthDataDao,
+        stepCounterRepository: StepCounterRepository,
+        sleepTrackerRepository: SleepTrackerRepository,
+        healthWidgetRefresher: HealthWidgetRefresher
+    ) : this(
+        dataSource = dataSource,
+        healthDataDao = healthDataDao,
+        stepCounterRepository = stepCounterRepository,
+        sleepTrackerRepository = sleepTrackerRepository,
+        healthWidgetRefresher = healthWidgetRefresher,
+        settingsRepository = null
+    )
 
     override suspend fun isAvailable(): Boolean = dataSource.isAvailable()
     override suspend fun getStatus(): HealthConnectStatus = dataSource.getStatus()
@@ -63,9 +66,7 @@ class HealthDataRepositoryImpl @Inject constructor(
         val sensorSteps = stepCounterRepository.readTodaySteps()
         val sensorSleepHours = sleepTrackerRepository.readLastNightSleepHours()
 
-        // Bước chân: Health Connect trước (có thể gồm cả đồng hồ đeo tay), không có số thì dùng cảm biến của máy.
-        // Giấc ngủ: Health Connect trước (có cả chi tiết pha Sâu/Nông/REM), không có thì dùng ước lượng từ
-        // cảm biến ánh sáng + gia tốc của chính điện thoại (SleepTrackerRepository).
+        // Bước chân và giấc ngủ đều ưu tiên Health Connect (nếu đang bật); không có số mới dùng cảm biến của máy.
         val snapshot = HealthData(
             steps = (healthConnect?.steps ?: 0L).takeIf { it > 0L } ?: sensorSteps,
             sleepHours = (healthConnect?.sleepHours ?: 0.0).takeIf { it > 0.0 } ?: sensorSleepHours,
@@ -73,8 +74,7 @@ class HealthDataRepositoryImpl @Inject constructor(
             activeCalories = healthConnect?.activeCalories ?: 0.0
         )
 
-        // Không có dữ liệu thật (không có cảm biến, không cấp quyền, Health Connect trống) → không ghi
-        // hàng toàn số 0, tránh làm nhiễu phân tích AI ở tab Phân tích.
+        // Không có dữ liệu thật → không ghi hàng toàn số 0 để tránh làm nhiễu phân tích AI ở tab Phân tích.
         if (!snapshot.hasAnyData()) {
             android.util.Log.d(
                 "HealthDataRepository",
@@ -98,11 +98,9 @@ class HealthDataRepositoryImpl @Inject constructor(
         )
     }
 
-    /**
-     * Đọc một "bản chụp" từ Health Connect; trả `null` khi Health Connect không khả dụng hoặc chưa được
-     * cấp đủ quyền — lúc đó phần bước chân vẫn có thể đến từ cảm biến của máy.
-     */
+    /** Đọc bản chụp từ Health Connect; trả null khi tắt switch Health Connect, không khả dụng hoặc chưa đủ quyền. */
     private suspend fun readHealthConnectSnapshot(): HealthData? {
+        if (!isHealthConnectSourceEnabled()) return null
         if (!dataSource.isAvailable()) return null
         if (!dataSource.hasAllPermissions()) return null
 
@@ -114,14 +112,13 @@ class HealthDataRepositoryImpl @Inject constructor(
         )
     }
 
-    /**
-     * Ghi bản chụp vào hàng của **hôm nay**: chưa có thì thêm mới, đã có thì **gộp** vào hàng đó.
-     *
-     * Gộp thay vì thêm hàng mới vì `HealthSyncWorker` chạy 4 lần/ngày; nếu thêm mỗi lần một hàng thì
-     * lịch sử chỉ toàn dữ liệu trùng của cùng một ngày. Quy tắc gộp: **bước chân lấy số lớn hơn**
-     * (số bước trong ngày chỉ tăng), các chỉ số khác lấy giá trị **mới hơn nếu có số** — nhờ vậy lần
-     * đồng bộ không có quyền Health Connect **không** xoá mất dữ liệu giấc ngủ/nhịp tim đã ghi trước đó.
-     */
+    /** Switch "Dùng dữ liệu Health Connect" trên Trang chủ có đang bật hay không (mặc định true trong unit test không truyền SettingsRepository). */
+    private suspend fun isHealthConnectSourceEnabled(): Boolean =
+        settingsRepository?.let {
+            runCatchingCancellable { it.getHealthConnectData().enabled }.getOrDefault(false)
+        } ?: true
+
+    /** Ghi bản chụp vào hàng hôm nay (gộp): bước chân lấy số lớn hơn (hoặc số cảm biến khi tắt Health Connect), chỉ số khác lấy giá trị mới hơn nếu có số. */
     private suspend fun upsertToday(snapshot: HealthData) {
         val existing = healthDataDao.getLatestSince(startOfToday())
 
@@ -130,9 +127,12 @@ class HealthDataRepositoryImpl @Inject constructor(
             return
         }
 
+        val sensorAuthoritative = !isHealthConnectSourceEnabled() &&
+            runCatchingCancellable { stepCounterRepository.getStatus().isReady }.getOrDefault(false)
+
         healthDataDao.updateHealthData(
             existing.copy(
-                steps = maxOf(existing.steps, snapshot.steps),
+                steps = if (sensorAuthoritative) snapshot.steps else maxOf(existing.steps, snapshot.steps),
                 sleepHours = if (snapshot.sleepHours > 0.0) snapshot.sleepHours else existing.sleepHours,
                 heartRate = if (snapshot.heartRate > 0.0) snapshot.heartRate else existing.heartRate,
                 activeCalories = if (snapshot.activeCalories > 0.0) snapshot.activeCalories else existing.activeCalories,
@@ -141,7 +141,7 @@ class HealthDataRepositoryImpl @Inject constructor(
         )
     }
 
-    /** Mốc 00:00 của **hôm nay** theo múi giờ thiết bị (epoch millis) — mọi mốc "hôm nay" đều dùng chung. */
+    /** Mốc 00:00 của hôm nay theo múi giờ thiết bị (epoch millis) — mọi mốc "hôm nay" đều dùng chung. */
     private fun startOfToday(): Long = LocalDate.now()
         .atStartOfDay(ZoneId.systemDefault())
         .toInstant()
@@ -163,44 +163,38 @@ class HealthDataRepositoryImpl @Inject constructor(
     override suspend fun getLatestRecordedHeartRate(): Double? =
         healthDataDao.getLatestHeartRateSince(startOfToday())?.takeIf { it > 0.0 }
 
-    /**
-     * Lưu nhịp tim vừa đo vào hàng của **hôm nay**.
-     *
-     * Dùng lại [upsertToday] nên giữ nguyên luật gộp: các chỉ số khác của hôm nay (bước chân, giờ ngủ,
-     * calo) không bị ghi đè bởi hàng mới chỉ có nhịp tim.
-     *
-     * Sau khi ghi phải vẽ lại widget màn hình chính, nếu không ô "Nhịp tim" trên widget vẫn là số của
-     * lần đo trước cho tới nhịp vẽ định kỳ kế tiếp (tối đa 30 phút).
-     */
+    /** Lưu nhịp tim vừa đo vào hàng hôm nay qua [upsertToday] (không ghi đè chỉ số khác) rồi vẽ lại widget ngay, tránh ô Nhịp tim cũ tới 30 phút. */
     override suspend fun saveMeasuredHeartRate(bpm: Double): Result<Unit> = runCatchingCancellable {
         require(bpm > 0.0) { "Nhịp tim đo được phải lớn hơn 0 (nhận được $bpm)" }
         upsertToday(HealthData(heartRate = bpm, recordedAt = System.currentTimeMillis()))
         healthWidgetRefresher.refresh()
     }
 
-    /**
-     * Dòng mới nhất của mỗi ngày, tối đa [limit] ngày gần nhất.
-     *
-     * Lưu ý dữ liệu: `health_data_history` ghi 1 hàng cho mỗi lần **đồng bộ** (6 giờ/lần, đã gộp vào
-     * hàng của ngày) nên tầng dùng (Rule Engine) vẫn phải gom theo ngày — xem
-     * `HabitRuleEngine.analyzeHealthTrends` (phụ lục C #16).
-     */
+    /** Dòng mới nhất của mỗi ngày, tối đa [limit] ngày; bảng ghi 1 hàng mỗi lần đồng bộ nên tầng dùng vẫn phải gom theo ngày. */
     override fun getRecentHealthHistoryFlow(limit: Int): Flow<List<HealthData>> {
         return healthDataDao.getRecentHealthData(limit.coerceAtLeast(1)).map { list ->
             list.map { it.toDomain() }
         }
     }
 
+    /** Bản chụp hôm nay đã ghi trong health_data_history (rỗng nếu chưa có); nguồn cho thẻ Tóm tắt sức khỏe khi tắt switch Health Connect. */
+    override suspend fun getTodayStoredHealthData(): HealthData {
+        val stored = healthDataDao.getLatestSince(startOfToday())?.toDomain() ?: HealthData()
+        val sensorAuthoritative = !isHealthConnectSourceEnabled() &&
+            runCatchingCancellable { stepCounterRepository.getStatus().isReady }.getOrDefault(false)
+        if (sensorAuthoritative) {
+            val sensorSteps = runCatchingCancellable {
+                stepCounterRepository.readTodaySteps(StepCounterRepository.NO_WAIT_MS)
+            }.getOrDefault(0L)
+            return stored.copy(steps = sensorSteps)
+        }
+        return stored
+    }
+
     override fun getHealthHistorySince(fromTs: Long): Flow<List<HealthData>> =
         healthDataDao.getHealthDataSince(fromTs).map { list -> list.map { it.toDomain() } }
 
-    /**
-     * Đọc chi tiết pha giấc ngủ trong [daysBack] ngày gần nhất **trực tiếp từ Health Connect**
-     * (không qua bảng `health_data_history`) để thẻ "Xu hướng chất lượng giấc ngủ" luôn có
-     * dữ liệu mới nhất mà không cần đổi schema Room.
-     *
-     * Khoảng thời gian được căn theo đầu ngày (00:00), thống nhất với truy vấn log thói quen.
-     */
+    /** Đọc chi tiết pha giấc ngủ [daysBack] ngày trực tiếp từ Health Connect (căn đầu ngày), không qua bảng Room nên không cần đổi schema. */
     override suspend fun getSleepStageBreakdown(daysBack: Int): SleepStageBreakdown {
         if (!dataSource.isAvailable()) return SleepStageBreakdown()
 

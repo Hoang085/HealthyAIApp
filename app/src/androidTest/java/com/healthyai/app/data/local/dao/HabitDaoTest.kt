@@ -28,7 +28,7 @@ class HabitDaoTest {
     @Before
     fun createDb() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        // In-memory database for testing
+        // Cơ sở dữ liệu in-memory phục vụ test.
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         habitDao = db.habitDao()
     }

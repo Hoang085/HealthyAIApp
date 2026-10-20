@@ -76,17 +76,7 @@ import kotlin.coroutines.resumeWithException
 private val CardGreen = Color(0xFF2E7D32)
 private val HeartRed = Color(0xFFE53935)
 
-/**
- * Màn **đo nhịp tim bằng camera + đèn flash** (PPG).
- *
- * Cách hoạt động: đèn flash chiếu sáng xuyên qua mô ngón tay, camera ghi lại sự thay đổi rất nhỏ về sắc
- * độ đỏ giữa các khung hình theo từng đợt máu dồn về đầu ngón tay; thuật toán `PpgAnalyzer` (tầng
- * domain) phân tích chu kỳ đổi màu đó để ra nhịp tim.
- *
- * Màn hình chỉ lo **phần cứng** (xin quyền, bật camera sau, bật đèn flash, đưa từng khung hình cho
- * ViewModel) và **phần hướng dẫn** cho người dùng đang đo; toàn bộ máy trạng thái nằm ở
- * [HeartRateViewModel] (test được trên JVM).
- */
+/** Màn đo nhịp tim bằng camera + đèn flash (PPG): chỉ lo phần cứng + hướng dẫn, máy trạng thái nằm ở ViewModel. */
 @Composable
 fun HeartRateScreen(
     onBack: () -> Unit,
@@ -165,12 +155,7 @@ fun HeartRateScreenContent(
         ) {
             ScreenHeader(onBack = onBack, subtitle = subtitleFor(uiState.phase))
 
-            // Camera nằm ở **một vị trí cố định** trong cây giao diện và chỉ rời đi khi đã có kết quả
-            // (`FINISHED`). Điều này rất quan trọng: nếu camera chỉ được compose ở nhánh "chờ" thì vừa
-            // bấm "Bắt đầu đo" là nó bị gỡ khỏi giao diện ⇒ CameraX gỡ camera + tắt đèn flash và màn
-            // đo **không còn khung hình nào** để phân tích. Khi đang đo, khung xem trước được **thu
-            // nhỏ** (người dùng đang che camera nên không cần nhìn) nhưng **vẫn giữ kích thước hợp lệ**
-            // — không ẩn hẳn — để bề mặt xem trước của CameraX luôn cấu hình được.
+            // Camera nằm cố định trong cây giao diện: nếu gỡ lúc chuyển sang đo, CameraX sẽ tắt camera/đèn và mất khung hình để phân tích.
             if (hasCameraPermission && uiState.phase != HeartRatePhase.FINISHED) {
                 val isIdle = uiState.phase == HeartRatePhase.IDLE
                 previewContent(
@@ -228,7 +213,7 @@ private fun subtitleFor(phase: HeartRatePhase): String = when (phase) {
     HeartRatePhase.MEASURING -> stringResource(R.string.heart_rate_phase_measuring)
     HeartRatePhase.FINISHED -> stringResource(R.string.heart_rate_phase_finished)
 }
-// ── Khung màn hình ────────────────────────────────────────────
+// Khung màn hình
 
 @Composable
 private fun ScreenHeader(onBack: () -> Unit, subtitle: String) {
@@ -258,11 +243,9 @@ private fun ScreenHeader(onBack: () -> Unit, subtitle: String) {
     }
 }
 
-// ── Hướng dẫn (khi chưa đo) ───────────────────────────────────
+// Hướng dẫn (khi chưa đo)
 
-/**
- * Hướng dẫn 3 bước — phần người dùng cần đọc **trước khi** bấm đo.
- */
+/** Hướng dẫn 3 bước người dùng cần đọc trước khi bấm đo. */
 @Composable
 private fun InstructionStepsCard() {
     Card(
@@ -336,7 +319,7 @@ private fun InstructionStep(number: Int, text: String) {
     }
 }
 
-// ── Xin quyền camera ──────────────────────────────────────────
+// Xin quyền camera
 
 @Composable
 private fun CameraPermissionCard(onRequestPermission: () -> Unit) {
@@ -375,7 +358,7 @@ private fun CameraPermissionCard(onRequestPermission: () -> Unit) {
     }
 }
 
-// ── Bảng đo đang chạy ─────────────────────────────────────────
+// Bảng đo đang chạy
 
 @Composable
 private fun MeasurementPanel(uiState: HeartRateUiState) {
@@ -564,12 +547,9 @@ private fun strengthLabel(strength: Float): String = when {
     else -> stringResource(R.string.heart_rate_signal_dark)
 }
 
-// ── Hướng dẫn trong lúc đo ────────────────────────────────────
+// Hướng dẫn trong lúc đo
 
-/**
- * Thẻ hướng dẫn **đổi theo tình trạng đo thật** — đây là phần giúp người dùng biết phải làm gì trong
- * lúc đang đo (đặt ngón tay, ấn vừa, giữ yên, sắp xong).
- */
+/** Thẻ hướng dẫn đổi theo tình trạng đo thật để người dùng biết phải làm gì trong lúc đo. */
 @Composable
 private fun GuidanceCard(guidance: HeartRateGuidance) {
     val (icon, title, description, color) = guidanceVisuals(guidance)
@@ -640,7 +620,7 @@ private fun guidanceVisuals(guidance: HeartRateGuidance): GuidanceVisual = when 
     )
 }
 
-// ── Kết quả ───────────────────────────────────────────────────
+// Kết quả
 
 @Composable
 private fun ResultSection(
@@ -769,7 +749,7 @@ private fun CannotMeasureCard(onRetry: () -> Unit, onDone: () -> Unit) {
     }
 }
 
-// ── Thành phần dùng chung ─────────────────────────────────────
+// Thành phần dùng chung
 
 @Composable
 private fun MeasurementButton(
@@ -821,19 +801,9 @@ private fun CameraPlaceholder(modifier: Modifier = Modifier) {
     }
 }
 
-// ── Camera thật (CameraX) ─────────────────────────────────────
+// Camera thật (CameraX)
 
-/**
- * Mở camera sau, bật đèn flash và đưa **từng khung hình** cho [onSample] dưới dạng giá trị đỏ trung
- * bình (xem [CameraPpgAnalyzer]).
- *
- * Camera chỉ được mở khi [active]; khi màn hình rời đi hoặc [active] chuyển `false`, đèn flash **luôn**
- * được tắt và camera được gỡ khỏi vòng đời (`finally` chạy cả khi coroutine bị huỷ) — không để đèn
- * sáng mãi sau khi rời màn.
- *
- * Khi app ra nền, CameraX tự đóng camera (và tắt đèn); lúc quay lại, đèn được **bật lại** trong
- * `ON_RESUME` để phép đo tiếp tục bình thường (một số thiết bị không tự khôi phục trạng thái đèn).
- */
+/** Mở camera sau, bật đèn flash và đưa từng khung hình cho [onSample]; luôn tắt đèn/gỡ camera khi [active] tắt hoặc rời màn. */
 @Composable
 private fun HeartRateCamera(
     active: Boolean,
@@ -916,12 +886,7 @@ private fun HeartRateCamera(
     AndroidView(factory = { previewView }, modifier = modifier)
 }
 
-/**
- * Lấy [ProcessCameraProvider] theo kiểu `suspend` để dùng được trong `LaunchedEffect`.
- *
- * CameraX mở camera **bất đồng bộ** (`ListenableFuture`); chờ sẵn ở đây giúp phần thân của
- * `LaunchedEffect` chỉ còn việc gắn camera và bật đèn.
- */
+/** Lấy [ProcessCameraProvider] kiểu suspend để dùng trong LaunchedEffect (CameraX mở camera bất đồng bộ). */
 private suspend fun Context.cameraProvider(): ProcessCameraProvider =
     suspendCancellableCoroutine { continuation ->
         val future = ProcessCameraProvider.getInstance(this)
@@ -937,7 +902,7 @@ private suspend fun Context.cameraProvider(): ProcessCameraProvider =
         )
     }
 
-// ── Preview trong IDE ─────────────────────────────────────────
+// Preview trong IDE
 
 @Preview(showBackground = true)
 @Composable

@@ -12,24 +12,23 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Triển khai [NotificationPermissionRepository] trên `NotificationManagerCompat`.
- *
- * `areNotificationsEnabled()` là nguồn đúng cho cả 3 tình huống: chưa cấp `POST_NOTIFICATIONS`
- * (Android 13+), người dùng đã tắt thông báo của app trong Settings, hoặc thông báo đang bật.
- */
+/** Triển khai [NotificationPermissionRepository]; Android 13+ chưa xin quyền vẫn có areNotificationsEnabled() = true nên phải kiểm thêm quyền runtime. */
 @Singleton
 class NotificationPermissionRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context
 ) : NotificationPermissionRepository {
 
-    override fun getStatus(): NotificationPermissionStatus = NotificationPermissionStatus(
-        notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled(),
-        // Chỉ Android 13+ mới có quyền runtime POST_NOTIFICATIONS cần xin.
-        canRequestPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+    override fun getStatus(): NotificationPermissionStatus = NotificationPermissionStatus.from(
+        sdkInt = Build.VERSION.SDK_INT,
+        postNotificationsPermissionGranted = hasPostNotificationsPermission(),
+        appNotificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    )
+
+    /** Quyền runtime POST_NOTIFICATIONS (Android 13+) đã cấp chưa; ≤ 12 luôn false nhưng [NotificationPermissionStatus.from] bỏ qua khi sdkInt < 33. */
+    private fun hasPostNotificationsPermission(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-    )
+            ) == PackageManager.PERMISSION_GRANTED
 }

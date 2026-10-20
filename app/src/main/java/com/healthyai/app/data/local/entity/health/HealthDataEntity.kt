@@ -4,10 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.healthyai.app.domain.model.HealthData
 
-/**
- * Lưu trữ dữ liệu sức khỏe đã đồng bộ từ Health Connect.
- * Dùng để theo dõi lịch sử và tính toán xu hướng mà không cần gọi API liên tục.
- */
+/** Lưu dữ liệu sức khỏe đã đồng bộ từ Health Connect để theo dõi lịch sử và xu hướng. */
 @Entity(tableName = "health_data_history")
 data class HealthDataEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

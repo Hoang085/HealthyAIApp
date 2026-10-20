@@ -10,20 +10,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho [DatabasePassphraseProvider] — passphrase SQLCipher sinh một lần rồi đọc lại
- * (mục 3 #17, phụ lục C #13).
- *
- * Bối cảnh: trước đây `DatabaseModule` hard-code `"REPLACE_WITH_SECURE_KEY_FROM_KEYSTORE"` nên khoá
- * mở DB nằm ngay trong APK. Test chốt lại 4 tính chất của bản sửa lỗi:
- * 1. máy mới → sinh passphrase ngẫu nhiên 32 byte và **lưu lại**;
- * 2. mở lại app → đọc đúng passphrase đã lưu, **không** sinh khoá mới (không làm DB cũ thành vô dụng);
- * 3. thiết bị mất khoá Keystore (khôi phục backup, reset khoá) → sinh khoá mới thay vì crash;
- * 4. không rò rỉ khoá qua `toString()` (log/crash report).
- *
- * Android Keystore chỉ có trên thiết bị nên ở đây dùng vault/cipher giả; luồng mã hoá thật
- * (`AndroidKeystorePassphraseCipher`, AES-256/GCM) được kiểm tra theo **TC-DB-11**.
- */
+/** Test [DatabasePassphraseProvider]: sinh passphrase một lần rồi đọc lại, thay khoá khi mất Keystore, không lộ qua `toString()`. */
 class DatabasePassphraseProviderTest {
 
     private companion object {
@@ -44,10 +31,7 @@ class DatabasePassphraseProviderTest {
         }
     }
 
-    /**
-     * Cipher giả "không mã hoá" (Base64) — chỉ để chạy trên JVM; [failDecrypt] mô phỏng khoá
-     * Keystore bị mất nên không giải mã được bản mã đã lưu.
-     */
+    /** Cipher giả (Base64) chỉ để chạy trên JVM; [failDecrypt] mô phỏng mất khoá Keystore. */
     private class FakeCipher(private val failDecrypt: Boolean = false) : PassphraseCipher {
         override fun encrypt(plain: ByteArray): String = Base64.getEncoder().encodeToString(plain)
 

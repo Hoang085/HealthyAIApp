@@ -1,9 +1,6 @@
 package com.healthyai.app.domain.model
 
-/**
- * Gợi ý cá nhân hóa được tạo ra bởi HabitRuleEngine (on-device AI).
- * Mỗi Suggestion có priority để hiển thị theo độ quan trọng.
- */
+/** Gợi ý cá nhân hóa do HabitRuleEngine (on-device AI) tạo ra; priority quyết định thứ tự hiển thị theo độ quan trọng. */
 data class Suggestion(
     val id: Long = System.currentTimeMillis(),
     val title: String,

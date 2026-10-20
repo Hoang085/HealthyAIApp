@@ -8,11 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 
-/**
- * Test cho [SleepTrendMath]: dựng xu hướng 7 đêm từ `health_data_history` và đánh giá chất lượng theo
- * số giờ ngủ trung bình — logic nền cho thẻ "Xu hướng chất lượng giấc ngủ" hoạt động trên **mọi máy**
- * (không còn "đợi" dữ liệu pha từ Health Connect).
- */
+/** Test cho [SleepTrendMath]: dựng xu hướng 7 đêm và đánh giá chất lượng theo số giờ ngủ trung bình. */
 class SleepTrendMathTest {
 
     private val today = LocalDate.of(2026, 9, 28)

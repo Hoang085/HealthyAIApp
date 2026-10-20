@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.healthyai.app.domain.model.CloudSyncSettings
 import com.healthyai.app.domain.model.Habit
+import com.healthyai.app.domain.model.HealthConnectDataSettings
 import com.healthyai.app.domain.model.HealthConnectPermissionStatus
 import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.HealthData
@@ -19,6 +20,8 @@ import com.healthyai.app.domain.usecase.GetTodayHabitsUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthConnectPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase
 import com.healthyai.app.domain.usecase.health.GetLatestRecordedHeartRateUseCase
+import com.healthyai.app.domain.usecase.health.GetStoredHealthDataUseCase
+import com.healthyai.app.domain.usecase.health.TodayHealthSummary
 import com.healthyai.app.domain.usecase.notification.GetNotificationPermissionStatusUseCase
 import com.healthyai.app.domain.usecase.steps.GetStepCounterStatusUseCase
 import com.healthyai.app.util.runCatchingCancellable
@@ -37,107 +40,76 @@ data class HomeHabitItem(
 data class HomeUiState(
     val habits: List<HomeHabitItem> = emptyList(),
     val healthData: HealthData = HealthData(),
+    /** Bản chụp sức khỏe hôm nay đã lưu trong app, dùng khi tắt switch Health Connect; rỗng nghĩa là chưa ghi được gì. */
+    val storedHealthData: HealthData = HealthData(),
+    /** Nguồn dữ liệu thẻ "Tóm tắt sức khỏe": bật = Health Connect, tắt (mặc định) = dữ liệu đã lưu trong app. */
+    val healthConnectData: HealthConnectDataSettings = HealthConnectDataSettings(),
     val healthConnect: HealthConnectPermissionStatus = HealthConnectPermissionStatus(),
     val notificationPermission: NotificationPermissionStatus = NotificationPermissionStatus(),
-    /**
-     * Tên hiển thị trên lời chào (phụ lục C #30): `displayName` Firebase, nếu trống thì phần trước
-     * `@` của email. `null` khi ở **chế độ khách** → màn Trang chủ **không** hiện dòng tên (trước
-     * đây luôn hard-code "Alex").
-     */
+    /** Tên hiển thị trên lời chào: displayName Firebase, nếu trống lấy phần trước @ của email; null ở chế độ khách. */
     val userName: String? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
     /** Trạng thái cảm biến đếm bước của máy (quyền `ACTIVITY_RECOGNITION` có thể chưa được cấp). */
     val stepCounter: StepCounterStatus = StepCounterStatus(),
-    /** Số bước **hôm nay** đọc trực tiếp từ cảm biến của máy (0 khi chưa đủ điều kiện). */
+    /** Số bước hôm nay đọc trực tiếp từ cảm biến (0 khi chưa đủ điều kiện). */
     val sensorSteps: Long = 0L,
-    /** Số giờ ngủ của **đêm vừa qua** do app tự ước lượng từ cảm biến (0 khi chưa đủ dữ liệu). */
+    /** Số giờ ngủ đêm vừa qua app tự ước lượng từ cảm biến (0 khi chưa đủ dữ liệu). */
     val sensorSleepHours: Double = 0.0,
-    /**
-     * Nhịp tim **ghi trong ngày hôm nay** (`health_data_history`) — do lần đo bằng camera của app hoặc
-     * lần đồng bộ Health Connect trong ngày; 0 khi hôm nay chưa có số nào.
-     *
-     * Giới hạn trong ngày để nhịp tim cũng "đọc lại từ đầu ngày" như bước chân/giờ ngủ: sang ngày mới
-     * thì ô "Tim" về "chưa có số" cho tới khi đo lại (số cũ vẫn nằm trong lịch sử 7 ngày ở tab Phân tích).
-     */
+    /** Nhịp tim ghi trong ngày hôm nay (đo camera hoặc đồng bộ Health Connect); về 0 khi sang ngày mới. */
     val recordedHeartRate: Double = 0.0,
-    /**
-     * Khung giờ ngủ **người dùng đặt** — app chỉ đo giấc ngủ trong khung này (mặc định 23:00 – 07:00
-     * khi người dùng chưa đặt gì).
-     */
+    /** Khung giờ ngủ người dùng đặt; app chỉ đo giấc ngủ trong khung này (mặc định 23:00 – 07:00). */
     val sleepSchedule: SleepSchedule = SleepSchedule.DEFAULT,
     /** Bản nháp đang sửa trong hộp thoại "Khung giờ ngủ"; `null` khi hộp thoại đóng. */
     val sleepScheduleDraft: SleepSchedule? = null,
     /** Lỗi của lần lưu khung giờ ngủ gần nhất (ví dụ hai mốc trùng nhau); `null` khi không có lỗi. */
     val sleepScheduleError: String? = null,
-    /**
-     * Trạng thái **đồng bộ đám mây** (mặc định TẮT — mục 3 #31). Thẻ "Đồng bộ đám mây" hiển thị và
-     * bật/tắt giá trị này.
-     */
+    /** Trạng thái đồng bộ đám mây (mặc định TẮT); thẻ "Đồng bộ đám mây" bật/tắt giá trị này. */
     val cloudSync: CloudSyncSettings = CloudSyncSettings(),
-    /**
-     * Người dùng đã đăng nhập hay đang ở chế độ khách. Dùng để thẻ "Đồng bộ đám mây" nói rõ rằng
-     * đồng bộ chỉ có tác dụng khi có tài khoản (chế độ khách không có `uid` để gắn dữ liệu).
-     */
+    /** Đã đăng nhập hay đang ở chế độ khách; đồng bộ đám mây chỉ có tác dụng khi có tài khoản (có uid). */
     val isSignedIn: Boolean = false
 ) {
-    /**
-     * Có nên hiện thẻ hướng dẫn Health Connect không: thiếu quyền đọc, chưa cài,
-     * hoặc cần cập nhật ứng dụng Health Connect.
-     */
+    /** Hiện thẻ hướng dẫn Health Connect khi thiếu quyền đọc, chưa cài hoặc cần cập nhật. */
     val showHealthConnectCard: Boolean
         get() = healthConnect.needsPermission ||
             healthConnect.status == HealthConnectStatus.NOT_INSTALLED ||
             healthConnect.status == HealthConnectStatus.UPDATE_REQUIRED
 
-    /**
-     * Có nên hiện thẻ "Bật nhắc nhở hàng ngày" không — `ReminderWorker` chỉ gửi được thông báo
-     * khi quyền thông báo đang bật.
-     */
+    /** Hiện thẻ "Bật nhắc nhở hàng ngày"; ReminderWorker chỉ gửi được thông báo khi quyền thông báo đang bật. */
     val showReminderNotificationCard: Boolean
         get() = notificationPermission.isBlocked
 
-    /**
-     * Có nên hiện thẻ xin quyền đếm bước không: máy **có** cảm biến nhưng app **chưa** được cấp quyền.
-     * Máy không có cảm biến (ví dụ emulator) thì không hiện gì — không có gì để người dùng làm.
-     */
+    /** Hiện thẻ xin quyền đếm bước khi máy có cảm biến nhưng app chưa được cấp quyền. */
     val showStepCounterCard: Boolean
         get() = stepCounter.sensorAvailable && !stepCounter.permissionGranted
 
+    /** Nguồn đang chọn cho thẻ "Tóm tắt sức khỏe": switch BẬT = Health Connect, TẮT (mặc định) = bản chụp đã lưu trong app. */
+    private val primaryHealthData: HealthData
+        get() = if (healthConnectData.enabled) healthData else storedHealthData
+
     /**
-     * Số bước hiển thị trên thẻ "Tóm tắt sức khỏe": **ưu tiên cảm biến của chính điện thoại** vì đây là
-     * nguồn **live** (cập nhật liên tục khi người dùng đi bộ); chỉ dùng Health Connect khi máy **không có
-     * cảm biến** hoặc **chưa được cấp quyền** `ACTIVITY_RECOGNITION`.
-     *
-     * ⚠️ Chiều ưu tiên này là **chủ ý** (đã chốt): `healthData` chỉ được đọc **một lần** lúc mở màn Home
-     * (xem `loadHealthConnect`) nên nếu để Health Connect ưu tiên thì con số trên thẻ bị **"đóng băng"** —
-     * đi bộ thấy số không đổi cho tới khi ViewModel được tạo lại (mục 3 #24, phụ lục C #33). Đánh đổi:
-     * khi máy có cảm biến thì số của **đồng hồ đeo tay** (nằm trong Health Connect) không còn được ưu tiên.
+     * Ba chỉ số hiển thị, ghép bằng đúng luật dùng chung với widget
+     * ([TodayHealthSummary.build]): nguồn đang chọn trước, không có số mới rơi về số app tự đo.
      */
+    private val displaySummary: TodayHealthSummary
+        get() = TodayHealthSummary.build(
+            primary = primaryHealthData,
+            sensorSteps = sensorSteps,
+            sensorSleepHours = sensorSleepHours,
+            recordedHeartRate = recordedHeartRate
+        )
+
+    /** Số bước hiển thị: theo switch (Health Connect hoặc bản chụp đã lưu), không có số thì lấy cảm biến đếm bước. */
     val displaySteps: Long
-        get() = if (stepCounter.isReady) sensorSteps else healthData.steps
+        get() = displaySummary.steps
 
-    /**
-     * Số giờ ngủ hiển thị trên thẻ "Tóm tắt sức khỏe": **ưu tiên Health Connect** (dữ liệu có thể đến
-     * từ **đồng hồ đeo tay** và còn có chi tiết pha Sâu/Nông/REM); chỉ khi Health Connect **không có số**
-     * mới dùng ước lượng của app từ cảm biến.
-     *
-     * Khác bước chân (ưu tiên cảm biến vì đó là nguồn **live**), giờ ngủ **không đổi trong ngày** nên
-     * việc Health Connect chỉ được đọc một lần lúc mở màn Home không làm con số bị "đóng băng".
-     */
+    /** Số giờ ngủ hiển thị: theo switch, không có số thì dùng ước lượng từ cảm biến. */
     val displaySleepHours: Double
-        get() = if (healthData.sleepHours > 0.0) healthData.sleepHours else sensorSleepHours
+        get() = displaySummary.sleepHours
 
-    /**
-     * Nhịp tim hiển thị trên thẻ "Tóm tắt sức khỏe": **ưu tiên Health Connect** (có thể là số của đồng
-     * hồ đeo tay); chỉ khi Health Connect **không có số của hôm nay** mới dùng **nhịp tim ghi gần nhất
-     * trong ngày** — tức lần đo bằng camera ở màn "Đo nhịp tim" (hoặc một lần đồng bộ trong ngày).
-     *
-     * Giá trị `0.0` nghĩa là **hôm nay chưa có số nào**; UI hiện `-- bpm` (xem `HealthSummaryCard`) chứ
-     * không hiện `0 bpm` (sẽ bị đọc thành "nhịp tim bằng 0").
-     */
+    /** Nhịp tim hiển thị: theo switch, không có số thì dùng nhịp tim ghi gần nhất trong ngày; 0 nghĩa là hôm nay chưa có. */
     val displayHeartRate: Double
-        get() = if (healthData.heartRate > 0.0) healthData.heartRate else recordedHeartRate
+        get() = displaySummary.heartRateBpm
 
     /** Hộp thoại "Khung giờ ngủ" đang mở hay không. */
     val isSleepScheduleEditorOpen: Boolean
@@ -155,8 +127,9 @@ class HomeViewModel @Inject constructor(
     private val authRepository: AuthRepository, // Tên hiển thị trên lời chào (không hard-code)
     private val stepCounterRepository: StepCounterRepository, // Đếm bước bằng cảm biến của máy
     private val sleepTrackerRepository: SleepTrackerRepository, // Tự ước lượng giờ ngủ bằng cảm biến
-    private val settingsRepository: SettingsRepository, // Khung giờ ngủ người dùng đặt
-    private val getLatestRecordedHeartRateUseCase: GetLatestRecordedHeartRateUseCase // Nhịp tim đã ghi trên máy
+    private val settingsRepository: SettingsRepository, // Khung giờ ngủ người dùng đặt + nguồn dữ liệu sức khỏe
+    private val getLatestRecordedHeartRateUseCase: GetLatestRecordedHeartRateUseCase, // Nhịp tim đã ghi trên máy
+    private val getStoredHealthDataUseCase: GetStoredHealthDataUseCase // Bản chụp sức khỏe hôm nay đã lưu trong app
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -175,15 +148,11 @@ class HomeViewModel @Inject constructor(
         loadRecordedHeartRate()
         observeSleepSchedule()
         observeCloudSync()
+        observeHealthConnectData()
         loadSignedInState()
     }
 
-    /**
-     * Lấy tên hiển thị thật của phiên hiện tại (`AuthRepository.currentUserName`).
-     *
-     * Chế độ khách → `null` → UI hiện lời chào **không kèm tên** (phụ lục C #30). Đọc một lần lúc
-     * khởi tạo là đủ: đổi phiên (đăng xuất/đăng nhập) làm `AppNavigation` dựng lại màn Home.
-     */
+    /** Lấy tên hiển thị của phiên hiện tại; chế độ khách trả null nên lời chào không kèm tên. */
     private fun loadUserName() {
         _uiState.update { it.copy(userName = authRepository.currentUserName) }
     }
@@ -210,19 +179,7 @@ class HomeViewModel @Inject constructor(
         .launchIn(viewModelScope)
     }
 
-    /**
-     * Kiểm tra trạng thái Health Connect rồi nạp số liệu sức khỏe.
-     *
-     * Ngoài lần nạp đầu, số liệu chỉ được đọc lại khi trạng thái/quyền **thay đổi** (hoặc khi
-     * [forceDataRead] = `true`) — nhờ vậy việc kiểm tra lại quyền khi quay về màn Home không
-     * kéo theo 4 truy vấn Health Connect mỗi lần.
-     *
-     * - Health Connect chưa cài / cần cập nhật → UI hiện thẻ hướng dẫn thay cho banner lỗi đỏ.
-     * - Health Connect sẵn sàng, chưa cấp quyền → UI hiện thẻ "Cấp quyền Health Connect"
-     *   (các chỉ số đọc được trả về 0, app không crash).
-     *
-     * @param showLoading chỉ bật cờ loading ở lần nạp đầu để tránh nháy spinner khi kiểm tra lại quyền.
-     */
+    /** Kiểm tra trạng thái Health Connect rồi nạp số liệu theo nguồn đang chọn; chỉ đọc lại khi trạng thái/quyền đổi hoặc forceDataRead. */
     private fun loadHealthConnect(showLoading: Boolean, forceDataRead: Boolean = false) {
         viewModelScope.launch {
             if (showLoading) _uiState.update { it.copy(isLoading = true) }
@@ -231,16 +188,35 @@ class HomeViewModel @Inject constructor(
             val status = getHealthConnectPermissionStatusUseCase()
             _uiState.update { it.copy(healthConnect = status, error = null) }
 
+            val shouldReadData = showLoading || forceDataRead || status != previousStatus
+
             if (status.status != HealthConnectStatus.AVAILABLE) {
                 // Không có Health Connect để đọc: xoá số liệu cũ và để thẻ hướng dẫn giải thích lý do.
                 _uiState.update { it.copy(healthData = HealthData(), isLoading = false) }
+                // Nguồn "dữ liệu đã lưu trong app" vẫn đọc được kể cả khi máy không có Health Connect.
+                if (shouldReadData) loadStoredHealthData()
                 return@launch
             }
 
-            if (showLoading || forceDataRead || status != previousStatus) {
-                readHealthData()
+            if (shouldReadData) {
+                readActiveHealthData()
             }
         }
+    }
+
+    /** Đọc số liệu cho nguồn đang chọn; đọc thẳng từ SettingsRepository để không phụ thuộc thời điểm Flow phát giá trị. */
+    private suspend fun readActiveHealthData() {
+        if (settingsRepository.getHealthConnectData().enabled) {
+            readHealthData()
+        } else {
+            loadStoredHealthData()
+        }
+    }
+
+    /** Đọc bản chụp sức khỏe hôm nay đã lưu trong app; dùng khi switch Health Connect tắt (lỗi được quy về bản chụp rỗng). */
+    private suspend fun loadStoredHealthData() {
+        val stored = getStoredHealthDataUseCase()
+        _uiState.update { it.copy(storedHealthData = stored, isLoading = false) }
     }
 
     private suspend fun readHealthData() {
@@ -263,10 +239,7 @@ class HomeViewModel @Inject constructor(
             }
     }
 
-    /**
-     * Kiểm tra lại quyền Health Connect — gọi khi màn Home hiện lại, vì người dùng có thể đã cấp
-     * quyền trong ứng dụng Health Connect rồi quay lại app.
-     */
+    /** Kiểm tra lại quyền Health Connect; gọi khi màn Home hiện lại vì người dùng có thể đã cấp quyền bên ngoài. */
     fun refreshHealthConnect() = loadHealthConnect(showLoading = false)
 
     /** Đọc lại trạng thái quyền thông báo (không đụng tới hộp thoại hệ thống). */
@@ -274,49 +247,37 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(notificationPermission = getNotificationPermissionStatusUseCase()) }
     }
 
-    /**
-     * Kiểm tra lại các quyền/trạng thái hệ thống khi màn Home hiện lại: người dùng có thể đã cấp
-     * quyền trong app Health Connect, bật thông báo trong Settings, hoặc cấp quyền đếm bước chân rồi
-     * quay lại app.
-     */
+    /** Kiểm tra lại quyền/trạng thái hệ thống và nạp lại số liệu theo nguồn đang chọn khi màn Home hiện lại. */
     fun refreshSystemPermissions() {
-        refreshHealthConnect()
+        loadHealthConnect(showLoading = false, forceDataRead = true)
         loadNotificationPermission()
         loadStepCounter()
         loadSleepTracking()
         loadRecordedHeartRate()
     }
 
-    /**
-     * Đọc **nhịp tim ghi trong ngày hôm nay** (`health_data_history`).
-     *
-     * Đọc lại mỗi khi màn Trang chủ hiện ra — nhờ vậy vừa đo xong ở màn "Đo nhịp tim" rồi quay về là ô
-     * "Tim" đã có số mới, không cần mở lại app. Sang ngày mới, số trả về là 0 cho tới khi có lần đo mới
-     * trong ngày (xem `HealthDataRepository.getLatestRecordedHeartRate`).
-     */
+    /** Đọc nhịp tim ghi trong ngày hôm nay; đọc lại mỗi khi màn Trang chủ hiện ra để ô "Tim" cập nhật ngay sau khi đo. */
     private fun loadRecordedHeartRate() {
         viewModelScope.launch {
             _uiState.update { it.copy(recordedHeartRate = getLatestRecordedHeartRateUseCase()) }
         }
     }
 
-    // ── Đếm bước bằng cảm biến của máy ─────────────────────────
+    // Đếm bước bằng cảm biến của máy
 
-    /**
-     * Đọc lại trạng thái cảm biến đếm bước và (nếu đã đủ điều kiện) bắt đầu nghe cảm biến.
-     *
-     * Job cũ luôn bị huỷ trước khi tạo job mới để không có hai listener cùng chạy; nếu chưa có quyền
-     * hoặc máy không có cảm biến thì số bước đưa về 0 và UI hiện thẻ xin quyền.
-     */
+    /** Đọc lại trạng thái cảm biến đếm bước và bắt đầu nghe cảm biến nếu đủ điều kiện; huỷ job cũ để không có hai listener. */
     private fun loadStepCounter() {
         val status = getStepCounterStatusUseCase()
         _uiState.update { it.copy(stepCounter = status) }
 
-        stepCounterJob?.cancel()
         if (!status.isReady) {
+            stepCounterJob?.cancel()
+            stepCounterJob = null
             _uiState.update { it.copy(sensorSteps = 0L) }
             return
         }
+
+        if (stepCounterJob?.isActive == true) return
 
         stepCounterJob = viewModelScope.launch {
             stepCounterRepository.observeTodaySteps().collect { steps ->
@@ -325,22 +286,12 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Nhận kết quả hộp thoại xin quyền `ACTIVITY_RECOGNITION`.
-     *
-     * Trạng thái quyền luôn được đọc lại từ hệ thống (nguồn đúng duy nhất) thay vì tin vào tham số
-     * `granted` của launcher — nhờ vậy cả trường hợp người dùng bật quyền trong Settings cũng đúng.
-     */
+    /** Nhận kết quả xin quyền ACTIVITY_RECOGNITION; luôn đọc lại trạng thái từ hệ thống thay vì tin tham số granted. */
     fun onStepPermissionResult() = loadStepCounter()
 
-    // ── Tự ước lượng giờ ngủ bằng cảm biến của máy ─────────────
+    // Tự ước lượng giờ ngủ bằng cảm biến của máy
 
-    /**
-     * Đọc lại số giờ ngủ của **đêm vừa qua** do app tự ước lượng.
-     *
-     * Đây là phép đọc **một lần** (không phải cảm biến "live" như bước chân): giấc ngủ của đêm đã qua
-     * không đổi trong ngày. Việc lấy mẫu do `SleepTrackingWorker` làm mỗi 15 phút, kể cả khi app đóng.
-     */
+    /** Đọc số giờ ngủ đêm vừa qua app tự ước lượng (đọc một lần, không phải cảm biến live); SleepTrackingWorker lấy mẫu mỗi 15 phút. */
     private fun loadSleepTracking() {
         viewModelScope.launch {
             val hours = runCatchingCancellable { sleepTrackerRepository.readLastNightSleepHours() }
@@ -349,15 +300,9 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // ── Khung giờ ngủ do người dùng đặt ────────────────────────
+    // Khung giờ ngủ do người dùng đặt
 
-    /**
-     * Theo dõi khung giờ ngủ trong bảng `app_settings`.
-     *
-     * Đọc bằng **Flow** (chứ không đọc một lần) để thẻ "Khung giờ ngủ" và mọi nơi khác luôn khớp với
-     * giá trị đã lưu trong DB — kể cả sau khi người dùng vừa lưu, hoặc khi dữ liệu bị đổi từ nơi khác.
-     * Chưa có gì trong DB thì repository trả về mặc định 23:00 – 07:00.
-     */
+    /** Theo dõi khung giờ ngủ trong app_settings bằng Flow để luôn khớp giá trị đã lưu; chưa có thì mặc định 23:00 – 07:00. */
     private fun observeSleepSchedule() {
         settingsRepository.observeSleepSchedule()
             .catch { }
@@ -365,14 +310,9 @@ class HomeViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
-    // ── Đồng bộ đám mây (mặc định TẮT — mục 3 #31) ─────────────
+    // Đồng bộ đám mây (mặc định TẮT)
 
-    /**
-     * Theo dõi trạng thái "Đồng bộ đám mây" trong bảng `app_settings`.
-     *
-     * Đọc bằng **Flow** để thẻ luôn khớp với giá trị đã lưu (kể cả khi dữ liệu bị đổi từ nơi khác);
-     * lỗi đọc cũng chỉ giữ nguyên giá trị mặc định **TẮT** thay vì bật đồng bộ ngoài ý muốn.
-     */
+    /** Theo dõi trạng thái "Đồng bộ đám mây" bằng Flow; lỗi đọc giữ nguyên mặc định TẮT thay vì bật ngoài ý muốn. */
     private fun observeCloudSync() {
         settingsRepository.observeCloudSync()
             .catch { }
@@ -380,22 +320,30 @@ class HomeViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
-    /**
-     * Bật/tắt đồng bộ đám mây.
-     *
-     * Việc ghi mốc đồng ý nằm trong repository (bật = ghi mốc chặn "chỉ tải log tạo sau đây"), nên
-     * tầng UI chỉ cần truyền ý định của người dùng.
-     */
+    /** Bật/tắt đồng bộ đám mây; việc ghi mốc đồng ý nằm trong repository nên UI chỉ truyền ý định. */
     fun setCloudSyncEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setCloudSyncEnabled(enabled) }
     }
 
-    /**
-     * Người dùng đã đăng nhập hay đang ở chế độ khách.
-     *
-     * Đọc một lần lúc khởi tạo là đủ: đổi phiên (đăng nhập/đăng xuất) làm `AppNavigation` dựng lại
-     * màn Home, giống cách [loadUserName] đọc tên hiển thị.
-     */
+    // Nguồn dữ liệu sức khỏe của Trang chủ (mặc định TẮT)
+
+    /** Theo dõi nguồn dữ liệu sức khỏe trong app_settings để switch Trang chủ luôn khớp; lỗi đọc giữ mặc định TẮT. */
+    private fun observeHealthConnectData() {
+        settingsRepository.observeHealthConnectData()
+            .catch { }
+            .onEach { settings -> _uiState.update { it.copy(healthConnectData = settings) } }
+            .launchIn(viewModelScope)
+    }
+
+    /** Bật/tắt switch "Dùng dữ liệu Health Connect"; ghi vào app_settings rồi nạp lại ngay nguồn vừa chọn. */
+    fun setHealthConnectDataEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setHealthConnectDataEnabled(enabled)
+            loadHealthConnect(showLoading = false, forceDataRead = true)
+        }
+    }
+
+    /** Cho biết người dùng đã đăng nhập hay đang ở chế độ khách; đọc một lần lúc khởi tạo là đủ. */
     private fun loadSignedInState() {
         _uiState.update { it.copy(isSignedIn = authRepository.currentUserId != null) }
     }
@@ -415,12 +363,7 @@ class HomeViewModel @Inject constructor(
         it.copy(sleepScheduleDraft = draft, sleepScheduleError = null)
     }
 
-    /**
-     * Lưu khung giờ ngủ.
-     *
-     * Khung không hợp lệ (giờ đi ngủ **trùng** giờ thức) → **không** ghi gì, giữ hộp thoại mở và báo
-     * lỗi để người dùng sửa. Hợp lệ → ghi vào `app_settings` rồi đóng hộp thoại.
-     */
+    /** Lưu khung giờ ngủ; khung không hợp lệ (trùng giờ) thì báo lỗi và giữ hộp thoại mở. */
     fun saveSleepSchedule() {
         val draft = _uiState.value.sleepScheduleDraft ?: return
 
@@ -435,21 +378,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Nhận kết quả hộp thoại xin quyền `POST_NOTIFICATIONS`.
-     *
-     * Không dùng tham số `granted` của launcher mà đọc lại từ nguồn đúng:
-     * `NotificationManagerCompat.areNotificationsEnabled()` (phản ánh cả trường hợp người dùng
-     * tắt thông báo ở cấp app trong Settings).
-     */
+    /** Nhận kết quả xin quyền POST_NOTIFICATIONS; đọc lại trạng thái thật thay vì tin tham số granted. */
     fun onNotificationPermissionResult() = loadNotificationPermission()
 
-    /**
-     * Nhận kết quả từ hộp thoại xin quyền của Health Connect.
-     *
-     * Trạng thái quyền luôn được đọc lại từ Health Connect (nguồn đúng duy nhất) — tham số
-     * [granted] chỉ dùng để quyết định có nạp lại số liệu ngay hay không.
-     */
+    /** Nhận kết quả xin quyền Health Connect; tham số granted chỉ quyết định có nạp lại số liệu ngay hay không. */
     fun onHealthConnectPermissionsResult(granted: Set<String>) {
         val required = _uiState.value.healthConnect.requiredPermissions
 
@@ -462,7 +394,7 @@ class HomeViewModel @Inject constructor(
     fun dismissError() = _uiState.update { it.copy(error = null) }
 
     private companion object {
-        /** Lỗi khi người dùng đặt giờ đi ngủ **trùng** giờ thức → khung rỗng, không đo được gì. */
+        /** Lỗi khi giờ đi ngủ trùng giờ thức (khung rỗng, không đo được gì). */
         const val SLEEP_SCHEDULE_ERROR_EMPTY = "Giờ đi ngủ và giờ thức không được trùng nhau"
     }
 }

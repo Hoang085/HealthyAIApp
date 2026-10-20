@@ -27,10 +27,7 @@ enum class HeartRatePhase {
     FINISHED
 }
 
-/**
- * Câu **hướng dẫn** đang phù hợp với tình trạng đo — màn đo dịch thành chữ tiếng Việt
- * (`HeartRateGuidanceCard`), còn ViewModel chỉ giữ trạng thái nên test được trên JVM.
- */
+/** Câu hướng dẫn phù hợp tình trạng đo; ViewModel chỉ giữ trạng thái nên test được trên JVM. */
 enum class HeartRateGuidance {
     /** Chưa đo — đang ở thẻ hướng dẫn 3 bước. */
     READY_TO_START,
@@ -48,22 +45,7 @@ enum class HeartRateGuidance {
     ALMOST_DONE
 }
 
-/**
- * Trạng thái màn "Đo nhịp tim".
- *
- * @property elapsedMs Thời gian đã đo (ms) theo đồng hồ của camera (không phải đồng hồ hệ thống) nên
- *   cũng đúng khi các khung hình bị bỏ dở.
- * @property beats Số nhịp đã nhận trong chuỗi đang đo.
- * @property liveBpm Nhịp ước lượng đang hiện; `null` khi chưa đủ rõ.
- * @property quality Độ tin cậy của tín hiệu/nhịp hiện tại (0..1).
- * @property signalStrength Độ mạnh tương đối của tín hiệu (0..1) — dùng để nhắc người dùng.
- * @property fingerDetected Ngón tay đã che camera + đèn flash chưa.
- * @property waveform Dạng sóng gần đây đã chuẩn hoá `-1..1` để vẽ.
- * @property result Kết quả đã chốt (chỉ có ở [HeartRatePhase.FINISHED] khi đo thành công).
- * @property isSaving Đang ghi kết quả vào lịch sử sức khỏe.
- * @property saved Kết quả đã được ghi vào `health_data_history` (ô "Tim" ở Trang chủ dùng được).
- * @property error Thông báo lỗi/hướng dẫn sửa (không đọc được nhịp, camera lỗi, lưu thất bại).
- */
+/** Trạng thái màn "Đo nhịp tim" (giai đoạn, số đo, tín hiệu, kết quả, lỗi). */
 data class HeartRateUiState(
     val phase: HeartRatePhase = HeartRatePhase.IDLE,
     val elapsedMs: Long = 0L,
@@ -78,7 +60,7 @@ data class HeartRateUiState(
     val saved: Boolean = false,
     val error: String? = null
 ) {
-    /** Tiến độ vòng tròn: đã đo được bao phần của thời gian **tối thiểu** (0..1). */
+    /** Tiến độ vòng tròn: đã đo được bao phần của thời gian tối thiểu (0..1). */
     val progress: Float
         get() = (elapsedMs.toFloat() / HeartRateMath.MIN_MEASURE_MS).coerceIn(0f, 1f)
 
@@ -97,11 +79,7 @@ data class HeartRateUiState(
         }
 
     companion object {
-        /**
-         * Dưới mức này coi như tín hiệu yếu: ngón tay ấn quá mạnh (chặn dòng máu) hoặc che hờ nên ánh
-         * sáng phản xạ gần như không đổi theo nhịp. Màn đo dùng **cùng** ngưỡng này cho thanh "Tín
-         * hiệu" nên màu thanh và câu hướng dẫn không bao giờ nói ngược nhau.
-         */
+        /** Dưới mức này coi là tín hiệu yếu (ấn quá mạnh/chê hờ); màn đo dùng cùng ngưỡng cho thanh "Tín hiệu". */
         const val MIN_SIGNAL_STRENGTH = 0.35f
 
         /** Trên mức này coi là tín hiệu mạnh (chỉ để hiển thị). */
@@ -109,17 +87,7 @@ data class HeartRateUiState(
     }
 }
 
-/**
- * ViewModel của màn **đo nhịp tim bằng camera + đèn flash**.
- *
- * Việc bắt khung hình do màn hình làm (CameraX nằm ở tầng UI, giống `CameraScreen`), còn ViewModel chỉ
- * nhận **giá trị đỏ trung bình của từng khung hình** qua [onPpgSample] rồi đưa vào
- * [PpgAnalyzer] (toán thuần, test được trên JVM). Nhờ vậy toàn bộ máy trạng thái của phép đo —
- * chưa đủ dữ liệu, mất ngón tay, tín hiệu yếu, quá hạn, lưu kết quả — đều có unit test.
- *
- * Kết quả đo **tự động được lưu** vào lịch sử sức khỏe ngay khi chốt (người dùng đã chủ động bấm đo, và
- * số vừa đo cần xuất hiện ở ô "Tim" màn Trang chủ cũng như cho Rule Engine ở tab Phân tích).
- */
+/** ViewModel màn đo nhịp tim: nhận giá trị đỏ mỗi khung hình, chạy máy trạng thái (test được trên JVM), tự lưu kết quả. */
 @HiltViewModel
 class HeartRateViewModel @Inject constructor(
     private val saveMeasuredHeartRate: SaveMeasuredHeartRateUseCase
@@ -136,7 +104,7 @@ class HeartRateViewModel @Inject constructor(
         _uiState.value = HeartRateUiState(phase = HeartRatePhase.MEASURING)
     }
 
-    /** Người dùng bấm "Dừng đo": bỏ lần đo hiện tại, **không** lưu gì. */
+    /** Người dùng bấm "Dừng đo": bỏ lần đo hiện tại, không lưu gì. */
     fun stopMeasurement() {
         analyzer.reset()
         _uiState.value = HeartRateUiState()
@@ -145,12 +113,7 @@ class HeartRateViewModel @Inject constructor(
     /** Gọi lại [startMeasurement] — dùng cho nút "Đo lại" ở màn kết quả. */
     fun restart() = startMeasurement()
 
-    /**
-     * Nhận **giá trị đỏ trung bình** của một khung hình camera.
-     *
-     * Bỏ qua mọi khung hình khi không ở chế độ đang đo (màn hình vẫn bật camera ở chế độ chờ để người
-     * dùng nhìn thấy vùng đỏ, nhưng chỉ phân tích từ lúc bấm "Bắt đầu đo").
-     */
+    /** Nhận giá trị đỏ trung bình một khung hình camera; bỏ qua khi không ở chế độ đang đo. */
     fun onPpgSample(red: Double, timestampMs: Long) {
         if (_uiState.value.phase != HeartRatePhase.MEASURING) return
 
@@ -177,22 +140,14 @@ class HeartRateViewModel @Inject constructor(
         _uiState.value = HeartRateUiState(error = "Không mở được camera: $message")
     }
 
-    /**
-     * Thiết bị **không có đèn flash**: vẫn cho đo (dựa vào ánh sáng phòng) nhưng phải nói trước là kết
-     * quả dễ sai — không được im lặng để người dùng tin vào một con số kém chính xác.
-     *
-     * Không ghi đè thông báo lỗi đang có.
-     */
+    /** Thiết bị không có đèn flash: vẫn cho đo nhưng cảnh báo trước là kết quả dễ sai; không ghi đè lỗi đang có. */
     fun onFlashUnavailable() = _uiState.update {
         if (it.error == null) it.copy(error = NO_FLASH_WARNING) else it
     }
 
     fun dismissError() = _uiState.update { it.copy(error = null) }
 
-    /**
-     * Chốt lần đo. Chỉ nhận kết quả khi **có nhịp** và **chất lượng đạt ngưỡng** — nếu tín hiệu nhiễu
-     * thì nói thẳng là chưa đọc được còn hơn hiện một con số sai (đây là số liệu sức khỏe).
-     */
+    /** Chốt lần đo: chỉ nhận kết quả khi có nhịp và chất lượng đạt ngưỡng, tránh hiện số sai. */
     private fun finish(progress: PpgProgress) {
         analyzer.reset()
 

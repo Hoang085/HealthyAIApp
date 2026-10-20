@@ -43,13 +43,23 @@ import java.util.Locale
 fun HabitsScreen(
     onNavigateToAddHabit: () -> Unit,
     onNavigateToEditHabit: (Long) -> Unit,
+    /** Danh mục cần mở sẵn hộp thoại ghi nhận (AppNavigation đọc từ SavedStateHandle); null = không có. */
+    pendingLogCategory: String? = null,
+    /** Đã nhận yêu cầu → `AppNavigation` xoá khoá khỏi `SavedStateHandle` để không mở lại hộp thoại. */
+    onPendingLogCategoryConsumed: () -> Unit = {},
     viewModel: HabitsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Phản hồi sau khi ghi nhận: `showLogSuccessFor` là sự kiện một lần → hiện Toast rồi xoá cờ,
-    // nhờ vậy mỗi lần ghi (kể cả ghi lại cùng một thói quen) đều có thông báo.
+    // Yêu cầu ghi nhận từ màn khác: chuyển danh mục cho ViewModel rồi báo đã nhận để xoá khoá trong SavedStateHandle.
+    LaunchedEffect(pendingLogCategory) {
+        val category = pendingLogCategory ?: return@LaunchedEffect
+        viewModel.onLogRequest(category)
+        onPendingLogCategoryConsumed()
+    }
+
+    // showLogSuccessFor là sự kiện một lần: hiện Toast rồi xoá cờ nên lần ghi sau vẫn có thông báo.
     LaunchedEffect(uiState.showLogSuccessFor) {
         val habitId = uiState.showLogSuccessFor ?: return@LaunchedEffect
         val habitName = uiState.habits.firstOrNull { it.habit.id == habitId }?.habit?.name
@@ -85,9 +95,7 @@ fun HabitsScreenContent(
     var showLogDialogFor by remember { mutableStateOf<Habit?>(null) }
     val context = LocalContext.current
 
-    // Yêu cầu ghi nhận từ màn khác (mục 3 #14 — nút trong thẻ gợi ý AI; phụ lục C #22 — nút
-    // "Thêm vào nhật ký" của màn Ghi chép): mở sẵn hộp thoại ghi nhận của thói quen đúng danh mục;
-    // nếu chưa có thói quen nào thuộc danh mục đó thì nhắc tạo mới.
+    // Yêu cầu ghi nhận từ màn khác: mở hộp thoại của thói quen đúng danh mục, chưa có thì nhắc tạo mới.
     LaunchedEffect(uiState.logRequest) {
         when (val request = uiState.logRequest) {
             null -> Unit
@@ -131,8 +139,7 @@ fun HabitsScreenContent(
                 HabitHeader()
             }
 
-            // Lỗi ghi nhận / đọc dữ liệu (ví dụ ghi log thất bại) — trước đây `uiState.error`
-            // không được hiển thị ở màn này (phụ lục C #10).
+            // Hiển thị lỗi ghi nhận/đọc dữ liệu (trước đây uiState.error không được hiện ở màn này).
             if (uiState.error != null) {
                 item {
                     ErrorStateCard(message = uiState.error, onDismiss = onDismissError)

@@ -39,11 +39,7 @@ private val DarkColorScheme = darkColorScheme(
     error = ErrorRed,
 )
 
-/**
- * Material You Theme với Dynamic Color.
- * dynamicColor = true → tự động thay đổi màu theo hình nền hệ thống (Android 12+).
- * Fallback về LightColorScheme / DarkColorScheme trên Android < 12.
- */
+/** Theme Material You; dynamicColor bật đổi màu theo hình nền (Android 12+), ngược lại dùng scheme sáng/tối. */
 @Composable
 fun HealthyAITheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

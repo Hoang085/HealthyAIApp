@@ -4,14 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Test cho [DatabaseMigrations] (phụ lục C #14).
- *
- * Không chạy được SQLite trên JVM nên test này kiểm tra **cấu trúc** của dãy migration — phần dễ
- * bị bỏ sót nhất khi nâng version schema: thêm `@Database(version = 4)` mà quên `MIGRATION_3_4`
- * thì Room sẽ crash (`IllegalStateException: A migration from 3 to 4 was required but not found`)
- * trên **mọi** máy đã cài bản cũ.
- */
+/** Test [DatabaseMigrations]; không chạy được SQLite trên JVM nên chỉ kiểm tra cấu trúc dãy migration. */
 class DatabaseMigrationsTest {
 
     @Test
@@ -41,10 +34,7 @@ class DatabaseMigrationsTest {
         DatabaseMigrations.STATEMENTS_3_4.forEach { assertTrue(it.isNotBlank()) }
     }
 
-    /**
-     * 1 → 2 chỉ thêm cột (không drop/tạo lại bảng) để `habit_logs` — bảng có FK
-     * `ON DELETE CASCADE` trỏ tới `habits` — không bị mất dữ liệu khi nâng cấp.
-     */
+    /** 1 → 2 chỉ thêm cột, không dựng lại `habit_logs` (FK CASCADE tới `habits`) nên không mất dữ liệu. */
     @Test
     fun `migration 1 to 2 only alters tables and backfills target value`() {
         assertTrue(
@@ -55,10 +45,7 @@ class DatabaseMigrationsTest {
         )
     }
 
-    /**
-     * 3 → 4 chỉ **tạo thêm** bảng `app_settings`, không đụng tới các bảng đang có — nâng cấp không làm
-     * mất thói quen, nhật ký hay lịch sử sức khỏe.
-     */
+    /** 3 → 4 chỉ tạo thêm bảng `app_settings`, không đụng bảng cũ nên không mất dữ liệu. */
     @Test
     fun `migration 3 to 4 creates the settings table without touching existing tables`() {
         assertTrue(

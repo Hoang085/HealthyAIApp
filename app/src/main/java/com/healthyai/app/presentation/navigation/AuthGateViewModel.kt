@@ -12,9 +12,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * Trạng thái phiên đăng nhập ở cấp điều hướng, quyết định màn hình gốc của app.
- */
+/** Trạng thái phiên đăng nhập ở cấp điều hướng, quyết định màn hình gốc của app. */
 sealed interface SessionState {
     /** Đang chờ FirebaseAuth trả về trạng thái đã lưu (tránh nháy màn login). */
     data object Loading : SessionState
@@ -29,12 +27,7 @@ sealed interface SessionState {
     data object SignedIn : SessionState
 }
 
-/**
- * Quan sát `AuthRepository.authState` để bật/tắt màn hình đăng nhập.
- *
- * Cờ "chế độ khách" được lưu trong [SavedStateHandle] nên sống sót qua xoay màn hình
- * và cả khi tiến trình bị hệ thống thu hồi rồi khôi phục.
- */
+/** Quan sát AuthRepository.authState để bật/tắt màn đăng nhập; cờ chế độ khách lưu trong SavedStateHandle. */
 @HiltViewModel
 class AuthGateViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -60,18 +53,11 @@ class AuthGateViewModel @Inject constructor(
         savedStateHandle[KEY_GUEST_MODE] = true
     }
 
-    /**
-     * Đăng xuất (mục 3 #19): xoá phiên Firebase **và** cờ chế độ khách → cổng xác thực trả về
-     * [SessionState.SignedOut] nên màn đăng nhập hiện lại.
-     *
-     * **Không** xoá dữ liệu cục bộ: thói quen/nhật ký vẫn nằm trong Room (SQLCipher) trên máy, và
-     * đăng nhập lại bằng tài khoản cũ sẽ thấy nguyên dữ liệu.
-     */
+    /** Đăng xuất: xoá phiên Firebase và cờ chế độ khách, nhưng không xoá dữ liệu cục bộ trong Room. */
     fun signOut() {
         viewModelScope.launch {
             authRepository.signOut()
-            // Phải xoá cờ khách **kể cả** khi không có phiên Firebase (người dùng đang ở chế độ
-            // khách): nếu không `combine` vẫn trả về Guest và màn đăng nhập không bao giờ hiện ra.
+            // Xoá cờ khách kể cả khi không có phiên Firebase; nếu không combine vẫn trả Guest và màn đăng nhập không hiện.
             savedStateHandle[KEY_GUEST_MODE] = false
         }
     }

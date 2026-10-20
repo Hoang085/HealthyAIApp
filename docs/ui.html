@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="ui.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giao diện &amp; điều hướng — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 6</div>
+      <h1>Giao diện &amp; điều hướng</h1>
+      <p class="page-lead">
+        Tầng hiển thị: cổng xác thực, khung điều hướng 4 tab, từng màn hình và ViewModel của nó, widget
+        Glance, cùng các quy ước về theme và chuỗi hiển thị. Mọi màn hình đều là Compose trong một
+        <code>MainActivity</code> duy nhất.
+      </p>
+
+      <h2>1. Cổng xác thực &amp; khung điều hướng</h2>
+      <p>Ba tầng lồng nhau, đi từ ngoài vào trong:</p>
+      <div class="layers">
+        <div class="layer">
+          <div class="layer__name">① <code>AppNavigation()</code> — cổng xác thực</div>
+          <div class="layer__desc">Đọc <code>AuthGateViewModel.sessionState</code>. Chưa đăng nhập thì hiện màn Đăng nhập; đã đăng nhập hoặc chọn chế độ khách mới dựng khung chính.</div>
+        </div>
+        <div class="layer">
+          <div class="layer__name">② <code>MainNavigation()</code> — khung + bottom bar</div>
+          <div class="layer__desc"><code>Scaffold</code> với <code>NavigationBar</code> 4 tab. Bottom bar <strong>chỉ hiện</strong> ở 4 màn hình chính.</div>
+        </div>
+        <div class="layer">
+          <div class="layer__name">③ <code>NavHost</code> — 7 destination</div>
+          <div class="layer__desc">4 tab + 3 màn phụ (Thêm/Sửa thói quen, Đo nhịp tim, Chính sách bảo mật).</div>
+        </div>
+      </div>
+
+      <h3>1.1. Khai báo destination — <code>Screen</code></h3>
+<pre><code><span class="k">sealed class</span> Screen(
+    <span class="k">val</span> route: String,
+    <span class="k">@StringRes val</span> titleRes: Int,      <span class="c">// ⭐ id tài nguyên, KHÔNG phải chuỗi viết cứng</span>
+    <span class="k">val</span> icon: ImageVector
+) {
+    <span class="k">object</span> Home     : Screen(<span class="s">"home"</span>,     R.string.nav_home,     Icons.Filled.Home)
+    <span class="k">object</span> Habits   : Screen(<span class="s">"habits"</span>,   R.string.nav_habits,   Icons.Filled.CheckCircle)
+    <span class="k">object</span> Camera   : Screen(<span class="s">"camera"</span>,   R.string.nav_camera,   Icons.Filled.CameraAlt)
+    <span class="k">object</span> Insights : Screen(<span class="s">"insights"</span>, R.string.nav_insights, Icons.Filled.AutoAwesome)
+
+    <span class="c">// Màn hình KHÔNG nằm trong Bottom Nav</span>
+    <span class="k">object</span> AddEditHabit : Screen(<span class="s">"add_edit_habit?habitId={habitId}"</span>, R.string.nav_habits, Icons.Filled.CheckCircle) {
+        <span class="k">fun</span> createRoute(habitId: Long? = <span class="k">null</span>) = <span class="s">"add_edit_habit?habitId=${habitId ?: -1L}"</span>
+    }
+    <span class="k">object</span> MeasureHeartRate : Screen(<span class="s">"measure_heart_rate"</span>, R.string.nav_heart_rate, Icons.Filled.Favorite)
+    <span class="k">object</span> PrivacyPolicy    : Screen(<span class="s">"privacy_policy"</span>,    R.string.nav_privacy_policy, Icons.Filled.PrivacyTip)
+}
+
+<span class="k">val</span> bottomNavItems = listOf(Screen.Home, Screen.Habits, Screen.Camera, Screen.Insights)</code></pre>
+      <p class="small">
+        Dùng <code>@StringRes</code> thay vì chuỗi là một phần của việc đưa toàn bộ chuỗi hiển thị vào
+        <code>strings.xml</code> — xem <a href="#10-theme-i18n-va-quy-uoc-giao-dien">mục 10</a>.
+      </p>
+
+      <h3>1.2. Bottom bar &amp; chuyển tab</h3>
+<pre><code><span class="c">// Chỉ hiện bottom bar ở các màn hình chính — màn Thêm/Sửa, Đo nhịp tim, Privacy thì ẩn</span>
+<span class="k">val</span> showBottomBar = bottomNavItems.any { it.route == currentDestination?.route }
+<span class="k">if</span> (showBottomBar) { NavigationBar { <span class="c">/* … 4 NavigationBarItem … */</span> } }</code></pre>
+      <p>Mỗi lần chuyển tab dùng đúng bốn tuỳ chọn, giữ nguyên trạng thái của từng tab:</p>
+<pre><code>navController.navigate(screen.route) {
+    popUpTo(navController.graph.findStartDestination().id) { saveState = <span class="k">true</span> }
+    launchSingleTop = <span class="k">true</span>
+    restoreState = <span class="k">true</span>
+}</code></pre>
+      <div class="callout warn">
+        <span class="callout__title">Hệ quả quan trọng của <code>saveState</code> / <code>restoreState</code></span>
+        <p>
+          Vì tab được giữ trạng thái, <strong>ViewModel của tab không bị huỷ khi rời tab</strong>. Tính chất
+          này trực tiếp gây ra cái bẫy ở <a href="#4-truyen-yeu-cau-giua-cac-man-mot-cai-bay-da-duoc-sua">mục 4</a>
+          — và cũng là lý do app <strong>đếm bước chân được khi ở nền</strong> (HomeViewModel còn sống).
+        </p>
+      </div>
+
+      <h3>1.3. Hiệu ứng chuyển màn</h3>
+<pre><code>enterTransition     = { fadeIn() + slideInHorizontally { it } }
+exitTransition      = { fadeOut() + slideOutHorizontally { -it } }
+popEnterTransition  = { fadeIn() + slideInHorizontally { -it } }
+popExitTransition   = { fadeOut() + slideOutHorizontally { it } }</code></pre>
+
+      <h3>1.4. Cổng xác thực &amp; màn Đăng nhập</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th><code>SessionState</code></th><th>Nguồn quyết định</th><th>UI</th></tr></thead>
+        <tbody>
+          <tr><td><code>Loading</code></td><td>Giá trị khởi tạo của <code>stateIn</code></td><td><code>AuthLoadingScreen</code>: vòng xoay + tên app — tránh "nháy" màn login khi Firebase còn đang đọc phiên đã lưu</td></tr>
+          <tr><td><code>SignedOut</code></td><td><code>uid == null</code> và chưa chọn khách</td><td><code>LoginScreen</code> (đăng nhập <em>và</em> đăng ký email/mật khẩu) + nút "Bỏ qua, dùng ở chế độ khách"</td></tr>
+          <tr><td><code>Guest</code></td><td>Cờ trong <code>SavedStateHandle</code></td><td><code>MainNavigation</code></td></tr>
+          <tr><td><code>SignedIn</code></td><td><code>uid != null</code></td><td><code>MainNavigation</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Cờ chế độ khách nằm trong <code>SavedStateHandle</code> nên <strong>sống sót qua xoay màn hình</strong>
+        và cả khi tiến trình bị hệ thống thu hồi rồi khôi phục. Khi đăng xuất, phải xoá <em>cả</em> phiên
+        Firebase <em>và</em> cờ khách — nếu không, <code>combine</code> vẫn trả về <code>Guest</code> và màn
+        đăng nhập không bao giờ hiện ra. Đăng xuất <strong>không</strong> xoá dữ liệu cục bộ: thói quen và
+        nhật ký vẫn nằm trong Room.
+      </p>
+
+      <h2>2. Màn Trang chủ (HomeScreen)</h2>
+      <p class="small"><code>presentation/screen/home/HomeScreen.kt</code> + <code>HomeViewModel.kt</code> + 7 thẻ phụ</p>
+      <p>Đây là màn hình nhiều thành phần nhất. Cấu trúc từ trên xuống:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Thành phần</th><th>File</th><th>Nội dung</th></tr></thead>
+        <tbody>
+          <tr><td>Lời chào</td><td><code>HomeScreen.kt</code></td><td>Tên thật của phiên (<code>userName</code>); ở chế độ khách <strong>không</strong> hiện dòng tên nào</td></tr>
+          <tr><td><strong>Thẻ "Tóm tắt sức khỏe"</strong></td><td><code>HomeScreen.kt</code></td><td>3 vòng tròn chỉ số (Bước chân · Ngủ · Tim) + nút <strong>"Đo ngay"</strong> ở ô Tim. Ô Tim chưa có số hiện <code>-- bpm</code></td></tr>
+          <tr><td><strong>Thẻ "Dùng dữ liệu Health Connect"</strong> (switch)</td><td><code>HealthDataSourceCard.kt</code></td><td>Chọn <strong>nguồn số</strong> cho thẻ "Tóm tắt sức khỏe": <strong>BẬT</strong> = đọc trực tiếp Health Connect; <strong>TẮT</strong> (mặc định) = dùng <strong>dữ liệu đã lưu trong app</strong></td></tr>
+          <tr><td>Thẻ "Khung giờ ngủ"</td><td><code>SleepScheduleCard.kt</code></td><td>Hiện khung đang dùng, mở hộp thoại đặt giờ đi ngủ + giờ thức</td></tr>
+          <tr><td>Thẻ "Đồng bộ đám mây"</td><td><code>CloudSyncCard.kt</code></td><td>Bật/tắt đồng bộ (mặc định TẮT) + lối vào Chính sách bảo mật</td></tr>
+          <tr><td>Thẻ cấp quyền Health Connect</td><td><code>HealthConnectPermissionCard.kt</code></td><td>Xin quyền / mời cài / mời cập nhật Health Connect</td></tr>
+          <tr><td>Thẻ bật đếm bước chân</td><td><code>StepCounterPermissionCard.kt</code></td><td>Xin <code>ACTIVITY_RECOGNITION</code> + nút phụ "Không thấy hộp thoại? Mở cài đặt quyền"</td></tr>
+          <tr><td>Thẻ bật nhắc nhở</td><td><code>ReminderNotificationCard.kt</code></td><td>Xin <code>POST_NOTIFICATIONS</code>, hoặc mở Settings khi thông báo bị tắt ở cấp app</td></tr>
+          <tr><td>Thẻ lỗi</td><td><code>ErrorStateCard.kt</code></td><td>Dùng chung với màn Thói quen; đóng được</td></tr>
+          <tr><td>Nút đăng xuất</td><td><code>HomeScreen.kt</code></td><td>Gọi <code>AuthGateViewModel.signOut</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>2.1. Ba thuộc tính quyết định hiển thị thẻ cấp quyền</h3>
+      <p>
+        Quy tắc "có hiện thẻ hay không" nằm trong <code>HomeUiState</code> (không nằm trong composable), nhờ
+        vậy test được:
+      </p>
+<pre><code><span class="k">val</span> showHealthConnectCard: Boolean
+    <span class="k">get</span>() = healthConnect.needsPermission ||
+        healthConnect.status == NOT_INSTALLED || healthConnect.status == UPDATE_REQUIRED
+
+<span class="k">val</span> showReminderNotificationCard: Boolean
+    <span class="k">get</span>() = notificationPermission.isBlocked
+
+<span class="c">// Máy CÓ cảm biến nhưng CHƯA cấp quyền → hiện thẻ.</span>
+<span class="c">// Máy không có cảm biến (emulator) → không hiện gì: không có gì để người dùng làm.</span>
+<span class="k">val</span> showStepCounterCard: Boolean
+    <span class="k">get</span>() = stepCounter.sensorAvailable &amp;&amp; !stepCounter.permissionGranted</code></pre>
+
+      <h3>2.2. Vòng đời nạp dữ liệu</h3>
+      <p>Điểm tinh tế: không phải lần nào màn Home hiện ra cũng đọc lại 4 truy vấn Health Connect.</p>
+<pre><code><span class="k">private fun</span> loadHealthConnect(showLoading: Boolean, forceDataRead: Boolean = <span class="k">false</span>) {
+    viewModelScope.launch {
+        <span class="k">if</span> (showLoading) _uiState.update { it.copy(isLoading = <span class="k">true</span>) }
+
+        <span class="k">val</span> previousStatus = _uiState.value.healthConnect
+        <span class="k">val</span> status = getHealthConnectPermissionStatusUseCase()
+        _uiState.update { it.copy(healthConnect = status, error = <span class="k">null</span>) }
+
+        <span class="c">// ⭐ Chỉ đọc lại khi: lần nạp đầu, được yêu cầu rõ ràng, HOẶC trạng thái quyền ĐÃ ĐỔI</span>
+        <span class="k">val</span> shouldReadData = showLoading || forceDataRead || status != previousStatus
+
+        <span class="k">if</span> (status.status != HealthConnectStatus.AVAILABLE) {
+            <span class="c">// Không có Health Connect: xoá số liệu cũ; nguồn "dữ liệu trong app" vẫn đọc được</span>
+            _uiState.update { it.copy(healthData = HealthData(), isLoading = <span class="k">false</span>) }
+            <span class="k">if</span> (shouldReadData) loadStoredHealthData()
+            <span class="k">return</span>@launch
+        }
+
+        <span class="k">if</span> (shouldReadData) readActiveHealthData()
+    }
+}
+
+<span class="c">// Nguồn do switch "Dùng dữ liệu Health Connect" quyết định:</span>
+<span class="c">// BẬT → đọc Health Connect; TẮT (mặc định) → đọc bản chụp đã lưu trong app (health_data_history)</span>
+<span class="k">private suspend fun</span> readActiveHealthData() {
+    <span class="k">if</span> (settingsRepository.getHealthConnectData().enabled) readHealthData()
+    <span class="k">else</span> loadStoredHealthData()
+}</code></pre>
+      <p>
+        Vì <strong>không</strong> đọc lại mỗi lần, số liệu "bản chụp" của nguồn bị <strong>đóng băng</strong> giữa
+        các lần nạp — nên <strong>bước chân</strong> luôn còn đường dự phòng từ <strong>cảm biến của điện thoại</strong>
+        (nguồn <strong>live</strong>). Nguồn <strong>chính</strong> cho cả 3 ô do switch
+        <strong>"Dùng dữ liệu Health Connect"</strong> quyết định: BẬT → Health Connect; TẮT (mặc định) → bản chụp
+        trong app. Riêng <a href="#82-dung-chung-quy-tac-uu-tien-nguon-voi-app">widget</a> giữ luật chung
+        <code>TodayHealthSummary</code>.
+      </p>
+      <p>Khi màn Home hiện lại, kiểm tra lại quyền/trạng thái <em>và</em> đọc lại nguồn đang chọn — nguồn TẮT chỉ đọc DB (nhẹ), nguồn BẬT đọc lại Health Connect để số không bị đóng băng giữa hai lần mở màn:</p>
+<pre><code><span class="k">fun</span> refreshSystemPermissions() {
+    loadHealthConnect(forceDataRead = <span class="k">true</span>)  <span class="c">// kiểm tra lại quyền + đọc lại NGUỒN đang chọn</span>
+    loadNotificationPermission()
+    loadStepCounter()
+    loadSleepTracking()
+    loadRecordedHeartRate()     <span class="c">// ⭐ đọc lại nhịp tim GHI TRONG NGÀY → vừa đo xong quay về là thấy ngay</span>
+}</code></pre>
+
+      <h3>2.3. Hộp thoại "Khung giờ ngủ"</h3>
+      <p>Một trong số ít hộp thoại có <strong>bản nháp</strong> trong state — cần thiết vì người dùng chọn
+         giờ, sửa lại, rồi mới lưu:</p>
+<pre><code><span class="k">fun</span> openSleepScheduleEditor() = _uiState.update { it.copy(sleepScheduleDraft = it.sleepSchedule, sleepScheduleError = <span class="k">null</span>) }
+<span class="k">fun</span> dismissSleepScheduleEditor() = _uiState.update { it.copy(sleepScheduleDraft = <span class="k">null</span>, sleepScheduleError = <span class="k">null</span> ) }
+<span class="k">fun</span> onSleepScheduleDraftChange(draft: SleepSchedule) = _uiState.update { it.copy(sleepScheduleDraft = draft, sleepScheduleError = <span class="k">null</span>) }
+
+<span class="k">fun</span> saveSleepSchedule() {
+    <span class="k">val</span> draft = _uiState.value.sleepScheduleDraft ?: <span class="k">return</span>
+
+    <span class="c">// Khung không hợp lệ (giờ đi ngủ TRÙNG giờ thức) → KHÔNG ghi gì, giữ hộp thoại mở + báo lỗi</span>
+    <span class="k">if</span> (!draft.isValid) {
+        _uiState.update { it.copy(sleepScheduleError = SLEEP_SCHEDULE_ERROR_EMPTY) }
+        <span class="k">return</span>
+    }
+    viewModelScope.launch {
+        settingsRepository.setSleepSchedule(draft)
+        _uiState.update { it.copy(sleepScheduleDraft = <span class="k">null</span>, sleepScheduleError = <span class="k">null</span>) }
+    }
+}</code></pre>
+      <p class="small">
+        Khung giờ ngủ được đọc bằng <code>Flow</code> (<code>observeSleepSchedule()</code>), nên thẻ cập nhật
+        ngay sau khi lưu. Cơ chế đo dựa trên khung này ở
+        <a href="logic-sensors.html#22-khung-gio-ngu-sleepschedule">trang Thuật toán cảm biến</a>.
+      </p>
+
+      <h2>3. Màn Thói quen (HabitsScreen)</h2>
+      <p class="small"><code>presentation/screen/habits/</code> — <code>HabitsScreen</code>, <code>HabitsViewModel</code>, <code>HabitFilter</code>, <code>HabitLogInput</code>, <code>addedit/</code></p>
+
+      <h3>3.1. Trạng thái &amp; tiến độ</h3>
+<pre><code><span class="k">data class</span> HabitWithProgress(<span class="k">val</span> habit: Habit, <span class="k">val</span> progress: Float, <span class="k">val</span> isCompleted: Boolean)</code></pre>
+      <p>
+        Nguồn là <code>combine</code> của hai Flow: danh sách thói quen đang hoạt động và <strong>nhật ký của
+        hôm nay</strong> (<code>getHabitLogsForPeriod(0)</code>). Tiến độ = tổng <code>value</code> của các log
+        cùng <code>habitId</code> trong ngày; <code>isCompleted</code> khi tổng ≥ <code>targetValue</code>.
+      </p>
+      <div class="callout note">
+        <span class="callout__title">Vì sao <code>daysBack = 0</code> nghĩa là "hôm nay"</span>
+        <p>
+          <code>HabitRepositoryImpl.getHabitLogsForPeriod(daysBack)</code> tính mốc là
+          <strong>00:00 của <code>daysBack</code> ngày trước</strong>, không phải <code>now − daysBack</code>.
+          Nếu tính là <code>now − 0</code> thì mốc bằng đúng lúc gọi hàm ⇒ <strong>mọi log đã ghi trong ngày
+          đều bị loại</strong> và tiến độ/trạng thái hoàn thành về 0 mỗi lần mở lại màn hình. Đây là lỗi cũ,
+          nay đã sửa và ghi chú rõ trong KDoc.
+        </p>
+      </div>
+
+      <h3>3.2. Bộ lọc theo buổi</h3>
+      <p>Bộ lọc là một <strong>enum</strong>, không phải chuỗi tiếng Việt viết cứng:</p>
+<pre><code><span class="k">enum class</span> HabitFilter(<span class="k">@StringRes val</span> labelRes: Int, <span class="k">val</span> timeOfDay: HabitTimeOfDay?) {
+    ALL(R.string.habits_filter_all, <span class="k">null</span>),
+    MORNING(R.string.habits_filter_morning, HabitTimeOfDay.MORNING),
+    AFTERNOON(R.string.habits_filter_afternoon, HabitTimeOfDay.AFTERNOON),
+    EVENING(R.string.habits_filter_evening, HabitTimeOfDay.EVENING)
+}
+
+<span class="c">// Lọc theo buổi + LUÔN giữ thói quen "Cả ngày" (không gắn với buổi cụ thể)</span>
+<span class="k">private fun</span> applyFilter(habits: List&lt;HabitWithProgress&gt;, filter: HabitFilter): List&lt;HabitWithProgress&gt; {
+    <span class="k">val</span> timeOfDay = filter.timeOfDay ?: <span class="k">return</span> habits
+    <span class="k">return</span> habits.filter { it.habit.timeOfDay == timeOfDay || it.habit.timeOfDay == HabitTimeOfDay.ALL_DAY }
+}</code></pre>
+
+      <h3>3.3. Ghi nhận giá trị — chặn ngay ở UI <em>và</em> ở ViewModel</h3>
+<pre><code><span class="c">// presentation/screen/habits/HabitLogInput.kt — hàm THUẦN, test được trên JVM</span>
+<span class="k">fun</span> parseLogValue(input: String): LogValueResult {
+    <span class="k">val</span> trimmed = input.trim()
+    <span class="k">if</span> (trimmed.isEmpty()) <span class="k">return</span> LogValueResult.Invalid(<span class="s">"Vui lòng nhập số lượng"</span>)
+
+    <span class="k">val</span> value = trimmed.toFloatOrNull() ?: <span class="k">return</span> LogValueResult.Invalid(<span class="s">"Số lượng phải là số"</span>)
+    <span class="k">if</span> (!value.isFinite()) <span class="k">return</span> LogValueResult.Invalid(<span class="s">"Số lượng phải là số"</span>)   <span class="c">// NaN / Infinity</span>
+    <span class="k">if</span> (value &lt;= <span class="n">0f</span>) <span class="k">return</span> LogValueResult.Invalid(<span class="s">"Số lượng phải lớn hơn 0"</span>)
+
+    <span class="k">return</span> LogValueResult.Valid(value)
+}</code></pre>
+      <p>ViewModel <em>vẫn</em> kiểm lại — lưới an toàn cho mọi đường vào khác:</p>
+<pre><code><span class="k">fun</span> logHabit(habit: Habit, value: Float) {
+    <span class="c">// Ghi số âm sẽ làm tiến độ trong ngày bị GIẢM; NaN sẽ phá mọi phép tính tổng</span>
+    <span class="k">if</span> (!value.isFinite() || value &lt;= <span class="n">0f</span>) {
+        _uiState.update { it.copy(error = <span class="s">"Số lượng phải lớn hơn 0"</span>) }
+        <span class="k">return</span>
+    }
+    <span class="c">/* … ghi log, thành công → showLogSuccessFor = habit.id … */</span>
+}</code></pre>
+      <p class="small">
+        Trước đây UI gọi thẳng <code>toFloatOrNull()</code> rồi bỏ qua khi trả <code>null</code>: hộp thoại
+        vẫn đóng, <strong>không</strong> có log nào được ghi, và người dùng không biết vì sao. Nay mọi giá trị
+        không dùng được đều giữ hộp thoại mở và hiện lỗi ngay dưới ô nhập.
+      </p>
+
+      <h3>3.4. Phản hồi dùng-một-lần</h3>
+      <p>
+        <code>HabitsUiState.showLogSuccessFor: Long?</code> là id thói quen vừa ghi thành công. UI hiện Toast
+        "Đã ghi nhận: <em>tên</em>" rồi gọi <code>onLogSuccessShown()</code> để xoá. Cách này (thay vì
+        <code>Channel</code>/<code>SharedFlow</code>) khiến <strong>ghi nhận cùng một thói quen nhiều lần liên
+        tiếp vẫn kích hoạt phản hồi mỗi lần</strong> — vốn là điều kiện dễ bị bỏ sót.
+      </p>
+
+      <h3>3.5. Màn Thêm / Sửa thói quen</h3>
+      <p class="small"><code>presentation/screen/habits/addedit/AddEditHabitViewModel.kt</code></p>
+      <p>Ba quy tắc được xử lý ở đây:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Quy tắc</th><th>Cách làm</th><th>Vì sao</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Chống trùng tên</td>
+            <td>So tên đã chuẩn hoá (không phân biệt hoa/thường, bỏ khoảng trắng thừa) với các thói quen đang hoạt động ⇒ hộp thoại "Tên thói quen đã tồn tại", không ghi DB</td>
+            <td>Tên của thói quen <strong>đã xoá mềm</strong> dùng lại được</td>
+          </tr>
+          <tr>
+            <td>Chống double-submit</td>
+            <td>Cờ <code>isSaving</code> bỏ qua lần bấm thứ hai; nút đáy mờ đi + hiện vòng xoay trong lúc ghi DB</td>
+            <td>Tránh tạo hai thói quen trùng khi bấm nhanh hai lần</td>
+          </tr>
+          <tr>
+            <td>Số hiển thị gọn</td>
+            <td>Ô "Mục tiêu hàng ngày" hiện <code>2000</code> thay vì <code>2000.0</code>, nhưng vẫn giữ <code>7.5</code> khi có phần thập phân</td>
+            <td><code>presentation/ui/format/NumberDisplay.kt</code></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout danger">
+        <span class="callout__title">Đường cập nhật PHẢI đi qua <code>@Update</code>, không được dùng <code>insert</code></span>
+        <p>
+          <code>habit_logs.habitId</code> có khoá ngoại <code>onDelete = CASCADE</code>, và
+          <code>@Insert(onConflict = REPLACE)</code> là <strong>DELETE + INSERT</strong> trong SQLite. Nếu
+          dùng <code>insertHabit()</code> để sửa một thói quen đã có, khoá ngoại sẽ xoá sạch nhật ký của nó —
+          và tiến độ trong ngày về 0 (thẻ hiện "0 / 45 phút" thay vì "30 / 45"). Vì vậy
+          <code>HabitRepositoryImpl.updateHabit</code> dùng <code>habitDao.updateHabit()</code>.
+        </p>
+      </div>
+
+      <h3>3.6. Xoá mềm &amp; Toast</h3>
+      <p>
+        Xoá thói quen = <code>UPDATE habits SET isActive = 0</code>. Hàng <code>habits</code> và
+        <strong>toàn bộ nhật ký</strong> của nó vẫn được giữ ⇒ lịch sử và biểu đồ không bị lệch. Hộp thoại
+        xác nhận + Toast phản hồi nằm ở <code>HabitsScreen</code>.
+      </p>
+
+      <h2>4. Truyền yêu cầu giữa các màn — một cái bẫy đã được sửa</h2>
+      <p>
+        Hai màn hình cần "nhờ" tab Thói quen <strong>mở sẵn hộp thoại ghi nhận</strong> cho một danh mục:
+        nút hành động trong thẻ gợi ý AI (màn Phân tích) và nút "Thêm vào nhật ký" (màn Ghi chép bữa ăn).
+      </p>
+      <p>Cơ chế dùng <code>SavedStateHandle</code> của destination Thói quen:</p>
+<pre><code><span class="c">/** Mở tab Thói quen và gửi kèm danh mục cần ghi nhận */</span>
+<span class="k">private fun</span> NavHostController.openHabitLogFor(category: HabitCategory) {
+    navigate(Screen.Habits.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = <span class="k">true</span> }
+        launchSingleTop = <span class="k">true</span>
+        restoreState = <span class="k">true</span>
+    }
+    currentBackStackEntry
+        ?.savedStateHandle
+        ?.set(KEY_LOG_CATEGORY, category.name)      <span class="c">// KEY_LOG_CATEGORY = "logCategory"</span>
+}</code></pre>
+      <div class="callout danger">
+        <span class="callout__title">Cái bẫy: ViewModel KHÔNG được tự nghe khoá này</span>
+        <p>
+          Destination Thói quen được giữ trạng thái (<code>saveState</code>/<code>restoreState</code>), nên
+          <code>HabitsViewModel</code> <strong>không bị huỷ</strong> khi rời tab. Trong khi đó
+          <code>SavedStateHandle</code> là của <strong>từng <code>NavBackStackEntry</code></strong>.
+        </p>
+        <p>
+          Hệ quả: khi entry được dựng lại, ViewModel cũ vẫn đang nghe handle của entry <em>cũ</em> ⇒ giá trị
+          mới ghi vào entry hiện tại <strong>không bao giờ tới được ViewModel</strong>. Triệu chứng người
+          dùng thấy: <em>"nhảy sang tab Thói quen mà không mở hộp thoại nào"</em>.
+        </p>
+      </div>
+      <p>Vì vậy người <strong>đọc</strong> khoá là tầng composable — chính chỗ có entry đang hiện:</p>
+<pre><code><span class="c">// AppNavigation.kt — đọc NGAY TẠI composable của destination Thói quen</span>
+composable(Screen.Habits.route) { backStackEntry -&gt;
+    <span class="k">val</span> pendingLogCategory <span class="k">by</span> backStackEntry.savedStateHandle
+        .getStateFlow&lt;String?&gt;(KEY_LOG_CATEGORY, <span class="k">null</span>)
+        .collectAsStateWithLifecycle()
+
+    HabitsScreen(
+        <span class="c">/* … */</span>
+        pendingLogCategory = pendingLogCategory,
+        onPendingLogCategoryConsumed = { backStackEntry.savedStateHandle.remove&lt;String&gt;(KEY_LOG_CATEGORY) }
+    )
+}</code></pre>
+      <p>Phía ViewModel nhận <em>tên danh mục</em> và trả về một sự kiện rõ nghĩa:</p>
+<pre><code><span class="k">sealed interface</span> LogRequest {
+    <span class="k">data class</span> Open(<span class="k">val</span> habit: Habit) : LogRequest          <span class="c">// có thói quen → mở hộp thoại ghi nhận</span>
+    <span class="k">data class</span> Missing(<span class="k">val</span> category: HabitCategory) : LogRequest  <span class="c">// chưa có → nhắc tạo mới</span>
+}
+
+<span class="k">fun</span> onLogRequest(categoryName: String) {
+    <span class="k">val</span> category = runCatching { HabitCategory.valueOf(categoryName) }.getOrNull() ?: <span class="k">return</span>
+    viewModelScope.launch {
+        <span class="k">val</span> habit = habitRepository.getAllActiveHabits().first().firstOrNull { it.category == category }
+        _uiState.update { it.copy(logRequest = habit?.let { h -&gt; LogRequest.Open(h) } ?: LogRequest.Missing(category)) }
+    }
+}</code></pre>
+      <p class="small">
+        Bốn mẹo trong <code>SuggestionCatalog</code> có <code>actionLabel</code> là bốn lối vào của cơ chế này —
+        xem <a href="logic-ai.html#41-noi-dung-kho-meo">nội dung kho mẹo</a>.
+      </p>
+
+      <h2>5. Màn Ghi chép bữa ăn (CameraScreen)</h2>
+      <p class="small"><code>presentation/screen/camera/</code> — <code>CameraScreen.kt</code>, <code>CameraViewModel.kt</code></p>
+
+      <h3>5.1. Hai đường lấy ảnh</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Đường</th><th>Cách làm</th><th>Ghi chú</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Chụp ảnh</strong></td>
+            <td><code>LifecycleCameraController</code> + <code>PreviewView</code> nhúng qua <code>AndroidView</code>; nút "Phân tích món ăn" chụp rồi lấy <code>Bitmap</code></td>
+            <td>Cần quyền <code>CAMERA</code></td>
+          </tr>
+          <tr>
+            <td><strong>Chọn từ thư viện</strong></td>
+            <td>Photo picker của hệ thống (<code>PickVisualMedia</code>) → <code>GalleryImageLoader.load()</code></td>
+            <td><strong>Không</strong> cần quyền đọc thư viện; huỷ chọn im lặng; ảnh đọc lỗi thì báo ở thẻ lỗi</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p>Cả hai đường hội tụ về cùng một hàm — nhận <em>hàm lấy JPEG</em> chứ không nhận <code>Bitmap</code>,
+         nên unit test JVM chạy được mọi nhánh mà không cần camera:</p>
+<pre><code><span class="k">fun</span> analyzeBitmap(bitmap: Bitmap) = runAnalysis { ImageJpegEncoder.encode(bitmap) }
+
+<span class="k">internal fun</span> runAnalysis(jpegForImage: <span class="k">suspend</span> () -&gt; ByteArray) {
+    <span class="c">// Lượt mới xoá sạch kết quả/lỗi của lượt trước NGAY (đồng bộ) để hộp thoại hiện ra tức thì</span>
+    _uiState.update { it.copy(isAnalyzing = <span class="k">true</span>, insight = <span class="k">null</span>, noFoodDetected = <span class="k">false</span>, error = <span class="k">null</span>, canRetry = <span class="k">false</span>) }
+
+    viewModelScope.launch {
+        <span class="k">try</span> {
+            <span class="k">val</span> jpeg = jpegForImage()
+            lastJpeg = jpeg                    <span class="c">// giữ để nút "Thử lại" chạy lại không cần chụp lại</span>
+            <span class="k">when</span> (<span class="k">val</span> result = foodInsightSource.analyze(jpeg)) {
+                <span class="k">is</span> FoodAnalysisResult.Success -&gt; _uiState.update {
+                    it.copy(
+                        isAnalyzing = <span class="k">false</span>,
+                        insight = result.insight.takeIf { i -&gt; i.hasDish },
+                        <span class="c">// "không có đồ ăn" HOẶC "có nhưng không gọi được tên món" → coi như chưa nhận diện</span>
+                        noFoodDetected = !result.insight.hasDish,
+                        error = <span class="k">null</span>, canRetry = <span class="k">false</span>
+                    )
+                }
+                <span class="k">is</span> FoodAnalysisResult.Failure -&gt; _uiState.update {
+                    it.copy(isAnalyzing = <span class="k">false</span>, error = messageFor(result.error), canRetry = lastJpeg != <span class="k">null</span>)
+                }
+            }
+        } <span class="k">catch</span> (e: CancellationException) {
+            <span class="k">throw</span> e                         <span class="c">// rời màn không phải lỗi phân tích</span>
+        } <span class="k">catch</span> (e: Exception) {
+            _uiState.update { it.copy(error = <span class="s">"Lỗi phân tích món ăn: ${e.message}"</span>, isAnalyzing = <span class="k">false</span>, canRetry = lastJpeg != <span class="k">null</span>) }
+        }
+    }
+}</code></pre>
+
+      <h3>5.2. Hộp thoại "Đang phân tích món ăn"</h3>
+      <p>
+        Một hộp thoại <strong>không tắt được</strong> bằng Back hay chạm ra ngoài (vòng xoay + mô tả), để
+        người dùng biết AI đang làm việc — cần thiết vì một lượt phân tích có thể mất vài giây.
+      </p>
+      <p class="small">
+        Màn này <strong>không</strong> còn công tắc "Phân tích món ăn bằng AI": bấm phân tích là chạy luôn, và
+        việc ảnh rời thiết bị được nói rõ trong Chính sách bảo mật (mở từ tab Phân tích AI). Lối vào Chính
+        sách bảo mật trước đây ở màn Ghi chép nay đã chuyển về tab Phân tích.
+      </p>
+
+      <h3>5.3. Thẻ kết quả</h3>
+      <p>Hiện <strong>tên món</strong> + "Có lợi cho cơ thể" + "Nên lưu ý" + <strong>miễn trừ trách nhiệm</strong>,
+         kèm nút <strong>"Thêm vào nhật ký"</strong> (chuyển sang tab Thói quen và mở sẵn hộp thoại ghi nhận
+         của thói quen <strong>Dinh dưỡng</strong> — dùng chung <code>openHabitLogFor</code> với màn Phân tích).
+         Không có tên món thì màn hình báo thẳng "Chưa nhận diện được món ăn" thay vì hiện thẻ rỗng.
+      </p>
+
+      <h2>6. Màn Đo nhịp tim (HeartRateScreen)</h2>
+      <p class="small"><code>presentation/screen/heartrate/</code> — <code>HeartRateScreen.kt</code>, <code>HeartRateViewModel.kt</code></p>
+      <p>
+        CameraX nằm ở tầng UI (giống màn Ghi chép); ViewModel chỉ nhận <strong>giá trị đỏ trung bình của từng
+        khung hình</strong> rồi đưa vào <code>PpgAnalyzer</code>. Nhờ vậy toàn bộ máy trạng thái của phép đo có
+        unit test.
+      </p>
+      <div class="flow">
+        <span class="flow__step">CameraX (UI)</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>CameraPpgAnalyzer</code><br><span class="small">đỏ trung bình vùng giữa</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>HeartRateViewModel.onPpgSample()</code></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>PpgAnalyzer</code></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>HeartRateUiState</code></span>
+      </div>
+
+      <h3>6.1. Ba chặng và câu hướng dẫn đổi theo tình trạng thật</h3>
+<pre><code><span class="k">enum class</span> HeartRatePhase { IDLE, MEASURING, FINISHED }
+
+<span class="k">enum class</span> HeartRateGuidance { READY_TO_START, PLACE_FINGER, WEAK_SIGNAL, MEASURING, ALMOST_DONE }
+
+<span class="c">// Câu hướng dẫn được SUY RA từ trạng thái đo, không phải một chuỗi cố định</span>
+<span class="k">val</span> guidance: HeartRateGuidance
+    <span class="k">get</span>() = <span class="k">when</span> {
+        phase != HeartRatePhase.MEASURING -&gt; HeartRateGuidance.READY_TO_START
+        !fingerDetected -&gt; HeartRateGuidance.PLACE_FINGER                        <span class="c">// "Chưa thấy ngón tay"</span>
+        signalStrength &lt; MIN_SIGNAL_STRENGTH -&gt; HeartRateGuidance.WEAK_SIGNAL     <span class="c">// "Tín hiệu yếu"</span>
+        elapsedMs &lt; HeartRateMath.MIN_MEASURE_MS -&gt; HeartRateGuidance.MEASURING    <span class="c">// "Đang đo nhịp tim"</span>
+        <span class="k">else</span> -&gt; HeartRateGuidance.ALMOST_DONE                                     <span class="c">// "Sắp xong"</span>
+    }
+
+<span class="c">/** Tiến độ vòng tròn: đã đo được bao phần của thời gian TỐI THIỂU (0..1) */</span>
+<span class="k">val</span> progress: Float
+    <span class="k">get</span>() = (elapsedMs.toFloat() / HeartRateMath.MIN_MEASURE_MS).coerceIn(<span class="n">0f</span>, <span class="n">1f</span>)</code></pre>
+      <p>UI gồm: thẻ hướng dẫn <strong>3 bước</strong> trước khi đo; trong lúc đo là thẻ hướng dẫn đổi theo tình
+         trạng + <strong>vòng tròn tiến độ 15–30 giây</strong> + <strong>số nhịp hiện dần</strong> +
+         <strong>dạng sóng mạch đập</strong> + <strong>thanh "Tín hiệu"</strong> (Mạnh / Trung bình / Yếu).</p>
+      <p class="small">
+        Thanh "Tín hiệu" và câu hướng dẫn dùng <strong>chung một ngưỡng</strong>
+        (<code>MIN_SIGNAL_STRENGTH = 0.35f</code>) nên màu thanh và lời nhắc không bao giờ nói ngược nhau.
+      </p>
+
+      <h3>6.2. Chốt và tự lưu</h3>
+<pre><code><span class="k">fun</span> onPpgSample(red: Double, timestampMs: Long) {
+    <span class="k">if</span> (_uiState.value.phase != HeartRatePhase.MEASURING) <span class="k">return</span>
+    <span class="k">val</span> progress = analyzer.addSample(red, timestampMs)
+    <span class="k">if</span> (progress.ready || progress.elapsedMs &gt;= HeartRateMath.MAX_MEASURE_MS) { finish(progress); <span class="k">return</span> }
+    <span class="c">/* … cập nhật elapsedMs/beats/liveBpm/quality/signalStrength/fingerDetected/waveform … */</span>
+}</code></pre>
+      <p>
+        Kết quả <strong>tự động</strong> được lưu vào <code>health_data_history</code> (người dùng đã chủ động
+        bấm đo, và số vừa đo cần xuất hiện ở ô "Tim" cũng như cho Rule Engine). Máy không có đèn flash (ví dụ
+        emulator) vẫn vào được nhưng app <strong>cảnh báo trước</strong> là kết quả kém chính xác.
+      </p>
+      <p class="small">Thuật toán đầy đủ ở <a href="logic-sensors.html#4-do-nhip-tim-bang-camera-phep-do-ppg">trang Thuật toán cảm biến · mục 4</a>.</p>
+
+      <h2>7. Màn Phân tích (InsightsScreen)</h2>
+      <p class="small"><code>presentation/screen/insights/</code> — <code>InsightsScreen.kt</code>, <code>InsightsViewModel.kt</code></p>
+      <p>Màn "nặng" nhất về dữ liệu: 4 Flow chính + 1 phép đọc một lần từ Health Connect.</p>
+
+      <h3>7.1. Trạng thái</h3>
+<pre><code><span class="k">data class</span> InsightsUiState(
+    <span class="k">val</span> suggestions: List&lt;Suggestion&gt; = emptyList(),          <span class="c">// feed "BLOOM AI"</span>
+    <span class="k">val</span> vitality: VitalityScore = VitalityScore(),              <span class="c">// điểm 0–100 + delta</span>
+    <span class="k">val</span> weeklyConsistency: List&lt;DailyConsistency&gt; = emptyList(),<span class="c">// biểu đồ tuần</span>
+    <span class="k">val</span> sleepStages: SleepStageBreakdown = SleepStageBreakdown(),<span class="c">// pha Sâu/Nông/REM (Health Connect)</span>
+    <span class="k">val</span> sleepTrend: SleepTrend = SleepTrend(),                  <span class="c">// xu hướng 7 đêm (từ health_data_history)</span>
+    <span class="k">val</span> healthHistory: List&lt;DailyHealthSummary&gt; = emptyList(),  <span class="c">// bảng "Lịch sử sức khỏe 7 ngày"</span>
+    <span class="k">val</span> isLoading: Boolean = <span class="k">true</span>,
+    <span class="k">val</span> lastAnalyzedDays: Int = <span class="n">7</span>,
+    <span class="k">val</span> error: String? = <span class="k">null</span>,                 <span class="c">// lỗi luồng chính</span>
+    <span class="k">val</span> sleepStagesError: String? = <span class="k">null</span>        <span class="c">// lỗi phép đọc MỘT LẦN (tách riêng)</span>
+) {
+    <span class="k">val</span> visibleError: String? <span class="k">get</span>() = error ?: sleepStagesError
+}</code></pre>
+      <div class="callout note">
+        <span class="callout__title">Vì sao phải có HAI trường lỗi</span>
+        <p>
+          <code>sleepStages</code> là phép đọc <strong>một lần</strong> từ Health Connect (không phải Flow).
+          Nếu gộp chung vào <code>error</code>, mỗi lần luồng dữ liệu chính phát dữ liệu
+          (<code>error = null</code>) sẽ <strong>xoá mất</strong> thông báo lỗi của phép đọc này. Tách riêng
+          thì cả hai lỗi đều tồn tại độc lập.
+        </p>
+      </div>
+
+      <h3>7.2. Bốn nguồn dữ liệu hợp nhất</h3>
+<pre><code><span class="k">private fun</span> observeHealthData() {
+    combine(
+        getHealthInsightsUseCase(),          <span class="c">// gợi ý AI (Rule Engine)</span>
+        getVitalityScoreUseCase(),           <span class="c">// chỉ số sinh lực</span>
+        getWeeklyConsistencyUseCase(),       <span class="c">// biểu đồ tuần</span>
+        getRecentHealthSummaryUseCase()      <span class="c">// lịch sử 7 ngày</span>
+    ) { suggestions, vitality, consistency, healthHistory -&gt;
+        InsightsSnapshot(suggestions, vitality, consistency, healthHistory)
+    }
+        .catch { e -&gt;
+            <span class="c">// ⚠ Huỷ scope KHÔNG phải lỗi dữ liệu → ném tiếp thay vì hiện thẻ lỗi</span>
+            <span class="k">if</span> (e <span class="k">is</span> CancellationException) <span class="k">throw</span> e
+            android.util.Log.e(TAG, <span class="s">"Không đọc được dữ liệu phân tích"</span>, e)
+            _uiState.update { it.copy(isLoading = <span class="k">false</span>, error = <span class="s">"Không đọc được dữ liệu phân tích: ${e.message ?: "lỗi không xác định"}"</span>) }
+        }
+        .onEach { snapshot -&gt;
+            _uiState.update {
+                it.copy(
+                    suggestions = snapshot.suggestions,
+                    vitality = snapshot.vitality,
+                    weeklyConsistency = snapshot.weeklyConsistency,
+                    sleepTrend = SleepTrendMath.fromHealthHistory(snapshot.healthHistory),   <span class="c">// dẫn xuất</span>
+                    healthHistory = snapshot.healthHistory,
+                    isLoading = <span class="k">false</span>,
+                    error = <span class="k">null</span>                        <span class="c">// đọc được dữ liệu ⇒ xoá thẻ lỗi cũ</span>
+                )
+            }
+        }.launchIn(viewModelScope)
+}</code></pre>
+      <p>
+        <code>sleepTrend</code> được tính <strong>từ chính</strong> <code>healthHistory</code> thay vì đọc
+        riêng — nhờ vậy thẻ giấc ngủ dùng cùng nguồn số với bảng bên dưới và với Rule Engine.
+      </p>
+
+      <h3>7.3. Đọc lại khi quay về màn</h3>
+      <p>
+        Health Connect <strong>không</strong> cung cấp Flow cho <code>SleepSessionRecord.stages</code>, nên chi
+        tiết pha được đọc một lần khi mở màn <em>và</em> mỗi lần quay về
+        (<code>LifecycleResumeEffect → refresh()</code>). Đây cũng là cách thẻ giấc ngủ "tự đọc lại" mà không
+        cần đọc liên tục trong lúc màn đang mở.
+      </p>
+
+      <h3>7.4. Cấu trúc UI</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Thẻ</th><th>Nội dung</th><th>Nguồn số</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Thẻ lỗi (đóng được)</td>
+            <td>Hiện khi lỗi luồng chính hoặc lỗi đọc pha giấc ngủ — màn không còn "im lặng" ở trạng thái rỗng</td>
+            <td><code>visibleError</code></td>
+          </tr>
+          <tr>
+            <td><strong>Chỉ số sinh lực</strong></td>
+            <td>Vòng tròn điểm 0–100 + mũi tên so với tuần trước. <code>hasData = false</code> → hiện lời nhắc thay vì số ảo; <code>delta = null</code> → ẩn phần so sánh</td>
+            <td><code>VitalityScoreMath</code></td>
+          </tr>
+          <tr>
+            <td><strong>BLOOM AI GỢI Ý</strong></td>
+            <td><strong>Banner cao cố định 240dp</strong>, chỉ hiện <em>một</em> gợi ý mỗi lúc, tự trượt sang gợi ý kế tiếp sau ~5 giây, vuốt tay xem lại được, có chấm chỉ báo</td>
+            <td><code>HabitRuleEngine</code> + <code>SuggestionCatalog</code></td>
+          </tr>
+          <tr>
+            <td>Sự nhất quán hàng tuần</td>
+            <td>Biểu đồ tỉ lệ thói quen đạt mục tiêu theo ngày (cũ → mới)</td>
+            <td><code>GetWeeklyConsistencyUseCase</code></td>
+          </tr>
+          <tr>
+            <td><strong>Lịch sử sức khỏe 7 ngày</strong></td>
+            <td><strong>Biểu đồ cột số bước</strong> (mốc 100% = ngày đi nhiều nhất; số bước rút gọn trên cột; nhãn thứ <code>T2…CN</code>; hôm nay tô xanh đậm) + <strong>bảng 7 dòng</strong> Ngày · Bước · Ngủ · Tim, cũ → mới</td>
+            <td><code>GetRecentHealthSummaryUseCase</code> → <code>HealthSummaryHistory</code></td>
+          </tr>
+          <tr>
+            <td>Xu hướng chất lượng giấc ngủ</td>
+            <td>Biểu đồ giờ ngủ 7 đêm + xếp loại (Thiếu ngủ / Chưa đủ / Tốt / Hơi dài) + chi tiết pha Sâu/Nông/REM khi máy chia pha</td>
+            <td><code>SleepTrendMath</code> + <code>SleepStageBreakdown</code></td>
+          </tr>
+          <tr>
+            <td>Thẻ "AI &amp; quyền riêng tư"</td>
+            <td>Lối vào Chính sách bảo mật (đã chuyển từ màn Ghi chép về đây — nơi người dùng cần đọc về việc ảnh gửi tới Gemini)</td>
+            <td><code>Screen.PrivacyPolicy</code></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">
+        Ngày <strong>chưa ghi được gì</strong> hiện "Chưa có dữ liệu"; ô <strong>thiếu riêng một chỉ số</strong>
+        hiện <code>—</code> (không hiện <code>0</code>, vì 0 bị hiểu là "ngày đó đi bộ 0 bước / ngủ 0 giờ").
+      </p>
+
+      <h2>8. Widget "Sức khỏe hôm nay" (Glance)</h2>
+      <p class="small"><code>presentation/widget/HealthWidget.kt</code> + <code>HealthWidgetRefresherImpl.kt</code> + <code>res/xml/health_widget_info.xml</code></p>
+      <p>Widget hiện <strong>ba cột chỉ số của hôm nay</strong> — bước chân, giấc ngủ, nhịp tim — mỗi cột một
+         icon vector riêng (có bản <code>drawable-night/</code>), số đo cỡ lớn đậm, nhãn nhỏ đúng màu nhấn,
+         dưới dòng tiêu đề "HealthMate · Hôm nay".</p>
+
+      <h3>8.1. Quyết định thiết kế</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Quyết định</th><th>Vì sao</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Không</strong> dùng <code>GlanceTheme</code></td>
+            <td>Mặc định của <code>GlanceTheme</code> là <strong>màu động của hệ thống</strong> ⇒ trên Android 12+ widget hiện tông <em>tím</em>, lệch hẳn bản sắc xanh của app. Mọi màu ở đây là <code>ColorProvider(sáng, tối)</code> dựng từ palette app (<code>ui/theme/Color.kt</code>)</td>
+          </tr>
+          <tr>
+            <td><code>sizeMode = SizeMode.Exact</code></td>
+            <td>Glance vẽ lại widget theo <strong>đúng kích thước hiện tại</strong> thay vì vẽ ở khung mặc định rồi để launcher kéo giãn ⇒ kéo rộng là ba cột nở ra theo</td>
+          </tr>
+          <tr>
+            <td><code>cornerRadius(24.dp)</code> do widget tự vẽ</td>
+            <td>Không phụ thuộc <code>system_app_widget_background_radius</code> (chỉ có từ Android 12) ⇒ trên Android 11 trở xuống vẫn là thẻ bo góc</td>
+          </tr>
+          <tr>
+            <td><code>minWidth</code> 250dp trong <code>health_widget_info.xml</code></td>
+            <td>Chặn người dùng kéo nhỏ hơn mức ba cột cần ⇒ không phải viết bố cục thay thế cho khung hẹp</td>
+          </tr>
+          <tr>
+            <td>Bấm vào widget mở app</td>
+            <td><code>clickable(actionStartActivity&lt;MainActivity&gt;())</code></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>8.2. Dùng chung quy tắc ưu tiên nguồn với app</h3>
+<pre><code><span class="k">override suspend fun</span> provideGlance(context: Context, id: GlanceId) {
+    <span class="k">val</span> entryPoint = EntryPointAccessors.fromApplication(context.applicationContext, HealthWidgetEntryPoint::class.java)
+
+    <span class="c">// Glance (khung RemoteViews) KHÔNG có cơ chế quan sát Flow ⇒ số liệu là "bản chụp" lúc vẽ</span>
+    <span class="k">val</span> summary = readSummary(entryPoint)
+    provideContent { WidgetContent(summary) }
+}
+
+<span class="k">private suspend fun</span> readSummary(entryPoint: HealthWidgetEntryPoint): TodayHealthSummary {
+    <span class="c">/* … */</span>
+    <span class="k">val</span> sensorSteps = <span class="k">if</span> (stepCounterStatus.isReady) {
+        <span class="c">// NO_WAIT_MS: widget chỉ cần giá trị ĐÃ LƯU, không chờ mẫu cảm biến mới</span>
+        <span class="c">// (chờ một mẫu có thể mất tới 2 giây và làm chậm cả lần vẽ widget)</span>
+        stepCounter.readTodaySteps(StepCounterRepository.NO_WAIT_MS)
+    } <span class="k">else</span> <span class="n">0L</span>
+
+    <span class="k">return</span> TodayHealthSummary.build(
+        healthConnect = todayHealthData().getOrNull(),
+        sensorStepsReady = stepCounterStatus.isReady,
+        sensorSteps = sensorSteps,
+        sensorSleepHours = runCatchingCancellable { sleepTracker.readLastNightSleepHours() }.getOrDefault(<span class="n">0.0</span>),
+        recordedHeartRate = latestRecordedHeartRate()
+    )
+}</code></pre>
+      <p class="small">
+        <code>TodayHealthSummary.build</code> là <strong>nguồn duy nhất</strong> của quy tắc ưu tiên nguồn cho
+        <strong>widget</strong>. Từ khi thẻ "Tóm tắt sức khỏe" ở màn Trang chủ có <strong>switch "Dùng dữ liệu
+        Health Connect"</strong> (mặc định TẮT → dùng bản chụp trong app), hai nơi <strong>có thể</strong> nói hai số
+        khác nhau khi switch đang <strong>TẮT</strong>; bật switch thì thẻ cũng đọc Health Connect như widget. Widget
+        <strong>không</strong> đổi theo switch.
+      </p>
+
+      <h3>8.3. Khi nào widget vẽ lại</h3>
+      <div class="flow">
+        <span class="flow__step">Đồng bộ xong / vừa đo nhịp tim</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>HealthDataRepositoryImpl</code><br><span class="small">sau upsertToday</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>HealthWidgetRefresher.refresh()</code></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>HealthWidget().updateAll(context)</code></span>
+      </div>
+      <ul>
+        <li><strong>Ngay</strong> khi app ghi dữ liệu sức khỏe (đồng bộ xong hoặc vừa đo nhịp tim).</li>
+        <li><strong>Định kỳ 30 phút</strong> (<code>updatePeriodMillis</code> trong <code>health_widget_info.xml</code>).</li>
+        <li><strong>Không</strong> vẽ lại khi đổi <em>thói quen</em> nữa — nội dung widget không còn dữ liệu thói quen.</li>
+      </ul>
+      <p class="small">
+        <code>HealthWidgetRefresherImpl.refresh()</code> bọc trong <code>runCatchingCancellable</code> nên
+        <strong>không bao giờ ném</strong> — cùng tinh thần với các phép đọc khác của widget. Nhờ vậy widget
+        không thể trắng vì lỗi dữ liệu.
+      </p>
+
+      <h3>8.4. Vấn đề "Giá trị 0" trên widget</h3>
+<pre><code><span class="c">// HealthWidget.WidgetContent — giá trị 0 nghĩa là "hôm nay chưa có số nào"</span>
+StatCell(
+    value = <span class="k">if</span> (summary.sleepHours &gt; <span class="n">0.0</span>) formatSleepDuration(summary.sleepHours)
+            <span class="k">else</span> context.getString(R.string.widget_no_value),    <span class="c">// "--" thay vì "0h 0m"</span>
+    label = context.getString(R.string.widget_sleep_label),
+    accent = SleepAccent
+)</code></pre>
+      <p>
+        Với nhịp tim, <code>formatHeartRate()</code> trả <code>-- bpm</code> khi chưa có số — vì
+        <code>0 bpm</code> sẽ bị đọc thành "nhịp tim bằng 0".
+      </p>
+
+      <h2>9. Màn Chính sách bảo mật</h2>
+      <p class="small"><code>presentation/screen/privacy/PrivacyPolicyScreen.kt</code></p>
+      <p>Màn này có <strong>hai đường vào</strong>, và một trong hai <strong>bỏ qua cổng đăng nhập</strong>:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Đường vào</th><th>Có qua cổng đăng nhập?</th><th>Vì sao</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Thẻ "Đồng bộ đám mây" ở Trang chủ, hoặc thẻ "AI &amp; quyền riêng tư" ở tab Phân tích</td>
+            <td>Có (đã ở trong app)</td>
+            <td>Người dùng chủ động mở để đọc</td>
+          </tr>
+          <tr>
+            <td>Health Connect gọi app qua <code>ACTION_SHOW_PERMISSIONS_RATIONALE</code> (Android &lt; 14) hoặc <code>ACTION_VIEW_PERMISSION_USAGE</code> (Android 14+, qua <code>activity-alias</code>)</td>
+            <td><strong>Không</strong> — hiện thẳng màn Privacy</td>
+            <td>Health Connect sẽ <strong>từ chối duyệt</strong> nếu thấy app hiện màn Đăng nhập</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+<pre><code><span class="c">// MainActivity.onCreate</span>
+<span class="k">val</span> showPrivacyRationale = intent.isHealthPermissionsRationale()
+
+setContent {
+    HealthyAITheme {
+        <span class="k">if</span> (showPrivacyRationale) {
+            PrivacyPolicyScreen(onBack = { finish() })      <span class="c">// ⭐ KHÔNG đi qua AppNavigation()</span>
+        } <span class="k">else</span> {
+            AppNavigation()
+        }
+    }
+}</code></pre>
+      <p class="small">
+        Manifest khai báo cả hai <code>intent-filter</code> trên <code>MainActivity</code> (một cho Android
+        &lt; 14, một qua <code>activity-alias</code> <code>ViewPermissionUsageActivity</code> với quyền
+        <code>START_VIEW_PERMISSION_USAGE</code>).
+      </p>
+
+      <h2>10. Theme, i18n và quy ước giao diện</h2>
+
+      <h3>10.1. Theme</h3>
+      <p>
+        Material You (<code>Theme.kt</code>) với <strong>dynamic color</strong>: trên Android 12+ màu lấy theo
+        hình nền hệ thống; dưới đó dùng palette xanh của app (<code>Color.kt</code>). Bảng màu riêng cho widget
+        (<code>WidgetContent/Surface/Divider/Steps/Sleep/Heart/Muted…</code>) cũng nằm ở
+        <code>Color.kt</code> — đây là lý do widget không dùng <code>GlanceTheme</code>.
+      </p>
+      <p><code>ThemeSurfaceColorsTest</code> chốt các cặp màu nền/chữ để đảm bảo độ tương phản không bị phá khi sửa palette.</p>
+
+      <h3>10.2. i18n — chuỗi hiển thị</h3>
+      <ul>
+        <li><strong>230</strong> <code>&lt;string&gt;</code> trong <code>app/src/main/res/values/strings.xml</code>.</li>
+        <li>Đọc bằng <code>stringResource(R.string.…)</code> trong Compose, <code>context.getString(…)</code> ở Glance widget (qua <code>androidx.glance.LocalContext</code>), <code>ReminderWorker</code> (tên/mô tả kênh, tiêu đề/nội dung thông báo) và các <code>Toast</code> trong <code>LaunchedEffect</code>.</li>
+        <li>Không còn chuỗi tiếng Việt viết cứng trong màn hình: nhãn 4 tab là <code>Screen.titleRes</code>; bộ lọc màn Thói quen là enum <code>HabitFilter</code> (<code>labelRes</code>); tên widget là <code>@string/widget_label</code>.</li>
+        <li>Muốn thêm tiếng Anh: tạo <code>res/values-en/strings.xml</code>, <strong>không</strong> phải sửa Kotlin. Hiện chưa có <code>values-&lt;locale&gt;</code> nào.</li>
+      </ul>
+      <p class="small">
+        <strong>Chưa</strong> đưa vào <code>strings.xml</code>: thông báo lỗi sinh trong ViewModel, nội dung gợi
+        ý AI (<code>SuggestionCatalog</code>), tên danh mục/buổi/xếp loại trong domain model
+        (<code>HabitCategory.displayName</code>, <code>HabitTimeOfDay.displayName</code>,
+        <code>SleepQuality.label</code>…), nhãn tuần <code>T2…CN</code>, các hàm định dạng số và dữ liệu mẫu
+        trong <code>@Preview</code>.
+      </p>
+
+      <h3>10.3. Hàm định dạng hiển thị</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Việc</th></tr></thead>
+        <tbody>
+          <tr><td><code>ui/format/NumberDisplay.kt</code></td><td>Số gọn: <code>2000</code> thay vì <code>2000.0</code>, nhưng giữ <code>7.5</code></td></tr>
+          <tr><td><code>ui/format/TimeDisplay.kt</code></td><td>Định dạng giờ/phút</td></tr>
+          <tr><td><code>ui/format/HabitProgressText.kt</code></td><td>Chuỗi "đã ghi / mục tiêu" kèm đơn vị</td></tr>
+          <tr><td><code>ui/format/formatStepsExact / formatSleepDuration / formatHeartRate</code></td><td>Ba hàm widget dùng — <code>formatHeartRate</code> trả <code>-- bpm</code> khi chưa có số</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">Mỗi file đều có unit test riêng (ví dụ <code>NumberDisplayTest</code>).</p>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

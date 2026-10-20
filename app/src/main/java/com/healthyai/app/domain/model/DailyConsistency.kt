@@ -2,12 +2,7 @@ package com.healthyai.app.domain.model
 
 import java.time.LocalDate
 
-/**
- * Mức độ hoàn thành thói quen của **một ngày** — nguồn dữ liệu cho biểu đồ "Sự nhất quán hàng tuần".
- *
- * Một thói quen được coi là đạt trong ngày khi tổng giá trị log của nó trong ngày đó
- * >= mục tiêu hiện tại (`Habit.targetValue`).
- */
+/** Mức hoàn thành thói quen một ngày — nguồn cho biểu đồ "Sự nhất quán hàng tuần" (đạt khi tổng log >= mục tiêu). */
 data class DailyConsistency(
     val date: LocalDate,
     val completedHabits: Int,

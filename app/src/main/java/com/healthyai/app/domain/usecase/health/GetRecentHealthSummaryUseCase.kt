@@ -8,16 +8,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 
-/**
- * Đọc **lịch sử tóm tắt sức khỏe** của [days] ngày gần nhất (mặc định 7, tính cả hôm nay) từ
- * `health_data_history` — nguồn cho thẻ "Lịch sử sức khỏe 7 ngày" ở tab Phân tích.
- *
- * Trả về `Flow` nên thẻ tự cập nhật khi có hàng mới được ghi (lần đồng bộ của `HealthSyncWorker`, một
- * lần đo nhịp tim bằng camera…) mà không cần mở lại màn hình.
- *
- * Đây cũng là **cùng dữ liệu** mà `HabitRuleEngine` dùng để sinh gợi ý AI, nên phần "vì sao AI gợi ý
- * thế" trên màn Phân tích luôn khớp với con số người dùng nhìn thấy.
- */
+/** Đọc lịch sử tóm tắt sức khỏe [days] ngày gần nhất; trả Flow nên thẻ tự cập nhật khi có hàng mới. */
 class GetRecentHealthSummaryUseCase @Inject constructor(
     private val repository: HealthDataRepository
 ) {
@@ -28,7 +19,7 @@ class GetRecentHealthSummaryUseCase @Inject constructor(
         val fromTs = firstDay.atStartOfDay(zone).toInstant().toEpochMilli()
 
         return repository.getHealthHistorySince(fromTs).map { history ->
-            // `today` được tính lại ở mỗi lần phát để cửa sổ 7 ngày vẫn đúng nếu app mở qua đêm.
+            // Tính lại today mỗi lần phát để cửa sổ ngày vẫn đúng khi app mở qua đêm.
             HealthSummaryHistory.summarize(
                 history = history,
                 days = windowDays,

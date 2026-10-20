@@ -6,17 +6,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Unit test cho [StepCounterMath] — phần dễ sai nhất khi tự đếm bước bằng `TYPE_STEP_COUNTER`.
- *
- * Hai nhóm hành vi được chốt ở đây:
- * 1. **Chỉ đếm lúc app đang chạy**: app đang mở / còn trong tác vụ (chạy nền) thì đếm tiếp; đóng hẳn
- *    app rồi mở lại thì khoảng thời gian ở giữa **không** được cộng, nhưng số đã đếm trong ngày vẫn giữ.
- * 2. **Các ca khó của con số luỹ kế**: sang ngày mới trong lúc phiên đang chạy (nội suy mốc 00:00) và
- *    bộ đếm bị reset (máy khởi động lại) không làm số bước tụt.
- *
- * Mọi mốc thời gian đều được tính bằng tay để test không phụ thuộc thời gian chạy thật.
- */
+/** Unit test cho [StepCounterMath] — đếm bước bằng `TYPE_STEP_COUNTER`: chỉ đếm lúc app chạy và các ca khó của số luỹ kế. */
 class StepCounterMathTest {
 
     private val zone: ZoneId = ZoneId.of("Asia/Ho_Chi_Minh")
@@ -37,7 +27,7 @@ class StepCounterMathTest {
         sessionId: String = sessionA
     ) = StepCounterMath.sample(state, cumulative, nowMs, sessionId, zone)
 
-    // ── Chỉ đếm từ lúc app chạy ────────────────────────────────
+    // Chỉ đếm từ lúc app chạy
 
     @Test
     fun `first sample starts counting from now and does not back fill the steps since boot`() {
@@ -117,7 +107,7 @@ class StepCounterMathTest {
         assertEquals(today.toString(), thisMorning.state.dateIso)
     }
 
-    // ── Sang ngày mới trong lúc app vẫn đang chạy ──────────────
+    // Sang ngày mới trong lúc app vẫn đang chạy
 
     @Test
     fun `day rollover inside a running session estimates the midnight baseline by interpolation`() {
@@ -176,7 +166,7 @@ class StepCounterMathTest {
         assertEquals(9_000L, result.state.baseline)
     }
 
-    // ── Giá trị hiển thị ngay khi mở app ───────────────────────
+    // Giá trị hiển thị ngay khi mở app
 
     @Test
     fun `stored steps are shown only when they belong to today`() {

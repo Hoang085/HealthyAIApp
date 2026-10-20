@@ -13,19 +13,7 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
-/**
- * SyncWorker — Đẩy dữ liệu chưa đồng bộ (`isDirty = true`) lên Firebase Firestore.
- * Chạy ngầm mỗi 6 giờ, chỉ khi có kết nối mạng.
- * Retry tối đa 3 lần với Exponential Backoff nếu thất bại.
- *
- * **Cổng riêng tư (mục 3 #31):** worker **chỉ** tải lên khi hội đủ hai điều kiện —
- * 1. người dùng đã **bật** "Đồng bộ đám mây" ở màn Trang chủ (mặc định TẮT);
- * 2. log đó được tạo **sau** mốc đồng ý (xem [CloudSyncPolicy]).
- *
- * Nhờ vậy người dùng ghi nhật ký ở **chế độ khách** rồi đăng nhập sẽ **không** bị đẩy toàn bộ lịch sử
- * lên đám mây. Chưa đăng nhập (chế độ khách) thì worker **bỏ qua** và trả `success`: job chạy lại
- * theo chu kỳ 6 giờ và sẽ đồng bộ ngay khi có phiên đăng nhập **và** người dùng đã bật đồng bộ.
- */
+/** Đẩy dữ liệu chưa đồng bộ lên Firestore mỗi 6 giờ; chỉ tải khi đã bật đồng bộ đám mây và log tạo sau mốc đồng ý. */
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
     @Assisted context: Context,
@@ -69,8 +57,7 @@ class SyncWorker @AssistedInject constructor(
             android.util.Log.d("SyncWorker", "Sync completed successfully: ${logsToUpload.size} logs")
             Result.success()
         } catch (e: CancellationException) {
-            // WorkManager dừng worker = huỷ coroutine → ném tiếp, không biến thành "thử lại/thất bại"
-            // (phụ lục C #39).
+            // Worker bị dừng = huỷ coroutine → ném tiếp, không biến thành "thử lại/thất bại".
             throw e
         } catch (e: Exception) {
             android.util.Log.e("SyncWorker", "Sync failed: ${e.message}")
@@ -85,10 +72,7 @@ class SyncWorker @AssistedInject constructor(
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)
-                // KHÔNG dùng setRequiresDeviceIdle(true) ở đây: WorkManager ném
-                // IllegalArgumentException("Cannot set backoff criteria on an idle mode job")
-                // khi vừa requiresDeviceIdle(true) vừa setBackoffCriteria() → crash ngay khi mở app.
-                // Giữ backoff (như KDoc mô tả) và để hệ thống tự hoãn khi máy vào Doze.
+                // Không dùng setRequiresDeviceIdle(true): kết hợp với setBackoffCriteria() gây IllegalArgumentException → crash.
                 .setRequiresDeviceIdle(false)
                 .build()
 

@@ -4,9 +4,7 @@ import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.SleepStageBreakdown
 import java.time.Instant
 
-/**
- * Interface cho Data Source đọc dữ liệu từ Health Connect.
- */
+/** Interface cho Data Source đọc dữ liệu từ Health Connect. */
 interface HealthConnectDataSource {
     /** Kiểm tra Health Connect có sẵn sàng trên thiết bị không */
     fun isAvailable(): Boolean
@@ -26,22 +24,12 @@ interface HealthConnectDataSource {
     /** Đọc tổng thời gian ngủ từ chiều tối qua đến hiện tại (giờ) */
     suspend fun getTodaySleepHours(): Double
 
-    /**
-     * Đọc nhịp tim **trung bình của ngày hôm nay** (từ 00:00 tới hiện tại).
-     *
-     * Cùng mốc thời gian với [getTodaySteps]/[getTodayActiveCalories] nên sang ngày mới là số được
-     * đọc lại từ đầu ngày, không còn dính số của hôm qua.
-     */
+    /** Đọc nhịp tim trung bình của ngày hôm nay (00:00 tới hiện tại), cùng mốc với các chỉ số khác trong ngày. */
     suspend fun getTodayHeartRate(): Double
 
     /** Đọc tổng calories tiêu thụ trong ngày hôm nay */
     suspend fun getTodayActiveCalories(): Double
 
-    /**
-     * Đọc toàn bộ phiên ngủ trong khoảng [start, end] và cộng dồn thời lượng:
-     * **theo từng pha** (Deep / Light / REM) khi thiết bị có chia pha, và **theo phiên** khi thiết bị
-     * chỉ báo `STAGE_TYPE_SLEEPING` — nhờ vậy thẻ giấc ngủ không rỗng dù máy không chia pha
-     * (phụ lục C #25). Trả về [SleepStageBreakdown] rỗng khi thiếu quyền hoặc lỗi.
-     */
+    /** Đọc phiên ngủ trong khoảng [start, end]: cộng theo từng pha nếu máy chia pha, nếu không thì theo phiên để thẻ giấc ngủ không rỗng. */
     suspend fun getSleepStageBreakdown(start: Instant, end: Instant): SleepStageBreakdown
 }

@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="logic-ai.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logic: Rule Engine &amp; AI — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 5</div>
+      <h1>Logic: Rule Engine &amp; AI</h1>
+      <p class="page-lead">
+        Phần "não" của app. Gồm hai thứ rất khác nhau: một <strong>Rule Engine chạy hoàn toàn offline</strong>
+        (sinh gợi ý cá nhân hóa, chấm Chỉ số sinh lực, gom lịch sử theo ngày), và một
+        <strong>lời gọi AI cloud</strong> (Gemini đọc ảnh món ăn). Cả hai đều được bao quanh bởi các quyết
+        định về riêng tư và hướng-an-toàn-khi-thiếu-dữ-liệu.
+      </p>
+
+      <h2>1. Hai loại "AI" trong app</h2>
+      <div class="grid">
+        <div class="card">
+          <span class="card__icon">🧠</span>
+          <h4>On-device — Rule Engine</h4>
+          <p><strong>Không</strong> dùng model học máy. Là một tập luật ngưỡng + công thức viết tay, chạy
+             offline, kết quả <strong>xác định</strong> (cùng đầu vào → cùng đầu ra). Vì vậy có thể viết unit
+             test chứng minh logic đúng.</p>
+          <p class="small">Thư mục: <code>domain/usecase/</code></p>
+        </div>
+        <div class="card">
+          <span class="card__icon">☁️</span>
+          <h4>Cloud — Gemini</h4>
+          <p>Chỉ dùng cho <strong>một</strong> việc: đọc ảnh món ăn và trả về tên món + lợi ích/điều nên lưu ý.
+             Đây là tính năng <strong>duy nhất</strong> đưa dữ liệu ra khỏi thiết bị.</p>
+          <p class="small">Thư mục: <code>data/vision/</code> + <code>domain/usecase/food/</code></p>
+        </div>
+      </div>
+      <div class="callout tip">
+        <span class="callout__title">Vì sao chọn luật thay vì model học máy</span>
+        <p>
+          Với dữ liệu của một người dùng trong 7 ngày, model học máy không có gì để học. Ngược lại, một tập
+          luật rõ ràng có ba lợi thế lớn: chạy <strong>offline</strong> (riêng tư), kết quả
+          <strong>giải thích được</strong> (người dùng hiểu vì sao app gợi ý thế), và
+          <strong>kiểm thử được</strong> (mỗi ngưỡng là một test case).
+        </p>
+      </div>
+
+      <h2>2. Kiến trúc sinh gợi ý — luồng dữ liệu</h2>
+      <div class="flow">
+        <span class="flow__step">Room: habits</span>
+        <span class="flow__arrow">+</span>
+        <span class="flow__step">Room: habit_logs (7 ngày)</span>
+        <span class="flow__arrow">+</span>
+        <span class="flow__step">Room: health_data_history</span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>GetHealthInsightsUseCase</code><br><span class="small">combine 3 Flow</span></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>HabitRuleEngine.generateSuggestions()</code></span>
+        <span class="flow__arrow">→</span>
+        <span class="flow__step"><code>InsightsViewModel</code> → banner "BLOOM AI"</span>
+      </div>
+<pre><code><span class="c">// GetHealthInsightsUseCase — cửa sổ 7 ngày, cắt theo MỐC THỜI GIAN</span>
+<span class="k">operator fun</span> invoke(): Flow&lt;List&lt;Suggestion&gt;&gt; {
+    <span class="k">val</span> firstDay = LocalDate.now(zone).minusDays((INSIGHT_WINDOW_DAYS - <span class="n">1</span>).toLong())
+    <span class="k">val</span> fromTs = firstDay.atStartOfDay(zone).toInstant().toEpochMilli()
+
+    <span class="k">return</span> combine(
+        habitRepository.getAllActiveHabits(),
+        habitRepository.getHabitLogsForPeriod(INSIGHT_WINDOW_DAYS - <span class="n">1</span>),
+        healthDataRepository.getHealthHistorySince(fromTs)   <span class="c">// ⚠ KHÔNG dùng getRecentHealthHistory(limit)</span>
+    ) { habits, habitLogs, healthHistory -&gt;
+        ruleEngine.generateSuggestions(
+            activeHabits = habits,
+            recentLogs = habitLogs,
+            healthHistory = healthHistory
+        )
+    }
+}</code></pre>
+      <div class="callout warn">
+        <span class="callout__title">Vì sao phải cắt theo mốc thời gian</span>
+        <p>
+          <code>health_data_history</code> ghi <strong>một hàng mỗi lần sync</strong> (6 giờ/lần), nên một
+          ngày có thể có nhiều hàng. Nếu cắt theo <strong>số hàng</strong> (ví dụ <code>LIMIT 7</code>), 7 hàng
+          đó có thể chỉ trải vài ngày — và luật <em>"3 ngày liên tiếp thiếu ngủ"</em> sẽ
+          <strong>âm thầm không bao giờ chạy</strong>. Đây là một trong những lỗi tinh vi nhất đã được sửa.
+        </p>
+      </div>
+
+      <h2>3. HabitRuleEngine</h2>
+      <p class="small"><code>domain/usecase/HabitRuleEngine.kt</code> — <code>@Singleton</code>, được Hilt tiêm.</p>
+
+      <h3>3.1. Triết lý: feed xoay vòng, không phải thẻ cảnh báo cố định</h3>
+      <p>
+        Trước đây mỗi điều kiện sinh ra <strong>một</strong> thẻ cảnh báo cố định. Vì điều kiện còn đúng thì
+        thẻ vẫn còn, người dùng chưa xử lý xong sẽ thấy <em>mãi cùng một gợi ý</em> — cảm giác bị ép buộc.
+      </p>
+      <p>Engine hiện tại <strong>không</strong> dựng thẻ cảnh báo nữa, mà làm ba việc:</p>
+      <div class="layers">
+        <div class="layer">
+          <div class="layer__name">① Xác định danh mục đang có vấn đề</div>
+          <div class="layer__desc">Từ nhật ký thói quen và dữ liệu sức khỏe cứng. Kết quả chỉ dùng để <strong>chọn nhóm mẹo</strong> — không dựng thẻ cảnh báo.</div>
+        </div>
+        <div class="layer">
+          <div class="layer__name">② Chọn mẹo xoay vòng theo ngày</div>
+          <div class="layer__desc">Từ kho mẹo của danh mục đó (<code>SuggestionCatalog</code>) ⇒ feed luôn đổi mới; người dùng thấy nhiều gợi ý <em>liên quan</em> khác nhau thay vì một lời nhắc lặp lại.</div>
+        </div>
+        <div class="layer">
+          <div class="layer__name">③ Xếp thứ tự và giới hạn</div>
+          <div class="layer__desc">Danh mục đang có vấn đề lên đầu, rồi tới các danh mục còn lại mà người dùng <strong>có thói quen</strong> (luôn có gợi ý tích cực để cải thiện), cuối cùng giới hạn <strong>4</strong> thẻ.</div>
+        </div>
+      </div>
+
+      <h3>3.2. Hàm chính</h3>
+<pre><code><span class="k">fun</span> generateSuggestions(
+    activeHabits: List&lt;Habit&gt;,
+    recentLogs: List&lt;HabitLog&gt;,
+    healthHistory: List&lt;HealthData&gt; = emptyList(),
+    rotationSeed: Int = defaultRotationSeed()      <span class="c">// = LocalDate.now().dayOfYear</span>
+): List&lt;Suggestion&gt; {
+
+    <span class="k">val</span> flagged = flaggedCategories(recentLogs, healthHistory)
+
+    <span class="c">// Danh mục gợi ý = danh mục người dùng có thói quen ∪ danh mục đang có vấn đề.</span>
+    <span class="c">// App mới (chưa có gì) → mở toàn bộ kho mẹo để có gợi ý khởi đầu.</span>
+    <span class="k">val</span> userCategories = activeHabits.map { it.category }.toSet()
+    <span class="k">val</span> relevant = SuggestionCatalog.categories.filter { it <span class="k">in</span> userCategories || it <span class="k">in</span> flagged }
+        .ifEmpty { SuggestionCatalog.categories }
+
+    <span class="c">// Danh mục đang có vấn đề LÊN ĐẦU để lời khuyên sát vấn đề hiện tại hơn</span>
+    <span class="k">val</span> ordered = relevant.sortedByDescending { it <span class="k">in</span> flagged }
+
+    <span class="k">return</span> ordered.mapIndexed { offset, category -&gt;
+        <span class="k">val</span> focus = <span class="k">if</span> (category <span class="k">in</span> flagged) TipFocus.CONCERN <span class="k">else</span> TipFocus.GENERAL
+        <span class="k">val</span> pool = <span class="k">if</span> (focus == CONCERN) SuggestionCatalog.concernTips(category)
+                   <span class="k">else</span> SuggestionCatalog.generalTips(category)
+
+        <span class="c">// ⭐ Xoay vòng: cùng một ngày thì kết quả ỔN ĐỊNH, sang ngày mới thì đổi mẹo</span>
+        <span class="k">val</span> tipIndex = Math.floorMod(rotationSeed + offset, pool.size)
+        pool[tipIndex].toSuggestion(id = category.ordinal * <span class="n">100L</span> + tipIndex)
+    }
+        .sortedByDescending { it.priority.ordinal }
+        .take(MAX_SUGGESTIONS)                          <span class="c">// 4</span>
+}</code></pre>
+      <div class="callout note">
+        <span class="callout__title">Vì sao <code>floorMod</code> mà không phải <code>%</code></span>
+        <p>
+          <code>rotationSeed + offset</code> luôn dương ở đây, nhưng <code>Math.floorMod</code> là cách viết
+          an toàn cho phép lấy modulo với số âm. Quan trọng hơn: <code>offset</code> (vị trí của danh mục
+          trong danh sách <em>đã xếp</em>) được cộng vào seed, nên <strong>hai danh mục khác nhau sẽ chọn
+          mẹo ở vị trí khác nhau</strong> — feed không bị "cùng một mẹo thứ nhất" cho mọi danh mục.
+        </p>
+      </div>
+      <p>
+        <code>rotationSeed</code> được truyền vào dưới dạng tham số (mặc định là ngày trong năm) chính để
+        <strong>test được tất định</strong>: test truyền số cố định, không phụ thuộc ngày chạy.
+      </p>
+
+      <h3>3.3. Xác định danh mục "đang có vấn đề" — <code>flaggedCategories</code></h3>
+      <p>Có <strong>năm</strong> luật, hai nhóm nguồn dữ liệu:</p>
+<pre><code><span class="k">private fun</span> flaggedCategories(recentLogs: List&lt;HabitLog&gt;, healthHistory: List&lt;HealthData&gt;): Set&lt;HabitCategory&gt; {
+    <span class="k">val</span> flagged = mutableSetOf&lt;HabitCategory&gt;()
+
+    <span class="c">// ── TỪ NHẬT KÝ THÓI QUEN (người dùng tự ghi) ────────────────────────────</span>
+    <span class="k">val</span> recentSleep = recentLogs.filter { it.category == SLEEP }.sortedByDescending { it.loggedAt }.take(<span class="n">7</span>)
+    <span class="k">if</span> (recentSleep.size &gt;= MIN_LOGS_FOR_TREND &amp;&amp; recentSleep.averageOf { it.value.toDouble() } &lt; SLEEP_ENOUGH_HOURS)
+        flagged += HabitCategory.SLEEP
+
+    <span class="k">val</span> recentWater = recentLogs.filter { it.category == WATER }.sortedByDescending { it.loggedAt }.take(<span class="n">7</span>)
+    <span class="k">if</span> (recentWater.size &gt;= MIN_LOGS_FOR_TREND &amp;&amp; recentWater.averageOf { it.value.toDouble() } &lt; WATER_ENOUGH_ML)
+        flagged += HabitCategory.WATER
+
+    <span class="k">if</span> (isExerciseBelowTarget(recentLogs)) flagged += HabitCategory.EXERCISE
+
+    <span class="c">// ── TỪ DỮ LIỆU SỨC KHỎE CỨNG (Health Connect / cảm biến của máy) ────────</span>
+    <span class="k">val</span> dailyHistory = latestRowPerDay(healthHistory)      <span class="c">// gom về 1 hàng / ngày, mới → cũ</span>
+
+    <span class="c">// Thiếu ngủ: 3 NGÀY LIÊN TIẾP, mỗi ngày đều có số và đều &lt; 6 giờ</span>
+    <span class="k">val</span> recent3Sleep = dailyHistory.take(<span class="n">3</span>)
+    <span class="k">if</span> (recent3Sleep.size &gt;= <span class="n">3</span> &amp;&amp;
+        areConsecutiveDays(recent3Sleep.map { it.localDate() }) &amp;&amp;
+        recent3Sleep.all { it.sleepHours &gt; <span class="n">0.0</span> &amp;&amp; it.sleepHours &lt; SLEEP_DEPRIVED_HOURS })
+        flagged += HabitCategory.SLEEP
+
+    <span class="c">// Ít vận động: 3 NGÀY LIÊN TIẾP đều có số và đều &lt; 3000 bước</span>
+    <span class="k">val</span> recentSteps = dailyHistory.take(STEP_TREND_DAYS)
+    <span class="k">if</span> (recentSteps.size &gt;= STEP_TREND_DAYS &amp;&amp;
+        areConsecutiveDays(recentSteps.map { it.localDate() }) &amp;&amp;
+        recentSteps.all { it.steps &gt; <span class="n">0L</span> &amp;&amp; it.steps &lt; STEP_TREND_LOW })
+        flagged += HabitCategory.EXERCISE
+
+    <span class="c">// Nhịp tim cao: trung bình 7 hàng đầu (chỉ tính hàng có nhịp) &gt; 85 bpm</span>
+    <span class="k">val</span> heartRateRows = dailyHistory.take(<span class="n">7</span>).filter { it.heartRate &gt; <span class="n">0.0</span> }
+    <span class="k">if</span> (heartRateRows.isNotEmpty() &amp;&amp; heartRateRows.averageOf { it.heartRate } &gt; HEART_RATE_HIGH_BPM)
+        flagged += HabitCategory.MINDFULNESS
+
+    <span class="k">return</span> flagged
+}</code></pre>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Hằng số</th><th>Giá trị</th><th>ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td><code>MAX_SUGGESTIONS</code></td><td>4</td><td>Số thẻ gợi ý tối đa — đủ đa dạng mà không ngợp</td></tr>
+          <tr><td><code>MIN_LOGS_FOR_TREND</code></td><td>3</td><td>Số lần ghi tối thiểu để coi là "xu hướng"</td></tr>
+          <tr><td><code>SLEEP_ENOUGH_HOURS</code></td><td>7.0</td><td>Trung bình 7 lần ghi ngủ dưới mức này ⇒ danh mục Ngủ bị đánh dấu</td></tr>
+          <tr><td><code>SLEEP_DEPRIVED_HOURS</code></td><td>6.0</td><td>Ngủ dưới mức này trong <strong>3 ngày liền</strong> (theo dữ liệu cứng) ⇒ thiếu ngủ</td></tr>
+          <tr><td><code>WATER_ENOUGH_ML</code></td><td>1500.0</td><td>Trung bình dưới mức này ⇒ thiếu nước</td></tr>
+          <tr><td><code>STEP_DAILY_LOW</code></td><td>5000f</td><td>Ngưỡng WHO, <strong>chỉ áp dụng</strong> cho log có đơn vị là bước</td></tr>
+          <tr><td><code>STEP_DAILY_RECOMMENDED</code></td><td>8000</td><td>Khuyến nghị WHO mỗi ngày</td></tr>
+          <tr><td><code>STEP_UNITS</code></td><td><code>bước · bước chân · bước/ngày · steps · step</code></td><td>Các cách viết đơn vị "bước" được chấp nhận</td></tr>
+          <tr><td><code>STEP_TREND_DAYS</code></td><td>3</td><td>Số ngày liên tiếp đi bộ dưới ngưỡng thì nhắc nhở</td></tr>
+          <tr><td><code>STEP_TREND_LOW</code></td><td>3000</td><td>Dưới ngưỡng này (và có dữ liệu) thì coi là ít vận động</td></tr>
+          <tr><td><code>HEART_RATE_HIGH_BPM</code></td><td>85.0</td><td>Nhịp tim nghỉ trung bình trên mức này ⇒ gợi ý thư giãn</td></tr>
+          <tr><td><code>TARGET_COMPLETION_MEDIUM</code></td><td>0.8</td><td>Tỉ lệ hoàn thành mục tiêu dưới mức này (với đơn vị không phải bước) ⇒ thiếu</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>3.4. Vận động: tại sao phải phân biệt "bước" và các đơn vị khác</h3>
+      <p>
+        Ngưỡng 5 000 / 8 000 bước chỉ có nghĩa với <strong>đơn vị bước</strong>. Trước đây engine so
+        <code>value</code> với 5 000/8 000 bất kể đơn vị, nên một thói quen "Chạy bộ 30 phút" ghi
+        <code>10</code> bị đọc thành <em>"10 bước"</em> và bị gắn cờ thiếu vận động. Logic hiện tại tách hai đường:
+      </p>
+<pre><code><span class="k">private fun</span> isExerciseBelowTarget(exerciseLogs: List&lt;HabitLog&gt;): Boolean {
+    <span class="k">val</span> byNewestFirst = exerciseLogs.filter { it.category == EXERCISE }.sortedByDescending { it.loggedAt }
+
+    <span class="c">// ① Log đo bằng BƯỚC → dùng ngưỡng bước của WHO</span>
+    <span class="k">val</span> stepLogs = byNewestFirst.filter { it.isStepUnit() }
+    <span class="k">val</span> recent5Steps = stepLogs.take(<span class="n">5</span>)
+    <span class="k">if</span> (recent5Steps.size &gt;= <span class="n">5</span> &amp;&amp; recent5Steps.all { it.value &lt; STEP_DAILY_LOW }) <span class="k">return true</span>
+    <span class="k">val</span> recent7Steps = stepLogs.take(<span class="n">7</span>)
+    <span class="k">if</span> (recent7Steps.size &gt;= <span class="n">5</span> &amp;&amp; recent7Steps.averageOf { it.value.toDouble() } &lt; STEP_DAILY_RECOMMENDED) <span class="k">return true</span>
+
+    <span class="c">// ② Log đo đơn vị khác (phút, km, calo…) → so theo TỈ LỆ value / targetValueAtTime của chính thói quen</span>
+    <span class="k">val</span> targetLogs = byNewestFirst.filterNot { it.isStepUnit() }
+        .filter { it.targetValueAtTime &gt; <span class="n">0f</span> }
+        .take(<span class="n">5</span>)
+    <span class="k">if</span> (targetLogs.size &gt;= MIN_LOGS_FOR_TREND) {
+        <span class="k">val</span> avgRatio = targetLogs.averageOf { (it.value / it.targetValueAtTime).toDouble().coerceIn(<span class="n">0.0</span>, <span class="n">1.0</span>) }
+        <span class="k">if</span> (avgRatio &lt; TARGET_COMPLETION_MEDIUM) <span class="k">return true</span>
+    }
+
+    <span class="k">return false</span>
+}
+
+<span class="k">private fun</span> HabitLog.isStepUnit(): Boolean = unit.trim().lowercase() <span class="k">in</span> STEP_UNITS</code></pre>
+
+      <h3>3.5. Hai tiện ích dùng chung với giao diện</h3>
+      <p>
+        Hai hàm này <strong>cố ý</strong> giống hệt nhau giữa Rule Engine và thẻ "Lịch sử sức khỏe 7 ngày",
+        để con số người dùng nhìn thấy và lý do AI gợi ý luôn khớp nhau:
+      </p>
+<pre><code><span class="c">/** Mỗi ngày chỉ giữ HÀNG MỚI NHẤT — hàng đó là hàng đầy đủ dữ liệu nhất. */</span>
+<span class="k">private fun</span> latestRowPerDay(history: List&lt;HealthData&gt;): List&lt;HealthData&gt; =
+    history.groupBy { it.localDate() }
+        .map { (_, rowsInDay) -&gt; rowsInDay.maxByOrNull { it.recordedAt }!! }
+        .sortedByDescending { it.recordedAt }
+
+<span class="c">/** [days] phải theo thứ tự MỚI → CŨ và cách nhau ĐÚNG 1 ngày. */</span>
+<span class="k">private fun</span> areConsecutiveDays(days: List&lt;LocalDate&gt;): Boolean =
+    days.zipWithNext().all { (newer, older) -&gt; ChronoUnit.DAYS.between(older, newer) == <span class="n">1L</span> }</code></pre>
+      <p class="small">
+        <code>areConsecutiveDays</code> nhận danh sách đã sắp mới → cũ, nên vế <code>between(older, newer)</code>
+        luôn là +1. Nếu đảo thứ tự, hàm trả <code>false</code> luôn — tức luật "3 ngày liên tiếp" sẽ
+        <em>không bao giờ</em> chạy. Comment trong code ghi rõ yêu cầu thứ tự này.
+      </p>
+
+      <h2>4. SuggestionCatalog — kho mẹo</h2>
+      <p class="small"><code>domain/usecase/SuggestionCatalog.kt</code></p>
+      <p>
+        Mỗi danh mục có <strong>nhiều mẹo</strong>, chia hai nhóm. Đây là "chất liệu" để engine xoay vòng —
+        bản thân catalog không biết gì về dữ liệu người dùng.
+      </p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th><code>TipFocus</code></th><th>Dùng khi</th><th>Tính chất nội dung</th></tr></thead>
+        <tbody>
+          <tr><td><code>CONCERN</code></td><td>Dữ liệu cho thấy danh mục đó đang có vấn đề</td><td>Vẫn tích cực, nhưng nhấn vào <strong>một hành động cụ thể dễ làm</strong></td></tr>
+          <tr><td><code>GENERAL</code></td><td>Danh mục đó đang ổn (hoặc chưa đủ dữ liệu để kết luận)</td><td>Lời khuyên <strong>duy trì / nâng cao</strong></td></tr>
+        </tbody>
+      </table>
+      </div>
+<pre><code><span class="k">data class</span> Tip(
+    <span class="k">val</span> focus: TipFocus,
+    <span class="k">val</span> category: HabitCategory,
+    <span class="k">val</span> priority: SuggestionPriority,      <span class="c">// dùng cho màu thẻ</span>
+    <span class="k">val</span> title: String,
+    <span class="k">val</span> message: String,
+    <span class="k">val</span> actionLabel: String? = <span class="k">null</span>       <span class="c">// null = mẹo chỉ để đọc</span>
+)
+
+<span class="c">/** Mẹo cho danh mục đang có vấn đề; RƠI VỀ generalTips nếu danh mục chưa có mẹo CONCERN. */</span>
+<span class="k">fun</span> concernTips(category: HabitCategory): List&lt;Tip&gt; =
+    (tips[category].orEmpty().filter { it.focus == TipFocus.CONCERN }).ifEmpty { generalTips(category) }</code></pre>
+
+      <h3>4.1. Nội dung kho mẹo</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Danh mục</th><th>CONCERN</th><th>GENERAL</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>😴 Giấc ngủ</td>
+            <td>
+              🌙 Ngủ sớm hơn 30 phút tối nay <span class="badge red">HIGH</span> · nút "Đặt nhắc nhở đi ngủ"<br>
+              🛏️ Làm dịu phòng ngủ <span class="badge amber">MEDIUM</span><br>
+              ☕ Ngừng cà phê sau 15:00 <span class="badge amber">MEDIUM</span>
+            </td>
+            <td>😴 Giữ giờ ngủ đều đặn <span class="badge">LOW</span><br>📵 Rời điện thoại 30 phút trước ngủ</td>
+          </tr>
+          <tr>
+            <td>💧 Uống nước</td>
+            <td>
+              💧 Uống một ly nước ngay bây giờ <span class="badge red">HIGH</span> · nút "Ghi nhận uống nước"<br>
+              🍶 Mang theo bình nước <span class="badge amber">MEDIUM</span><br>
+              ⏰ Uống nước theo mốc cố định
+            </td>
+            <td>💧 Duy trì thói quen uống nước<br>🍋 Thêm chút hương vị cho nước</td>
+          </tr>
+          <tr>
+            <td>🏃 Vận động</td>
+            <td>
+              🚶 Đi bộ 10 phút sau bữa tối <span class="badge red">HIGH</span> · nút "Ghi nhận vận động"<br>
+              🪜 Tận dụng cầu thang<br>
+              🎯 Chia nhỏ mục tiêu vận động
+            </td>
+            <td>🏃 Giữ đà vận động<br>🤸 Thêm vài phút giãn cơ</td>
+          </tr>
+          <tr>
+            <td>🥗 Dinh dưỡng</td>
+            <td>
+              🥗 Thêm rau vào mỗi bữa <span class="badge amber">MEDIUM</span> · nút "Ghi nhận dinh dưỡng"<br>
+              🍽️ Ăn chậm, nhai kỹ
+            </td>
+            <td>🥗 Dinh dưỡng cân bằng<br>🥜 Chọn bữa phụ lành mạnh</td>
+          </tr>
+          <tr>
+            <td>🧘 Thiền định</td>
+            <td>
+              🧘 Thử 5 phút thiền <span class="badge amber">MEDIUM</span> · nút "Bắt đầu thiền"<br>
+              🌬️ Hít thở 4-7-8
+            </td>
+            <td>🧘 Giữ thói quen tĩnh tâm<br>📖 Viết 3 điều biết ơn</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Bốn mẹo có <code>actionLabel</code> sẽ hiện <strong>nút hành động</strong>: bấm vào sẽ chuyển sang
+        tab Thói quen và <strong>mở sẵn hộp thoại ghi nhận</strong> của thói quen đúng danh mục; chưa có
+        thói quen đó thì Toast nhắc tạo mới. Cơ chế truyền yêu cầu giữa hai màn được giải thích ở
+        <a href="ui.html#4-truyen-yeu-cau-giua-cac-man-mot-cai-bay-da-duoc-sua">trang Giao diện</a>.
+      </p>
+
+      <h2>5. Chỉ số sinh lực — <code>VitalityScoreMath</code></h2>
+      <p class="small"><code>domain/usecase/health/VitalityScoreMath.kt</code> · use case bọc ngoài: <code>GetVitalityScoreUseCase.kt</code></p>
+
+      <h3>5.1. Công thức</h3>
+      <p>Điểm 0–100, ghép từ <strong>ba thành phần</strong> với trọng số cố định:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Thành phần</th><th>Trọng số</th><th>Cách tính cho một ngày</th><th>Mục tiêu</th></tr></thead>
+        <tbody>
+          <tr><td>Thói quen</td><td><code>0.4</code></td><td><code>số thói quen đạt mục tiêu / tổng số thói quen đang theo dõi</code></td><td>Đạt hết = 100%</td></tr>
+          <tr><td>Giờ ngủ</td><td><code>0.3</code></td><td><code>min(giờ ngủ / 8.0, 1.0)</code></td><td><code>SLEEP_TARGET_HOURS = 8.0</code></td></tr>
+          <tr><td>Bước chân</td><td><code>0.3</code></td><td><code>min(bước / 8000, 1.0)</code></td><td><code>STEPS_TARGET = 8000.0</code> (WHO)</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>5.2. Hai quyết định thiết kế then chốt</h3>
+      <div class="callout tip">
+        <span class="callout__title">① Tính theo TỪNG NGÀY, không lấy trung bình cả tuần</span>
+        <p>
+          Điểm là <strong>trung bình của điểm từng ngày</strong> trong cửa sổ 7 ngày — mỗi ngày có trọng số
+          như nhau. Nhờ vậy điểm phản ánh đúng <em>hiện tại</em>: ngày không ghi gì / không đi bộ / không có
+          giờ ngủ đóng góp <strong>0</strong> cho thành phần tương ứng ⇒ bỏ thói quen vài ngày là điểm
+          <strong>tụt</strong>, thay vì giữ nguyên như khi lấy trung bình cả tuần.
+        </p>
+      </div>
+      <div class="callout tip">
+        <span class="callout__title">② Chuẩn hoá lại trọng số khi thiếu nguồn dữ liệu</span>
+        <p>
+          Chỉ tính các thành phần <strong>thực sự có nguồn trên máy</strong>, rồi chia cho
+          <code>weightSum</code> (tổng trọng số của các thành phần có mặt). Ví dụ máy không có Health Connect
+          và không bật cảm biến bước chân ⇒ chỉ còn thành phần thói quen với <code>weightSum = 0.4</code>;
+          điểm <strong>không</strong> bị kéo xuống chỉ vì thiếu nguồn.
+        </p>
+      </div>
+
+      <h3>5.3. Code</h3>
+<pre><code><span class="k">fun</span> compute(
+    activeHabits: List&lt;Habit&gt;, habitLogs: List&lt;HabitLog&gt;, healthHistory: List&lt;HealthData&gt;,
+    today: LocalDate, zone: ZoneId = ZoneId.systemDefault(), windowDays: Int = WINDOW_DAYS
+): Int? {                                   <span class="c">// null = "chưa đủ dữ liệu để chấm điểm"</span>
+    <span class="k">val</span> window = windowOf(today, windowDays)                 <span class="c">// cũ → mới, kết thúc ở today</span>
+    <span class="k">val</span> rowsByDate = healthHistory.groupBy { capturedDate(it, zone) }
+
+    <span class="c">// Thành phần nào THỰC SỰ có nguồn trên máy?</span>
+    <span class="k">val</span> hasHabits = activeHabits.isNotEmpty()
+    <span class="k">val</span> hasSleep = window.any { date -&gt; rowsByDate[date].orEmpty().any { it.sleepHours &gt; <span class="n">0.0</span> } }
+    <span class="k">val</span> hasSteps = window.any { date -&gt; rowsByDate[date].orEmpty().any { it.steps &gt; <span class="n">0L</span> } }
+
+    <span class="c">// Không có gì để chấm → null (UI hiện lời nhắc thay vì một con số ảo)</span>
+    <span class="k">if</span> (!hasHabits &amp;&amp; !hasSleep &amp;&amp; !hasSteps) <span class="k">return null</span>
+
+    <span class="k">val</span> weightSum = (<span class="k">if</span> (hasHabits) HABIT_WEIGHT <span class="k">else</span> <span class="n">0.0</span>) +
+        (<span class="k">if</span> (hasSleep) SLEEP_WEIGHT <span class="k">else</span> <span class="n">0.0</span>) +
+        (<span class="k">if</span> (hasSteps) STEPS_WEIGHT <span class="k">else</span> <span class="n">0.0</span>)
+
+    <span class="k">val</span> dayScores = window.map { date -&gt;
+        <span class="k">val</span> dayLogs = habitLogs.filter { it.loggedAt <span class="k">in</span> dayOf(date, zone) }
+
+        <span class="k">var</span> acc = <span class="n">0.0</span>
+        <span class="k">if</span> (hasHabits) acc += HABIT_WEIGHT * habitCompletion(activeHabits, dayLogs)
+        <span class="k">if</span> (hasSleep) {
+            <span class="k">val</span> hours = rowsByDate[date].orEmpty().latest()?.sleepHours ?: <span class="n">0.0</span>
+            acc += SLEEP_WEIGHT * ratio(hours, SLEEP_TARGET_HOURS)
+        }
+        <span class="k">if</span> (hasSteps) {
+            <span class="k">val</span> steps = rowsByDate[date].orEmpty().latest()?.steps ?: <span class="n">0L</span>
+            acc += STEPS_WEIGHT * ratio(steps.toDouble(), STEPS_TARGET)
+        }
+        acc / weightSum                              <span class="c">// điểm của ngày đó ∈ 0..1</span>
+    }
+
+    <span class="k">return</span> Math.round(dayScores.average() * <span class="n">100.0</span>).toInt().coerceIn(<span class="n">0</span>, <span class="n">100</span>)
+}
+
+<span class="c">/** Tỉ lệ thói quen ĐẠT MỤC TIÊU trong ngày: tổng value của các log cùng habitId &gt;= targetValue */</span>
+<span class="k">private fun</span> habitCompletion(habits: List&lt;Habit&gt;, dayLogs: List&lt;HabitLog&gt;): Double {
+    <span class="k">if</span> (habits.isEmpty()) <span class="k">return</span> <span class="n">0.0</span>
+    <span class="k">val</span> completed = habits.count { habit -&gt;
+        dayLogs.filter { it.habitId == habit.id }.sumOf { it.value.toDouble() } &gt;= habit.targetValue
+    }
+    <span class="k">return</span> completed.toDouble() / habits.size
+}
+
+<span class="k">private fun</span> ratio(value: Double, target: Double): Double =
+    <span class="k">if</span> (target &lt;= <span class="n">0.0</span>) <span class="n">0.0</span> <span class="k">else</span> (value / target).coerceIn(<span class="n">0.0</span>, <span class="n">1.0</span>)</code></pre>
+      <p class="small">
+        Lưu ý: mỗi ngày lấy hàng <strong>mới nhất</strong> (<code>latest()</code> = <code>maxByOrNull { it.recordedAt }</code>)
+        — hàng mới nhất trong ngày là hàng đầy đủ dữ liệu nhất.
+      </p>
+
+      <h3>5.4. Delta so với tuần trước</h3>
+      <p>
+        <code>GetVitalityScoreUseCase</code> đọc <strong>14 ngày</strong> (7 ngày tuần này + 7 ngày tuần trước),
+        tính điểm hiện tại, rồi tính điểm của cửa sổ kết thúc ở <code>today − 7</code> để lấy hiệu số.
+      </p>
+<pre><code><span class="k">val</span> daysBack = <span class="n">2</span> * VitalityScoreMath.WINDOW_DAYS - <span class="n">1</span>        <span class="c">// 13 ngày trước hôm nay → đủ 14 ngày</span>
+<span class="c">/* … */</span>
+<span class="k">val</span> current = VitalityScoreMath.compute(habits, logs, healthHistory, today, zone)
+<span class="k">val</span> previousDay = today.minusDays(VitalityScoreMath.WINDOW_DAYS.toLong())
+<span class="k">val</span> previousHasObservations = VitalityScoreMath.hasObservations(logs, healthHistory, previousDay, zone)
+
+<span class="k">val</span> delta = <span class="k">if</span> (current != <span class="k">null</span> &amp;&amp; previousHasObservations) {
+    <span class="k">val</span> previous = VitalityScoreMath.compute(habits, logs, healthHistory, previousDay, zone)
+    <span class="k">if</span> (previous != <span class="k">null</span>) current - previous <span class="k">else</span> <span class="k">null</span>
+} <span class="k">else</span> <span class="k">null</span></code></pre>
+      <div class="callout note">
+        <span class="callout__title">Ý nghĩa ba trạng thái của <code>VitalityScore</code></span>
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th>Trường</th><th>Giá trị</th><th>UI làm gì</th></tr></thead>
+          <tbody>
+            <tr><td><code>hasData</code></td><td><code>false</code> khi <code>compute</code> trả <code>null</code></td><td>Hiện <strong>lời nhắc</strong> thay vì một con số ảo</td></tr>
+            <tr><td><code>score</code></td><td>0–100 (bằng 0 khi <code>hasData = false</code>)</td><td>Vẽ vòng tròn điểm</td></tr>
+            <tr><td><code>delta</code></td><td><code>null</code> nghĩa là <strong>7 ngày trước đó không có quan sát nào</strong></td><td><strong>Ẩn</strong> phần so sánh thay vì hiển thị một con số cố định</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <p class="small">
+          <code>hasObservations()</code> kiểm tra riêng vì có thể có log/dữ liệu sức khỏe nhưng
+          <code>compute</code> vẫn trả <code>null</code> (ví dụ chỉ có log thói quen mà không có thói quen nào
+          đang hoạt động). Trường hợp đó phải ẩn delta, không được lấy "điểm 0" ra so.
+        </p>
+      </div>
+
+      <h2>6. Gom dữ liệu theo ngày — ba hàm thuần</h2>
+      <p>
+        Ba hàm nhỏ nhưng là nền tảng của mọi con số ở tab Phân tích. Chúng tồn tại riêng để
+        <strong>giao diện, AI và biểu đồ dùng cùng một con số</strong>.
+      </p>
+
+      <h3>6.1. <code>HealthSummaryHistory</code> — lịch sử 7 ngày</h3>
+<pre><code><span class="k">fun</span> summarize(history: List&lt;HealthData&gt;, days: Int = <span class="n">7</span>, today: LocalDate, zone: ZoneId): List&lt;DailyHealthSummary&gt; {
+    <span class="k">val</span> windowDays = days.coerceAtLeast(<span class="n">1</span>)
+
+    <span class="c">// Quy tắc 1: mỗi ngày chỉ lấy HÀNG MỚI NHẤT (giống HabitRuleEngine.latestRowPerDay)</span>
+    <span class="k">val</span> latestRowPerDay = history
+        .groupBy { Instant.ofEpochMilli(it.recordedAt).atZone(zone).toLocalDate() }
+        .mapValues { (_, rowsInDay) -&gt; rowsInDay.maxBy { it.recordedAt } }
+
+    <span class="c">// Quy tắc 2: LUÔN trả đủ [days] dòng, kể cả ngày không có dữ liệu (hasData = false)</span>
+    <span class="k">return</span> (windowDays - <span class="n">1</span> downTo <span class="n">0</span>).map { daysAgo -&gt;
+        <span class="k">val</span> date = today.minusDays(daysAgo.toLong())
+        <span class="k">val</span> row = latestRowPerDay[date]
+        DailyHealthSummary(
+            date = date,
+            steps = row?.steps ?: <span class="n">0L</span>,
+            sleepHours = row?.sleepHours ?: <span class="n">0.0</span>,
+            heartRate = row?.heartRate ?: <span class="n">0.0</span>
+        )
+    }
+}</code></pre>
+      <p>Hai quy tắc này giải quyết hai vấn đề cụ thể của giao diện:</p>
+      <ul>
+        <li><strong>Luôn đủ 7 dòng</strong> ⇒ biểu đồ và bảng không bị <em>co lại</em> thành vài ngày rời rạc khi máy thiếu nguồn dữ liệu vài hôm.</li>
+        <li><strong>Ngày trống có <code>hasData = false</code></strong> ⇒ UI hiện "Chưa có dữ liệu" thay vì một loạt số 0 gây hiểu nhầm ("ngày đó đi bộ 0 bước").</li>
+      </ul>
+      <p class="small">Thứ tự trả về là <strong>cũ → mới</strong> (trái sang phải khi vẽ), cùng chiều với <code>GetWeeklyConsistencyUseCase</code>.</p>
+
+      <h3>6.2. <code>SleepTrendMath</code> — xu hướng giấc ngủ</h3>
+<pre><code><span class="k">const val</span> GOOD_MIN_HOURS = <span class="n">7.0</span>      <span class="c">// ngủ trung bình từ mức này trở lên thì coi là đủ</span>
+<span class="k">const val</span> SHORT_SLEEP_HOURS = <span class="n">6.0</span>    <span class="c">// dưới mức này thì coi là thiếu ngủ</span>
+<span class="k">const val</span> GOOD_MAX_HOURS = <span class="n">9.0</span>       <span class="c">// trên mức này thì coi là hơi dài</span>
+
+<span class="k">fun</span> fromHealthHistory(days: List&lt;DailyHealthSummary&gt;): SleepTrend =
+    SleepTrend(days.map { SleepNight(date = it.date, hours = it.sleepHours) })
+
+<span class="k">fun</span> qualityOf(averageHours: Double): SleepQuality = <span class="k">when</span> {
+    averageHours &lt; SHORT_SLEEP_HOURS -&gt; SleepQuality.SHORT      <span class="c">// "Thiếu ngủ"</span>
+    averageHours &lt; GOOD_MIN_HOURS -&gt; SleepQuality.FAIR          <span class="c">// "Chưa đủ"</span>
+    averageHours &lt;= GOOD_MAX_HOURS -&gt; SleepQuality.GOOD         <span class="c">// "Tốt"</span>
+    <span class="k">else</span> -&gt; SleepQuality.LONG                                   <span class="c">// "Hơi dài"</span>
+}</code></pre>
+      <p>
+        Đáng chú ý: nguồn là <code>health_data_history</code> — <strong>cùng nguồn</strong> với thẻ "Lịch sử
+        sức khỏe 7 ngày" và với Rule Engine. Nhờ vậy thẻ giấc ngủ <strong>không còn phụ thuộc</strong> vào
+        việc Health Connect có dữ liệu pha Sâu/Nông/REM hay không, và con số trên thẻ luôn khớp phần còn lại
+        của màn Phân tích.
+      </p>
+      <p>
+        <code>SleepTrend.averageHours</code> chỉ tính các đêm <strong>có dữ liệu</strong>
+        (<code>nightsWithData</code>), nên một đêm chưa ghi được gì không kéo tụt điểm chất lượng.
+      </p>
+
+      <h3>6.3. <code>TodayHealthSummary</code> — nguồn duy nhất cho "hôm nay"</h3>
+      <p>
+        Đây là model <strong>quan trọng nhất</strong> của quy tắc ưu tiên nguồn cho <strong>widget</strong>.
+        Lưu ý: thẻ "Tóm tắt sức khỏe" ở Trang chủ nay theo <strong>switch "Dùng dữ liệu Health Connect"</strong>
+        (mặc định TẮT → dùng bản chụp trong app) nên <strong>có thể khác</strong> widget khi switch TẮT.
+        Nó gói toàn bộ quy tắc ưu tiên nguồn vào một hàm thuần:
+      </p>
+<pre><code><span class="k">data class</span> TodayHealthSummary(<span class="k">val</span> steps: Long, <span class="k">val</span> sleepHours: Double, <span class="k">val</span> heartRateBpm: Double) {
+    <span class="k">companion object</span> {
+        <span class="k">fun</span> build(
+            healthConnect: HealthData?,      <span class="c">// null khi Health Connect không khả dụng / chưa đủ quyền</span>
+            sensorStepsReady: Boolean,
+            sensorSteps: Long,
+            sensorSleepHours: Double,
+            recordedHeartRate: Double
+        ): TodayHealthSummary = TodayHealthSummary(
+            <span class="c">// BƯỚC CHÂN: ưu tiên CẢM BIẾN CỦA ĐIỆN THOẠI — vì đó là nguồn live</span>
+            steps = <span class="k">if</span> (sensorStepsReady) sensorSteps <span class="k">else</span> healthConnect?.steps ?: <span class="n">0L</span>,
+            <span class="c">// GIẤC NGỦ: ưu tiên HEALTH CONNECT — có thể đến từ đồng hồ đeo tay</span>
+            sleepHours = (healthConnect?.sleepHours ?: <span class="n">0.0</span>).takeIf { it &gt; <span class="n">0.0</span> } ?: sensorSleepHours,
+            <span class="c">// NHỊP TIM: ưu tiên HEALTH CONNECT — chưa có thì dùng nhịp GHI TRONG NGÀY</span>
+            heartRateBpm = (healthConnect?.heartRate ?: <span class="n">0.0</span>).takeIf { it &gt; <span class="n">0.0</span> } ?: recordedHeartRate
+        )
+    }
+}</code></pre>
+      <div class="callout warn">
+        <span class="callout__title">Chiều ưu tiên của bước chân là ngược với hai chỉ số kia — và đó là chủ ý</span>
+        <p>
+          <code>healthData</code> chỉ được đọc <strong>một lần</strong> lúc mở màn Home. Nếu để Health Connect
+          ưu tiên cho bước chân thì con số trên thẻ sẽ bị <em>"đóng băng"</em> — đi bộ mà số không đổi cho tới
+          khi ViewModel được tạo lại. Còn giấc ngủ thì <strong>không đổi trong ngày</strong> (giấc ngủ của đêm
+          đã qua), nên việc chỉ đọc một lần không gây hậu quả.
+        </p>
+        <p>
+          <strong>Đánh đổi đã chấp nhận:</strong> khi máy có cảm biến thì số của <em>đồng hồ đeo tay</em> (nằm
+          trong Health Connect) không còn được ưu tiên cho bước chân.
+        </p>
+      </div>
+      <p class="small">
+        Giá trị <code>0</code> luôn nghĩa là <strong>"hôm nay chưa có số nào"</strong>, không phải "chỉ số bằng 0".
+        Phần hiển thị quyết định cách nói điều đó: widget hiện <code>--</code> và <code>-- bpm</code> thay vì
+        <code>0</code>. Xem <a href="ui.html#8-widget-suc-khoe-hom-nay-glance">widget</a>.
+      </p>
+
+      <h2>7. Biểu đồ tuần — <code>GetWeeklyConsistencyUseCase</code></h2>
+      <p class="small"><code>domain/usecase/habit/GetWeeklyConsistencyUseCase.kt</code></p>
+      <p>
+        Tính mức hoàn thành thói quen theo từng ngày trong 7 ngày gần nhất, trả về <code>DailyConsistency</code>
+        theo thứ tự <strong>cũ → mới</strong>.
+      </p>
+<pre><code><span class="k">val</span> today = LocalDate.now(zone)
+<span class="c">/* … */</span>
+(<span class="k">val</span> windowDays - <span class="n">1</span> downTo <span class="n">0</span>).map { daysAgo -&gt;
+    <span class="k">val</span> date = today.minusDays(daysAgo.toLong())
+    <span class="k">val</span> dayStart = date.atStartOfDay(zone).toInstant().toEpochMilli()
+    <span class="k">val</span> dayEnd = date.plusDays(<span class="n">1</span>).atStartOfDay(zone).toInstant().toEpochMilli()
+
+    <span class="k">val</span> dayLogs = logs.filter { it.loggedAt &gt;= dayStart &amp;&amp; it.loggedAt &lt; dayEnd }
+
+    <span class="c">// ⭐ MẪU SỐ LÀ "SNAPSHOT" CỦA TỪNG NGÀY:</span>
+    <span class="c">//    chỉ tính những thói quen ĐÃ TỒN TẠI trong ngày đó (createdAt &lt; mốc kết thúc ngày)</span>
+    <span class="k">val</span> habitsOfThatDay = habits.filter { it.createdAt &lt; dayEnd }
+
+    <span class="k">val</span> completed = habitsOfThatDay.count { habit -&gt;
+        dayLogs.filter { it.habitId == habit.id }.sumOf { it.value.toDouble() } &gt;= habit.targetValue
+    }
+
+    DailyConsistency(date = date, completedHabits = completed, totalHabits = habitsOfThatDay.size)
+}</code></pre>
+      <div class="callout note">
+        <span class="callout__title">Vì sao mẫu số phải là "snapshot theo ngày"</span>
+        <p>
+          Trước đây mẫu số luôn là số thói quen đang hoạt động <strong>hiện tại</strong>. Hệ quả:
+          tạo thói quen mới hôm nay sẽ làm <em>tụt tỉ lệ của cả 6 ngày trước đó</em> (vì mẫu số tăng trong
+          khi tử số không đổi), và xoá thói quen sẽ làm <em>tỉ lệ quá khứ vọt lên</em>. Biểu đồ không còn
+          phản ánh đúng lịch sử.
+        </p>
+        <p>
+          Nay mỗi ngày chỉ tính những thói quen <strong>đã tồn tại từ ngày đó trở về trước</strong>
+          (<code>createdAt &lt; dayEnd</code>).
+        </p>
+        <p class="small">
+          Ghi chú: <strong>mục tiêu</strong> vẫn so với <code>Habit.targetValue</code> hiện tại (không dùng
+          <code>targetValueAtTime</code> của từng log) — giữ nguyên nghiệp vụ cũ, chỉ sửa mẫu số.
+        </p>
+      </div>
+
+      <h2>8. Phân tích món ăn bằng AI — <code>FoodAnalysis</code> + Gemini</h2>
+      <p class="small"><code>domain/usecase/food/FoodAnalysis.kt</code> (thuần Kotlin) · <code>data/vision/GeminiFoodInsightSource.kt</code> (gọi mạng)</p>
+
+      <h3>8.1. Vì sao bỏ ML Kit</h3>
+      <p>
+        Bản cũ dùng ML Kit Image Labeling. Vấn đề: ML Kit chỉ gán <strong>nhãn ảnh chung</strong>
+        (~400 nhãn tiếng Anh) nên chụp <em>đĩa cơm</em> có lúc ra <strong>"Pizza"</strong>; và kể cả khi đúng
+        thì nó cũng chỉ cho <strong>tên món</strong> — không nói được <em>"ăn vào lợi/hại gì"</em>, tức
+        không trả lời được câu hỏi người dùng thật sự quan tâm.
+      </p>
+
+      <h3>8.2. Prompt — bản hợp đồng với model</h3>
+      <p>Prompt được viết ở <strong>một chỗ duy nhất</strong> và có test chốt lại các ràng buộc quan trọng:</p>
+<pre><code><span class="k">fun</span> buildPrompt(): String = <span class="s">"""
+    Bạn là chuyên gia dinh dưỡng. Hãy xem ảnh và trả lời bằng TIẾNG VIỆT.
+
+    1. Nếu ảnh KHÔNG có gì ăn được (bàn ghế, phong cảnh, màn hình máy tính…): đặt is_food = false,
+       để dish_name và emoji rỗng, benefits và cautions là mảng rỗng.
+    2. Nếu ảnh có món ăn, đồ uống, trái cây hoặc đồ ăn vặt: đặt is_food = true và:
+       - dish_name: tên món NGẮN GỌN bằng tiếng Việt. Ưu tiên tên món Việt Nam/châu Á nếu ảnh hợp
+         (ví dụ: cơm tấm, phở bò, bún chả, bánh mì, cháo, cơm rang, canh, món xào, trái cây…).
+         Nếu chỉ đoán được gần đúng thì ghi kèm "(có thể)" (ví dụ: "Cơm rang (có thể)") — KHÔNG
+         đoán bừa một món khác hẳn.
+       - emoji: đúng MỘT emoji minh hoạ món đó.
+       - benefits: 1–3 gạch đầu dòng, mỗi gạch KHÔNG quá 120 ký tự, nói món này mang lại gì cho
+         cơ thể (chất xơ, đạm, vitamin, năng lượng, tốt cho tiêu hoá…).
+       - cautions: 1–3 gạch đầu dòng, mỗi gạch KHÔNG quá 120 ký tự, nói điều nên lưu ý (nhiều dầu
+         mỡ, nhiều đường, nhiều muối, nhiều tinh bột, cay, dễ đầy bụng, không phù hợp cho người
+         có bệnh nền nào…). Nếu món lành thì có thể nói người ăn kiêng/tiểu đường cần chú ý khẩu phần.
+    3. TUYỆT ĐỐI KHÔNG chẩn đoán bệnh, KHÔNG nói tới thuốc hay việc chữa bệnh, KHÔNG khuyên ngừng
+       thuốc. Chỉ nêu thông tin dinh dưỡng tham khảo, ngắn gọn, dễ hiểu.
+"""</span>.trimIndent()</code></pre>
+      <p>Ba ràng buộc đáng chú ý, mỗi cái nhắm một lỗi cụ thể của model:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ràng buộc</th><th>Nhắm vào lỗi</th></tr></thead>
+        <tbody>
+          <tr><td>Ưu tiên tên món <strong>Việt Nam / châu Á</strong></td><td>Người dùng app là người Việt; model mặc định thiên về món Tây</td></tr>
+          <tr><td>Không chắc thì ghi kèm <strong>"(có thể)"</strong>, KHÔNG đoán bừa</td><td>Đây chính là lỗi cũ <em>"đĩa cơm → pizza"</em> nhưng ở phía model</td></tr>
+          <tr><td><strong>Cấm</strong> chẩn đoán / thuốc / chữa bệnh</td><td>Tránh model đưa ra lời khuyên y tế mà app không được phép đưa</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>8.3. Schema ép đầu ra — đọc được bằng máy</h3>
+<pre><code><span class="k">private val</span> RESPONSE_SCHEMA = mapOf(
+    <span class="s">"type"</span> to <span class="s">"OBJECT"</span>,
+    <span class="s">"properties"</span> to mapOf(
+        <span class="s">"is_food"</span> to mapOf(<span class="s">"type"</span> to <span class="s">"BOOLEAN"</span>),
+        <span class="s">"dish_name"</span> to mapOf(<span class="s">"type"</span> to <span class="s">"STRING"</span>),
+        <span class="s">"emoji"</span> to mapOf(<span class="s">"type"</span> to <span class="s">"STRING"</span>),
+        <span class="s">"benefits"</span> to mapOf(<span class="s">"type"</span> to <span class="s">"ARRAY"</span>, <span class="s">"items"</span> to mapOf(<span class="s">"type"</span> to <span class="s">"STRING"</span>), <span class="s">"maxItems"</span> to FoodAnalysis.MAX_BULLETS),
+        <span class="s">"cautions"</span> to mapOf(<span class="s">"type"</span> to <span class="s">"ARRAY"</span>, <span class="s">"items"</span> to mapOf(<span class="s">"type"</span> to <span class="s">"STRING"</span>), <span class="s">"maxItems"</span> to FoodAnalysis.MAX_BULLETS)
+    ),
+    <span class="c">// 'emoji' KHÔNG nằm trong required → model được phép bỏ trống khi không có emoji phù hợp</span>
+    <span class="s">"required"</span> to listOf(<span class="s">"is_food"</span>, <span class="s">"dish_name"</span>, <span class="s">"benefits"</span>, <span class="s">"cautions"</span>),
+    <span class="s">"propertyOrdering"</span> to listOf(<span class="s">"is_food"</span>, <span class="s">"dish_name"</span>, <span class="s">"emoji"</span>, <span class="s">"benefits"</span>, <span class="s">"cautions"</span>)
+)</code></pre>
+      <p>
+        Kèm <code>responseMimeType = "application/json"</code> và <code>temperature = 0.2</code> (nhiệt độ
+        thấp vì đây là bài <em>đọc ảnh</em>, không phải bài viết sáng tạo). Nhờ schema, tầng trên đọc được JSON
+        thay vì phải "đoán" văn xuôi.
+      </p>
+      <p class="small">
+        Khoá API nằm ở <strong>header</strong> <code>x-goog-api-key</code> (không nhét vào URL) để không lọt
+        vào log/query string. Khoá dạng <code>AQ.…</code> của Google AI Studio dùng đúng header này — đặt vào
+        <code>Authorization: Bearer</code> sẽ bị <code>401 ACCESS_TOKEN_TYPE_UNSUPPORTED</code>.
+      </p>
+
+      <h3>8.4. Làm sạch kết quả trước khi lên UI</h3>
+      <p>
+        Model là nguồn <strong>không tin cậy hoàn toàn</strong>: nó có thể trả 8 gạch đầu dòng, một gạch dài
+        400 ký tự, hoặc nhét cả câu văn vào ô emoji. Những thứ đó sẽ phá vỡ layout thẻ kết quả nếu hiển thị
+        thẳng. Vì vậy có một lớp làm sạch thuần Kotlin (test được trên JVM, không cần HTTP):
+      </p>
+<pre><code><span class="k">fun</span> toInsight(isFood: Boolean, dishName: String?, emoji: String?, benefits: List&lt;String&gt;?, cautions: List&lt;String&gt;?): FoodInsight {
+    <span class="k">if</span> (!isFood) <span class="k">return</span> FoodInsight()                          <span class="c">// ảnh không có đồ ăn</span>
+
+    <span class="k">val</span> name = dishName.orEmpty().trim().take(MAX_DISH_NAME_LENGTH)   <span class="c">// 60</span>
+    <span class="k">if</span> (name.isEmpty()) <span class="k">return</span> FoodInsight()                    <span class="c">// nói có đồ ăn mà không gọi được tên</span>
+
+    <span class="k">return</span> FoodInsight(
+        isFood = <span class="k">true</span>, dishName = name,
+        emoji = sanitizeEmoji(emoji),
+        benefits = sanitizeBullets(benefits),
+        cautions = sanitizeBullets(cautions)
+    )
+}
+
+<span class="c">/** Emoji hợp lệ, hoặc DEFAULT_EMOJI ("🍽️") khi thiếu/rỗng/quá dài (khả năng cao là văn bản) */</span>
+<span class="k">private fun</span> sanitizeEmoji(emoji: String?): String {
+    <span class="k">val</span> trimmed = emoji.orEmpty().trim()
+    <span class="k">return</span> <span class="k">if</span> (trimmed.isEmpty() || trimmed.length &gt; <span class="n">8</span>) DEFAULT_EMOJI <span class="k">else</span> trimmed
+}
+
+<span class="c">/** Cắt khoảng trắng → bỏ mục rỗng → cắt độ dài → bỏ trùng → giới hạn 3 mục */</span>
+<span class="k">private fun</span> sanitizeBullets(bullets: List&lt;String&gt;?): List&lt;String&gt; =
+    bullets.orEmpty()
+        .map { it.trim().take(MAX_BULLET_LENGTH) }   <span class="c">// 120</span>
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .take(MAX_BULLETS)                            <span class="c">// 3</span></code></pre>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Hằng số</th><th>Giá trị</th><th>ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td><code>MAX_BULLETS</code></td><td>3</td><td>Số gạch đầu dòng tối đa cho mỗi mục ("Có lợi" và "Nên lưu ý")</td></tr>
+          <tr><td><code>MAX_BULLET_LENGTH</code></td><td>120</td><td>Độ dài tối đa một gạch — dài hơn thì cắt</td></tr>
+          <tr><td><code>MAX_DISH_NAME_LENGTH</code></td><td>60</td><td>Độ dài tối đa tên món</td></tr>
+          <tr><td><code>DEFAULT_EMOJI</code></td><td><code>🍽️</code></td><td>Dùng khi AI không trả về emoji hợp lệ</td></tr>
+          <tr><td><code>MAX_EMOJI_LENGTH</code></td><td>8</td><td>Dài hơn mức này gần như chắc chắn là văn bản bị đặt nhầm ô</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Kết quả trả về là <code>FoodInsight</code>. Thuộc tính dẫn xuất <code>hasDish</code> =
+        <code>isFood &amp;&amp; dishName.isNotBlank()</code> phân biệt ba trạng thái: <em>không nhận diện được</em>,
+        <em>có nhận diện</em>, và <em>AI nói có đồ ăn nhưng không gọi được tên</em> (cũng coi như chưa nhận
+        diện — một thẻ kết quả không có tên món thì không nói lên điều gì).
+      </p>
+
+      <h3>8.5. Chiến lược gọi model: model chính + model dự phòng</h3>
+      <p>Đây là phần được tinh chỉnh qua nhiều lần chạy thật. Bốn quyết định:</p>
+      <div class="layers">
+        <div class="layer">
+          <div class="layer__name">① Hạ mức suy luận để giảm độ trễ</div>
+          <div class="layer__desc">
+            Gemini 3 <strong>mặc định suy luận ở mức <code>high</code></strong> — một lượt đọc ảnh mất
+            <strong>~42 giây</strong>. Dự án hạ xuống <code>thinkingConfig.thinkingLevel = "low"</code>.
+            Mức <code>"minimal"</code> <strong>bị model này từ chối</strong> (<code>400 INVALID_ARGUMENT</code>),
+            nên <code>"low"</code> là mức thấp nhất dùng được.
+          </div>
+        </div>
+        <div class="layer">
+          <div class="layer__name">② Model không nhận <code>thinkingConfig</code> ⇒ tự gửi lại không kèm tham số đó</div>
+          <div class="layer__desc">
+            Nhận biết theo <strong>nội dung thông báo lỗi</strong> (chứa "thinking" và "INVALID_ARGUMENT"),
+            không theo mã 400 đơn thuần — vì 400 còn do nhiều nguyên nhân khác.
+          </div>
+        </div>
+        <div class="layer">
+          <div class="layer__name">③ Có model dự phòng cho lỗi quá tải</div>
+          <div class="layer__desc">
+            Google trả <code>503 UNAVAILABLE</code> và <code>429 RESOURCE_EXHAUSTED</code> rất thường xuyên.
+            Thay vì thử lại chính model vừa hỏng, lớp gọi <strong>chuyển sang model nhẹ hơn</strong>
+            (<code>gemini-flash-lite-latest</code>).
+          </div>
+        </div>
+        <div class="layer">
+          <div class="layer__name">④ Lỗi không tự khỏi thì dừng luôn, không đổi model</div>
+          <div class="layer__desc">
+            Sai khoá (401/403) đổi model cũng vô ích ⇒ trả kết quả ngay để người dùng biết sớm thay vì chờ.
+          </div>
+        </div>
+      </div>
+<pre><code><span class="k">override suspend fun</span> analyze(jpegBytes: ByteArray): FoodAnalysisResult {
+    <span class="k">if</span> (apiKey.isBlank()) <span class="k">return</span> FoodAnalysisResult.Failure(FoodAnalysisError.NOT_CONFIGURED)
+    <span class="k">val</span> jpegBase64 = Base64.getEncoder().encodeToString(jpegBytes)
+
+    <span class="k">val</span> models = candidates()             <span class="c">// [model chính, model dự phòng] — bỏ rỗng và trùng</span>
+    <span class="k">var</span> lastError = FoodAnalysisError.NETWORK
+    models.forEachIndexed { index, candidate -&gt;
+        <span class="k">when</span> (<span class="k">val</span> result = analyzeWithModel(candidate, jpegBase64)) {
+            <span class="k">is</span> FoodAnalysisResult.Success -&gt; <span class="k">return</span> result
+            <span class="k">is</span> FoodAnalysisResult.Failure -&gt; {
+                lastError = result.error
+                <span class="c">// Lỗi KHÔNG thể tự khỏi (sai khoá, sai model…) thì đổi model cũng vô ích</span>
+                <span class="k">if</span> (result.error !<span class="k">in</span> RETRYABLE_ERRORS) <span class="k">return</span> result
+                <span class="k">if</span> (index &lt; models.lastIndex) delay(RETRY_DELAY_MS)    <span class="c">// 600 ms</span>
+            }
+        }
+    }
+    <span class="k">return</span> FoodAnalysisResult.Failure(lastError)
+}
+
+<span class="k">private val</span> RETRYABLE_ERRORS = setOf(FoodAnalysisError.BUSY, FoodAnalysisError.SERVER, FoodAnalysisError.NETWORK)</code></pre>
+      <p>Ánh xạ mã HTTP sang loại lỗi nghiệp vụ để UI nói đúng vấn đề:</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mã HTTP</th><th><code>FoodAnalysisError</code></th><th>Thông báo cho người dùng</th><th>Đổi model?</th></tr></thead>
+        <tbody>
+          <tr><td>200</td><td>—</td><td>Parse JSON → <code>Success</code></td><td>—</td></tr>
+          <tr><td>401 / 403</td><td><code>AUTH</code></td><td>"Khoá AI không hợp lệ hoặc đã bị thu hồi."</td><td>Không</td></tr>
+          <tr><td>429 / 503</td><td><code>BUSY</code></td><td>"AI đang quá tải. Vui lòng thử lại sau vài giây."</td><td><strong>Có</strong></td></tr>
+          <tr><td>500–599 khác</td><td><code>SERVER</code></td><td>"Máy chủ AI đang gặp lỗi. Vui lòng thử lại."</td><td><strong>Có</strong></td></tr>
+          <tr><td>404</td><td><code>BAD_RESPONSE</code></td><td>"AI trả về kết quả không đọc được…"</td><td>Không — tên model đã bị Google bỏ</td></tr>
+          <tr><td>400 và còn lại</td><td><code>BAD_RESPONSE</code></td><td>Như trên</td><td>Không — request không hợp lệ</td></tr>
+          <tr><td><code>null</code> (không gọi được)</td><td><code>NETWORK</code></td><td>"Không kết nối được tới AI. Kiểm tra mạng rồi thử lại."</td><td><strong>Có</strong></td></tr>
+          <tr><td>Khoá rỗng</td><td><code>NOT_CONFIGURED</code></td><td>"Bản cài này chưa có khoá AI (Gemini)…"</td><td>Không gọi mạng luôn</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="small">
+        Trường hợp xấu nhất là <strong>2 request</strong>, hoặc <strong>4</strong> nếu cả hai model đều không nhận
+        <code>thinkingConfig</code> (mỗi model phải gửi lại một lần). Không thử lại cùng model: thử lại ngay
+        trên model vừa báo quá tải hầu như luôn thất bại tiếp, trong khi đổi model có cơ hội thành công thật.
+      </p>
+
+      <h3>8.6. Tên model không hardcode</h3>
+      <p>
+        Tên model đọc từ <code>GEMINI_MODEL</code> / <code>GEMINI_FALLBACK_MODEL</code>, tức từ
+        <code>local.properties</code> lúc build. Lý do có thật: Google <strong>bỏ</strong> tên model cũ và trả
+        <code>404</code> kèm gợi ý model mới. Đổi tên model chỉ cần sửa <code>local.properties</code>, không
+        phải sửa code Kotlin.
+      </p>
+      <p class="small">
+        Ngoài ra còn một "bẫy build" đã gặp: CameraX trả về <code>ListenableFuture</code> của Guava, nhưng
+        Gradle chọn bản jar <em>rỗng</em> <code>listenablefuture:9999.0-empty-to-avoid-conflict-with-guava</code>
+        nên Kotlin không biên dịch được. Module này được ép về bản <code>1.0</code> bằng
+        <code>resolutionStrategy.force</code>.
+      </p>
+
+      <h2>9. Cổng riêng tư: khi nào nhật ký được phép rời máy?</h2>
+      <p class="small"><code>domain/usecase/sync/CloudSyncPolicy.kt</code></p>
+      <div class="callout danger">
+        <span class="callout__title">Vấn đề thật đã xảy ra</span>
+        <p>
+          <code>SyncWorker</code> trước đây đẩy <strong>mọi</strong> log có <code>isDirty = true</code> lên
+          đám mây ngay khi có phiên đăng nhập — mà mọi log mặc định đều <code>isDirty = true</code>. Nên một
+          người dùng đã ghi nhật ký ở <strong>chế độ khách</strong> rồi đăng nhập sẽ bị đẩy
+          <strong>toàn bộ lịch sử</strong> lên đám mây mà không hề được hỏi.
+        </p>
+      </div>
+      <p>Nay việc tải lên phải qua hai điều kiện, và cả hai đều nằm ở một hàm thuần duy nhất:</p>
+<pre><code><span class="k">fun</span> logsToUpload(logs: List&lt;HabitLog&gt;, settings: CloudSyncSettings): List&lt;HabitLog&gt; {
+    <span class="k">if</span> (!settings.enabled) <span class="k">return</span> emptyList()                    <span class="c">// ① người dùng chưa BẬT đồng bộ</span>
+    <span class="k">val</span> consentAt = settings.consentAtMillis ?: <span class="k">return</span> emptyList()  <span class="c">// ② thiếu mốc đồng ý → hướng an toàn</span>
+    <span class="k">return</span> logs.filter { it.loggedAt &gt;= consentAt }                <span class="c">// ③ chỉ log tạo SAU khi đồng ý</span>
+}</code></pre>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Trạng thái</th><th>Kết quả</th></tr></thead>
+        <tbody>
+          <tr><td>Chưa bật đồng bộ (mặc định)</td><td>Tải lên <strong>rỗng</strong></td></tr>
+          <tr><td>Đã bật nhưng <code>consentAtMillis = null</code> (dữ liệu cũ/hỏng)</td><td>Tải lên <strong>rỗng</strong> — chọn hướng an toàn</td></tr>
+          <tr><td>Đã bật, log tạo <em>trước</em> mốc đồng ý</td><td><strong>Không</strong> tải</td></tr>
+          <tr><td>Đã bật, log tạo <em>từ</em> mốc đồng ý trở đi</td><td>Tải lên</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>
+        Mốc đồng ý được ghi <strong>chỉ khi BẬT</strong> (<code>SettingsRepositoryImpl.setCloudSyncEnabled</code>),
+        và mốc được lấy là lần bật <em>mới nhất</em>. Ở chế độ khách, <code>SyncWorker</code> bỏ qua và trả
+        <code>Result.success()</code> — job vẫn chạy lại theo chu kỳ 6 giờ và sẽ đồng bộ ngay khi có cả
+        phiên đăng nhập <em>và</em> người dùng đã bật đồng bộ.
+      </p>
+
+      <h2>10. Bảng tổng hợp hằng số &amp; ngưỡng</h2>
+      <p class="small">Tra nhanh tất cả "con số nghiệp vụ" của tầng logic — mỗi dòng đều có test tương ứng.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nhóm</th><th>Hằng số</th><th>Giá trị</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="12">Rule Engine</td><td><code>MAX_SUGGESTIONS</code></td><td>4</td></tr>
+          <tr><td><code>MIN_LOGS_FOR_TREND</code></td><td>3</td></tr>
+          <tr><td><code>SLEEP_ENOUGH_HOURS</code></td><td>7.0</td></tr>
+          <tr><td><code>SLEEP_DEPRIVED_HOURS</code></td><td>6.0</td></tr>
+          <tr><td><code>WATER_ENOUGH_ML</code></td><td>1500.0</td></tr>
+          <tr><td><code>STEP_DAILY_LOW</code></td><td>5000f</td></tr>
+          <tr><td><code>STEP_DAILY_RECOMMENDED</code></td><td>8000</td></tr>
+          <tr><td><code>STEP_TREND_DAYS</code></td><td>3</td></tr>
+          <tr><td><code>STEP_TREND_LOW</code></td><td>3000</td></tr>
+          <tr><td><code>HEART_RATE_HIGH_BPM</code></td><td>85.0</td></tr>
+          <tr><td><code>TARGET_COMPLETION_MEDIUM</code></td><td>0.8</td></tr>
+          <tr><td><code>defaultRotationSeed()</code></td><td><code>LocalDate.now().dayOfYear</code></td></tr>
+
+          <tr><td rowspan="6">Vitality</td><td><code>WINDOW_DAYS</code></td><td>7</td></tr>
+          <tr><td><code>HABIT_WEIGHT</code></td><td>0.4</td></tr>
+          <tr><td><code>SLEEP_WEIGHT</code></td><td>0.3</td></tr>
+          <tr><td><code>STEPS_WEIGHT</code></td><td>0.3</td></tr>
+          <tr><td><code>SLEEP_TARGET_HOURS</code></td><td>8.0</td></tr>
+          <tr><td><code>STEPS_TARGET</code></td><td>8000.0</td></tr>
+
+          <tr><td rowspan="4">SleepTrend</td><td><code>SHORT_SLEEP_HOURS</code></td><td>6.0</td></tr>
+          <tr><td><code>GOOD_MIN_HOURS</code></td><td>7.0</td></tr>
+          <tr><td><code>GOOD_MAX_HOURS</code></td><td>9.0</td></tr>
+          <tr><td><code>DEFAULT_DAYS</code> (HealthSummaryHistory)</td><td>7</td></tr>
+
+          <tr><td rowspan="6">FoodAnalysis</td><td><code>MAX_BULLETS</code></td><td>3</td></tr>
+          <tr><td><code>MAX_BULLET_LENGTH</code></td><td>120</td></tr>
+          <tr><td><code>MAX_DISH_NAME_LENGTH</code></td><td>60</td></tr>
+          <tr><td><code>MAX_EMOJI_LENGTH</code></td><td>8</td></tr>
+          <tr><td><code>DEFAULT_EMOJI</code></td><td>🍽️</td></tr>
+          <tr><td><code>TEMPERATURE</code> (Gemini)</td><td>0.2</td></tr>
+
+          <tr><td rowspan="4">Gemini runtime</td><td><code>THINKING_LEVEL</code></td><td><code>"low"</code></td></tr>
+          <tr><td><code>RETRY_DELAY_MS</code></td><td>600</td></tr>
+          <tr><td><code>CONNECT_TIMEOUT_MS</code></td><td>15 000</td></tr>
+          <tr><td><code>READ_TIMEOUT_MS</code></td><td>60 000</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

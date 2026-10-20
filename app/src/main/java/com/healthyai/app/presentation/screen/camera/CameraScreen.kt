@@ -68,8 +68,7 @@ fun CameraScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted -> hasCameraPermission = granted }
 
-    // Photo picker của hệ thống: **không** cần quyền đọc thư viện (Android 13+ dùng picker riêng, máy cũ
-    // rơi về `ACTION_OPEN_DOCUMENT`) nên người dùng từ chối quyền Camera vẫn phân tích ảnh được.
+    // Photo picker hệ thống không cần quyền đọc thư viện nên từ chối quyền Camera vẫn phân tích ảnh được.
     val galleryPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -113,7 +112,7 @@ fun CameraScreenContent(
     onRetry: () -> Unit,
     /** Bấm "Chọn ảnh từ thư viện" — mở photo picker của hệ thống để phân tích ảnh có sẵn. */
     onPickFromGallery: () -> Unit,
-    /** Bấm "Thêm vào nhật ký" ở thẻ kết quả (phụ lục C #22) — mở hộp thoại ghi nhận thói quen dinh dưỡng. */
+    /** Bấm "Thêm vào nhật ký" ở thẻ kết quả — mở hộp thoại ghi nhận thói quen dinh dưỡng. */
     onAddToJournal: () -> Unit
 ) {
     // Executor riêng cho CameraX (chụp ảnh không được chạy trên main thread)
@@ -128,7 +127,7 @@ fun CameraScreenContent(
         }
     }
 
-    // Hai nút phân tích chỉ bị khoá trong lúc AI đang xử lý (mục 3 #43: không còn công tắc bật/tắt AI).
+    // Hai nút phân tích chỉ bị khoá trong lúc AI đang xử lý (không còn công tắc bật/tắt AI).
     val canAnalyze = !uiState.isAnalyzing
 
     Scaffold(
@@ -216,8 +215,7 @@ fun CameraScreenContent(
                 }
             }
 
-            // Ảnh có sẵn trong thư viện: **không** cần quyền Camera nên nút này nằm ngoài nhánh quyền —
-            // ai không muốn cấp quyền camera vẫn phân tích được ảnh đã chụp trước đó.
+            // Ảnh từ thư viện không cần quyền Camera nên nút này nằm ngoài nhánh quyền.
             item {
                 OutlinedButton(
                     onClick = onPickFromGallery,
@@ -269,23 +267,13 @@ fun CameraScreenContent(
         }
     }
 
-    // Hộp thoại nằm NGOÀI `Scaffold` (dialog là một cửa sổ riêng): đặt ở đây thì không ảnh hưởng bố cục
-    // của danh sách phía trên và không phải lồng thêm layout.
+    // Hộp thoại nằm ngoài Scaffold (dialog là cửa sổ riêng) nên không ảnh hưởng bố cục danh sách.
     if (uiState.isAnalyzing) {
         AnalyzingDialog()
     }
 }
 
-/**
- * Hộp thoại **"Đang phân tích món ăn"** (mục 3 #43).
- *
- * Trước đây lượt phân tích chỉ đổi nhãn nút sang "Đang phân tích…" — mà nút nằm giữa một màn dài, người
- * dùng bấm xong không biết app có đang làm gì hay bị "treo". Hộp thoại này cho phản hồi rõ ràng: AI đọc
- * ảnh mất vài giây nên khoá luôn cả màn hình để tránh bấm chồng nhiều lượt.
- *
- * **Không** cho tắt bằng nút Back hay chạm ra ngoài: lượt gọi AI vẫn đang chạy và kết quả sẽ hiện ngay
- * khi xong, nên "đóng" hộp thoại chỉ gây hiểu nhầm là đã huỷ.
- */
+/** Hộp thoại "Đang phân tích món ăn" — khoá màn để tránh bấm chồng; không tắt được vì AI đang chạy. */
 @Composable
 private fun AnalyzingDialog() {
     Dialog(
@@ -321,10 +309,7 @@ private fun AnalyzingDialog() {
     }
 }
 
-/**
- * Preview camera thật bằng CameraX (`LifecycleCameraController` tự quản lý vòng đời camera),
- * kèm khung quét món ăn. Controller được trả ra ngoài để nút "Phân tích món ăn" chụp ảnh.
- */
+/** Preview camera thật bằng CameraX kèm khung quét; trả controller ra ngoài để nút "Phân tích món ăn" chụp ảnh. */
 @Composable
 private fun CameraPreviewSection(
     onCameraReady: (LifecycleCameraController) -> Unit,
@@ -351,8 +336,7 @@ private fun CameraPreviewSection(
             cameraController.bindToLifecycle(lifecycleOwner)
             onCameraReady(cameraController)
         } catch (e: CancellationException) {
-            // Rời màn/huỷ composition: không phải lỗi camera → ném tiếp để LaunchedEffect kết thúc đúng
-            // thay vì hiện thẻ lỗi "Không mở được camera" (phụ lục C #39).
+            // Rời màn/huỷ composition không phải lỗi camera → ném tiếp, đừng hiện thẻ lỗi "Không mở được camera".
             throw e
         } catch (e: Exception) {
             onCameraError("Không mở được camera: ${e.message}")
@@ -399,7 +383,7 @@ private fun CameraPreviewSection(
     }
 }
 
-/** Thẻ lỗi; khi có ảnh của lượt trước thì kèm nút **"Thử lại"**. */
+/** Thẻ lỗi; có ảnh lượt trước thì kèm nút "Thử lại". */
 @Composable
 private fun CameraErrorCard(message: String, onRetry: (() -> Unit)? = null) {
     Card(
@@ -434,13 +418,7 @@ private fun CameraErrorCard(message: String, onRetry: (() -> Unit)? = null) {
     }
 }
 
-/**
- * Thẻ **kết quả phân tích món ăn**: tên món (do AI đọc từ ảnh) + "Có lợi cho cơ thể" + "Nên lưu ý"
- * + dòng miễn trừ trách nhiệm.
- *
- * Dòng miễn trừ là **bắt buộc**: nội dung do model sinh ra là claim về sức khỏe, phải nói rõ đây là
- * thông tin tham khảo chứ không phải tư vấn y tế.
- */
+/** Thẻ kết quả phân tích món ăn; dòng miễn trừ bắt buộc vì nội dung do model sinh ra không phải tư vấn y tế. */
 @Composable
 private fun FoodInsightCard(
     insight: FoodInsight,
@@ -574,12 +552,7 @@ private fun InsightSection(
     }
 }
 
-/**
- * Thẻ báo **AI không nhận ra món ăn nào** trong ảnh (hoặc không gọi được tên món).
- *
- * Cần thiết vì trước đây màn này luôn hiển thị "Kết quả nhận diện" kể cả khi ảnh không có đồ ăn
- * (phụ lục C #21) — cùng tinh thần: không có gì đáng nói thì nói thẳng, kèm gợi ý chụp lại.
- */
+/** Thẻ báo AI không nhận ra món ăn nào trong ảnh, kèm gợi ý chụp lại. */
 @Composable
 private fun NoFoodDetectedCard() {
     Card(
@@ -685,7 +658,7 @@ fun CameraScreenPreview() {
     }
 }
 
-/** Trạng thái đang chờ AI: hộp thoại "Đang phân tích món ăn" (mục 3 #43). */
+/** Trạng thái đang chờ AI: hộp thoại "Đang phân tích món ăn". */
 @Preview(showBackground = true)
 @Composable
 fun CameraAnalyzingPreview() {

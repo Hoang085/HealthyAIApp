@@ -30,13 +30,7 @@ import com.healthyai.app.presentation.ui.format.formatSleepWindowDuration
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 import java.time.LocalTime
 
-/**
- * Thẻ **"Khung giờ ngủ"** trên màn Trang chủ (ngay dưới thẻ "Tóm tắt sức khỏe").
- *
- * Đây là chỗ người dùng đặt mốc giấc ngủ: app **không** tự quyết định giờ ngủ nữa mà chỉ **đo** trong
- * khung người dùng chọn (xem `SleepSchedule`). Thẻ nói rõ khung đang dùng để người dùng biết vì sao số
- * giờ ngủ được tính như vậy.
- */
+/** Thẻ "Khung giờ ngủ" trên Trang chủ; app không tự quyết định giờ ngủ mà chỉ đo trong khung người dùng chọn. */
 @Composable
 fun SleepScheduleCard(
     schedule: SleepSchedule,
@@ -57,13 +51,7 @@ fun SleepScheduleCard(
     )
 }
 
-/**
- * Hộp thoại đặt **giờ đi ngủ** và **giờ thức**.
- *
- * Không tự lưu: mọi thay đổi được báo lên qua [onDraftChange], việc kiểm tra hợp lệ và lưu do
- * `HomeViewModel` làm (nhờ vậy test được bằng unit test JVM). [error] là thông báo lỗi của lần lưu gần
- * nhất, `null` khi không có lỗi.
- */
+/** Hộp thoại đặt giờ đi ngủ và giờ thức; không tự lưu, mọi thay đổi báo lên qua onDraftChange để HomeViewModel kiểm tra và lưu. */
 @Composable
 fun SleepScheduleEditorDialog(
     draft: SleepSchedule,
@@ -134,12 +122,7 @@ private fun TimeRow(label: String, time: LocalTime, onTimeChange: (LocalTime) ->
     }
 }
 
-/**
- * Mở hộp thoại chọn giờ của hệ thống (đồng hồ 24 giờ).
- *
- * Dùng `TimePickerDialog` của Android thay vì `TimePicker` của Material3 vì đây là API ổn định, không
- * cần `@OptIn(ExperimentalMaterial3Api::class)`, và cho đúng cảm giác "chọn giờ" quen thuộc của hệ thống.
- */
+/** Mở hộp thoại chọn giờ hệ thống (24 giờ); dùng TimePickerDialog thay TimePicker của Material3 vì API ổn định, không cần @OptIn. */
 private fun showTimePicker(context: Context, initial: LocalTime, onTimePicked: (LocalTime) -> Unit) {
     TimePickerDialog(
         context,

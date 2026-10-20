@@ -7,28 +7,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Toán tính **Chỉ số sinh lực** (0–100) trên cửa sổ [WINDOW_DAYS] ngày gần nhất.
- *
- * Điểm được ghép từ **ba thành phần** và lấy trung bình theo **từng ngày** (ngày nào cũng có trọng số
- * như nhau):
- * - **Thói quen** — tỉ lệ thói quen đạt mục tiêu trong ngày;
- * - **Giờ ngủ** — giờ ngủ đêm đó so với mục tiêu [SLEEP_TARGET_HOURS];
- * - **Bước chân** — số bước ngày đó so với mục tiêu [STEPS_TARGET].
- *
- * Nhờ tính **theo ngày**, điểm phản ánh đúng *hiện tại*: ngày không ghi gì / không đi bộ / không có
- * giờ ngủ đóng góp **0** cho thành phần tương ứng → bỏ thói quen vài ngày là điểm **tụt**, thay vì
- * giữ nguyên như khi lấy trung bình cả tuần với mặc định 50/70.
- *
- * Nguyên tắc với dữ liệu thiếu:
- * - Chỉ tính các thành phần **thực sự có nguồn trên máy** (ví dụ máy không có Health Connect và không
- *   bật cảm biến bước chân ⇒ chỉ còn thành phần thói quen), rồi **chuẩn hoá lại trọng số** để điểm
- *   không bị kéo xuống chỉ vì thiếu nguồn.
- * - Cửa sổ **không có thành phần nào** (chưa có thói quen, chưa có bước chân, chưa có giờ ngủ) → trả
- *   `null` — nghĩa là "chưa đủ dữ liệu để chấm điểm", UI hiện lời nhắc thay vì một con số ảo.
- *
- * Hàm thuần Kotlin (không phụ thuộc Android/Room) nên test được trên JVM.
- */
+/** Toán tính Chỉ số sinh lực (0–100) trên cửa sổ [WINDOW_DAYS] ngày gần nhất, lấy trung bình theo từng ngày. */
 object VitalityScoreMath {
 
     /** Số ngày của cửa sổ chấm điểm (khớp cửa sổ mà tab Phân tích đang phân tích). */
@@ -44,11 +23,7 @@ object VitalityScoreMath {
     private const val SLEEP_WEIGHT = 0.3
     private const val STEPS_WEIGHT = 0.3
 
-    /**
-     * Điểm sinh lực của cửa sổ `windowDays` ngày kết thúc ở [today].
-     *
-     * @return 0–100, hoặc `null` khi cửa sổ **không có thành phần nào** để chấm.
-     */
+    /** Điểm sinh lực của cửa sổ ngày kết thúc ở [today]; `null` khi cửa sổ không có thành phần nào để chấm. */
     fun compute(
         activeHabits: List<Habit>,
         habitLogs: List<HabitLog>,
@@ -89,10 +64,7 @@ object VitalityScoreMath {
         return Math.round(dayScores.average() * 100.0).toInt().coerceIn(0, 100)
     }
 
-    /**
-     * Cửa sổ có **quan sát nào** không (có log thói quen, hoặc có hàng bước chân/giờ ngủ) — dùng để
-     * quyết định có hiển thị phần so sánh với tuần trước hay không (`delta`).
-     */
+    /** Cửa sổ có quan sát nào không — quyết định có hiển thị so sánh với tuần trước (`delta`). */
     fun hasObservations(
         habitLogs: List<HabitLog>,
         healthHistory: List<HealthData>,
@@ -111,7 +83,7 @@ object VitalityScoreMath {
         }
     }
 
-    /** Tỉ lệ thói quen **đạt mục tiêu** trong [dayLogs] trên tổng số thói quen đang theo dõi. */
+    /** Tỉ lệ thói quen đạt mục tiêu trong [dayLogs] trên tổng số thói quen theo dõi. */
     private fun habitCompletion(habits: List<Habit>, dayLogs: List<HabitLog>): Double {
         if (habits.isEmpty()) return 0.0
         val completed = habits.count { habit ->
@@ -126,7 +98,7 @@ object VitalityScoreMath {
 
     private fun List<HealthData>.latest(): HealthData? = maxByOrNull { it.recordedAt }
 
-    /** Cửa sổ ngày **cũ → mới**, kết thúc ở [today]. */
+    /** Cửa sổ ngày cũ → mới, kết thúc ở [today]. */
     private fun windowOf(today: LocalDate, windowDays: Int): List<LocalDate> =
         (windowDays.coerceAtLeast(1) - 1 downTo 0).map { today.minusDays(it.toLong()) }
 

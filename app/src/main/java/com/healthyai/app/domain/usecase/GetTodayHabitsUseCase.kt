@@ -5,7 +5,7 @@ import com.healthyai.app.domain.repository.HabitRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
-/** Use Case: Lấy danh sách thói quen đang hoạt động hôm nay */
+/** Lấy danh sách thói quen đang hoạt động của hôm nay. */
 class GetTodayHabitsUseCase @Inject constructor(
     private val habitRepository: HabitRepository
 ) {

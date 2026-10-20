@@ -11,10 +11,7 @@ import javax.inject.Singleton
 class FirestoreSyncDataSource @Inject constructor(
     private val firestore: FirebaseFirestore
 ) {
-    /**
-     * Upload một HabitLog lên Firestore.
-     * Cấu trúc: users/{uid}/habit_logs/{logId}
-     */
+    /** Upload một HabitLog lên Firestore tại users/{uid}/habit_logs/{logId}. */
     suspend fun uploadHabitLog(userId: String, log: HabitLog): Result<Unit> = runCatchingCancellable {
         val data = mapOf(
             "habitId" to log.habitId,

@@ -16,15 +16,7 @@ import com.healthyai.app.domain.model.NotificationPermissionStatus
 import com.healthyai.app.presentation.ui.component.InfoActionCard
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
-/**
- * Thẻ nhắc người dùng bật thông báo để `ReminderWorker` gửi được nhắc nhở hàng ngày.
- *
- * - Còn xin được quyền runtime `POST_NOTIFICATIONS` (Android 13+) → nút **"Bật thông báo"**.
- * - Đã cấp quyền nhưng người dùng tắt thông báo trong Settings (hoặc Android ≤ 12) →
- *   nút **"Mở cài đặt thông báo"**.
- *
- * Người gọi chỉ nên hiển thị thẻ này khi `HomeUiState.showReminderNotificationCard == true`.
- */
+/** Thẻ nhắc bật thông báo để ReminderWorker gửi được nhắc nhở hàng ngày; nút đổi theo trạng thái quyền. */
 @Composable
 fun ReminderNotificationCard(
     status: NotificationPermissionStatus,

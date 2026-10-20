@@ -8,20 +8,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test JVM cho màu "nền / thẻ" của theme (mục 3 #18).
- *
- * Bối cảnh: trước đây các màn hình hard-code `Scaffold(containerColor = Color(0xFFF8F9FA))` và
- * `CardDefaults.cardColors(containerColor = Color.White)`. Ở dark mode chữ dùng `onSurface` của
- * scheme tối (sáng) nằm trên thẻ trắng ⇒ **mất chữ**, chứ không chỉ "tương phản kém".
- *
- * Test chốt lại các tính chất của bản sửa lỗi (nền màn hình → `background`, nền thẻ →
- * `surfaceContainerLow`) — xem **TC-EDGE-08**:
- * 1. nền thẻ **khác** nền màn hình ở cả hai chế độ;
- * 2. nền thẻ luôn **sáng hơn** nền màn hình (thẻ còn nổi lên được);
- * 3. chế độ tối **không** còn dùng màu thẻ trắng;
- * 4. chữ `onSurface` trên nền thẻ đạt tương phản **WCAG AA (≥ 4.5:1)** ở cả hai chế độ.
- */
+/** Unit test JVM cho màu "nền / thẻ" của theme. */
 class ThemeSurfaceColorsTest {
 
     @Test

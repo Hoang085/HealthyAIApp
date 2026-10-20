@@ -3,17 +3,7 @@ package com.healthyai.app.presentation.ui.format
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * Unit test cho các hàm định dạng số ở `ui/format/NumberDisplay.kt`.
- *
- * Bối cảnh (mục 3, #11 và #12): trước đây ô mục tiêu ở màn Sửa và giá trị mặc định của hộp thoại
- * ghi nhận dùng `Float.toString()` nên hiện `2000.0`, `8.0` — vừa xấu vừa dễ bị hiểu là số thập
- * phân. Test chốt lại: số nguyên bỏ đuôi `.0`, số thập phân giữ nguyên, và **luôn dùng dấu `.`**
- * (không phụ thuộc locale) để `toFloatOrNull()` đọc lại được.
- *
- * Phần cuối là các định dạng dùng cho **widget màn hình chính "Sức khỏe hôm nay"** — cùng bộ hàm với
- * thẻ "Tóm tắt sức khỏe" ở màn Trang chủ, nhờ vậy hai nơi không lệch nhau về cách viết số.
- */
+/** Unit test cho các hàm định dạng số ở `ui/format/NumberDisplay.kt`. */
 class NumberDisplayTest {
 
     @Test
@@ -40,7 +30,7 @@ class NumberDisplayTest {
         assertEquals(2000f, formatTargetValue(2000f).toFloatOrNull())
     }
 
-    // ── formatStepCount — số bước ở vòng tròn "Bước chân" (mục 3 #23, phụ lục C #32) ──
+    // formatStepCount — số bước ở vòng tròn "Bước chân"
 
     @Test
     fun `step counts below one thousand are shown exactly`() {
@@ -73,7 +63,7 @@ class NumberDisplayTest {
         assertEquals("0", formatStepCount(-5L))
     }
 
-    // ── formatStepsExact — số bước đầy đủ ở ô lớn trên widget ──
+    // formatStepsExact — số bước đầy đủ ở ô lớn trên widget
 
     @Test
     fun `exact step counts use a dot as the thousands separator`() {
@@ -90,7 +80,7 @@ class NumberDisplayTest {
         assertEquals("0", formatStepsExact(-5L))
     }
 
-    // ── formatSleepDuration — giờ ngủ trên widget và ở thẻ "Tóm tắt sức khỏe" ──
+    // formatSleepDuration — giờ ngủ trên widget và ở thẻ "Tóm tắt sức khỏe"
 
     @Test
     fun `sleep hours are shown as hours and minutes`() {
@@ -105,7 +95,7 @@ class NumberDisplayTest {
         assertEquals("0h 0m", formatSleepDuration(-1.5))
     }
 
-    // ── formatHeartRate — nhịp tim trên widget và ở thẻ "Tóm tắt sức khỏe" ──
+    // formatHeartRate — nhịp tim trên widget và ở thẻ "Tóm tắt sức khỏe"
 
     @Test
     fun `a heart rate is rounded down to whole beats per minute`() {

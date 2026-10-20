@@ -15,17 +15,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * Unit Test cho [HabitRuleEngine] — trái tim của tính năng AI on-device.
- *
- * Từ bản cải tiến "feed gợi ý đa dạng & xoay vòng", engine **không** còn dựng một thẻ cảnh báo cố
- * định cho mỗi điều kiện (thẻ cũ lặp mãi tới khi người dùng xử lý xong). Nay:
- * - feed bám theo **danh mục thói quen người dùng đang theo dõi** (cộng danh mục đang có vấn đề),
- * - mỗi danh mục chọn **một mẹo xoay vòng theo ngày** từ [SuggestionCatalog],
- * - tối đa [4] thẻ, sắp xếp theo mức ưu tiên giảm dần.
- *
- * Test chạy trên JVM, không cần Room/thiết bị, và truyền `rotationSeed` cố định nên **tất định**.
- */
+/** Unit test cho [HabitRuleEngine]: feed bám theo danh mục người dùng, xoay mẹo theo seed, tối đa 4 thẻ ưu tiên giảm dần. */
 class HabitRuleEngineTest {
 
     private lateinit var ruleEngine: HabitRuleEngine
@@ -35,7 +25,7 @@ class HabitRuleEngineTest {
         ruleEngine = HabitRuleEngine()
     }
 
-    // ── Feed bám theo danh mục người dùng có ───────────────────
+    // Feed bám theo danh mục người dùng có
 
     @Test
     fun `feed covers only the categories the user tracks`() {
@@ -67,7 +57,7 @@ class HabitRuleEngineTest {
         assertTrue(suggestions.size <= 4)
     }
 
-    // ── Chọn nhóm mẹo theo tình trạng danh mục ─────────────────
+    // Chọn nhóm mẹo theo tình trạng danh mục
 
     @Test
     fun `low water logs surface a concern tip for water`() {
@@ -122,7 +112,7 @@ class HabitRuleEngineTest {
         )
     }
 
-    // ── Xoay vòng & giới hạn ───────────────────────────────────
+    // Xoay vòng & giới hạn
 
     @Test
     fun `rotating the seed changes the tip within a category`() {
@@ -215,7 +205,7 @@ class HabitRuleEngineTest {
         }
     }
 
-    // ── Thứ tự & khoá duy nhất của thẻ ─────────────────────────
+    // Thứ tự & khoá duy nhất của thẻ
 
     @Test
     fun `suggestions are ordered by priority descending`() {
@@ -241,7 +231,7 @@ class HabitRuleEngineTest {
         assertEquals(suggestions.size, suggestions.map { it.id }.distinct().size)
     }
 
-    // ── Từ dữ liệu sức khỏe cứng ───────────────────────────────
+    // Từ dữ liệu sức khỏe cứng
 
     @Test
     fun `three consecutive low step days flag exercise even without a step habit`() {
@@ -292,7 +282,7 @@ class HabitRuleEngineTest {
         )
     }
 
-    // ── Helpers ────────────────────────────────────────────────
+    // Helpers
 
     private fun List<Suggestion>.isConcernTipFor(category: HabitCategory): Boolean =
         any { suggestion ->

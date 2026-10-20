@@ -1,9 +1,6 @@
 package com.healthyai.app.domain.model
 
-/**
- * Dữ liệu tổng hợp từ Health Connect (bước chân, giấc ngủ, nhịp tim...).
- * Được đọc từ Android OS thông qua Health Connect API (không qua mạng).
- */
+/** Dữ liệu sức khỏe tổng hợp đọc từ Health Connect API (không qua mạng): bước chân, giấc ngủ, nhịp tim. */
 data class HealthData(
     val steps: Long = 0,
     val sleepHours: Double = 0.0,

@@ -20,15 +20,7 @@ import com.healthyai.app.domain.model.StepCounterStatus
 import com.healthyai.app.presentation.ui.component.InfoActionCard
 import com.healthyai.app.presentation.ui.theme.HealthyAITheme
 
-/**
- * Thẻ xin quyền `ACTIVITY_RECOGNITION` để app **tự đếm bước** bằng cảm biến của điện thoại.
- *
- * Chỉ hiển thị khi máy **có** cảm biến đếm bước nhưng app chưa được cấp quyền
- * (xem `HomeUiState.showStepCounterCard`).
- *
- * Nếu người dùng đã từ chối quá số lần cho phép, Android sẽ **không hiện hộp thoại nữa** — vì vậy
- * thẻ luôn kèm nút phụ mở thẳng phần cài đặt quyền của app.
- */
+/** Thẻ xin quyền ACTIVITY_RECOGNITION để app tự đếm bước; kèm nút mở cài đặt vì Android có thể không hiện hộp thoại nữa. */
 @Composable
 fun StepCounterPermissionCard(
     status: StepCounterStatus,

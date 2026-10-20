@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="vi" data-page="files.html">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bản đồ mã nguồn — HealthMate</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+
+  <main class="content">
+    <article>
+      <div class="eyebrow">Chương 9 · Tra cứu</div>
+      <h1>Bản đồ mã nguồn</h1>
+      <p class="page-lead">
+        Toàn bộ cây thư mục kèm mô tả từng file, và các bảng tra cứu "muốn hiểu X thì đọc file nào".
+        Dùng trang này khi bạn đã hiểu kiến trúc và cần tìm đúng chỗ để sửa.
+      </p>
+
+      <h2>1. Quy mô dự án</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Phần</th><th>Số file</th><th>Ghi chú</th></tr></thead>
+        <tbody>
+          <tr><td>Kotlin — mã sản phẩm</td><td><strong>142</strong> file · ~15 530 dòng</td><td><code>app/src/main/java/com/healthyai/app/</code></td></tr>
+          <tr><td>Kotlin — unit test JVM</td><td>42 file · 455 <code>@Test</code></td><td><code>app/src/test/</code></td></tr>
+          <tr><td>Kotlin — instrumented test</td><td>2 file</td><td><code>app/src/androidTest/</code></td></tr>
+          <tr><td>Tài nguyên Android</td><td>14 file</td><td><code>app/src/main/res/</code></td></tr>
+          <tr><td>Schema Room</td><td>4 file JSON</td><td><code>app/schemas/com.healthyai.app.data.local.AppDatabase/</code> (1…4.json)</td></tr>
+          <tr><td>Chuỗi hiển thị</td><td>233 <code>&lt;string&gt;</code></td><td><code>res/values/strings.xml</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>2. Thư mục gốc</h2>
+<pre><code>HealthyAIApp/
+├── README.md                      Tài liệu tổng quan dự án (tiếng Việt, 331 dòng)
+├── build.gradle.kts               Cấu hình Gradle cấp dự án (chỉ khai báo plugin)
+├── settings.gradle.kts            rootProject.name + include(":app") + kho plugin/repo
+├── gradle.properties              Cờ JVM/Gradle
+├── local.properties               ⚠ ĐÃ gitignore — sdk.dir + khoá Gemini + tên model
+├── gradle/libs.versions.toml      Version catalog: mọi thư viện & phiên bản ở MỘT chỗ
+├── firebase.json                  Cấu hình Firebase (Firestore rules)
+├── firestore.rules                Luật bảo mật Firestore
+├── KICHBAN_TEST_KHACH_HANG_HealthyAI.xlsx  Bộ 80 kịch bản đóng vai khách hàng (11 hành trình A–K)
+├── app/                           Module Android duy nhất
+├── docs/                          ← CHÍNH LÀ TRANG WEB NÀY
+│   ├── index.html                 Tổng quan
+│   ├── architecture.html          Kiến trúc &amp; luồng dữ liệu
+│   ├── data.html                  Tầng dữ liệu &amp; bảo mật
+│   ├── logic-sensors.html         Thuật toán: bước chân · giấc ngủ · nhịp tim
+│   ├── logic-ai.html              Logic: Rule Engine &amp; AI
+│   ├── ui.html                    Giao diện &amp; điều hướng
+│   ├── background.html            Chạy nền &amp; phân quyền
+│   ├── testing.html               Kiểm thử &amp; chất lượng
+│   ├── files.html                 Bản đồ mã nguồn (trang này)
+│   └── assets/{style.css, app.js} Hạ tầng site (chạy offline, không CDN)
+└── build/  .gradle/  .idea/  .kotlin/  HealthyAI/    ← thư mục sinh ra, không commit</code></pre>
+      <div class="callout warn">
+        <span class="callout__title">Hai điều cần biết về môi trường build</span>
+        <ul>
+          <li>Repo <strong>không</strong> commit Gradle wrapper (<code>gradlew</code>/<code>gradlew.bat</code>)
+              ⇒ dùng Gradle đã cài hoặc Gradle tool window của Android Studio. Bắt buộc <strong>JDK 21</strong>
+              (<code>jvmToolchain(21)</code>).</li>
+          <li><code>local.properties</code> đã bị <code>.gitignore</code> nên khoá Gemini <strong>không bao giờ</strong>
+              vào git. File thiếu cũng không sao: khoá rơi về chuỗi rỗng ⇒ app báo "chưa cấu hình khoá AI"
+              thay vì crash.</li>
+        </ul>
+      </div>
+
+      <h2>3. Cây mã nguồn chính — <code>app/src/main/java/com/healthyai/app/</code></h2>
+      <p class="small">
+        Mỗi dòng là một file. Chú thích ghi <b>việc nó làm</b>, không lặp lại tên file.
+      </p>
+
+      <h3>3.1. Entry point &amp; DI</h3>
+<pre><code>├── HiltApplication.kt          @HiltAndroidApp; tạo kênh thông báo + HiltWorkerFactory cho WorkManager
+├── MainActivity.kt             Single Activity: lên lịch 4 worker, nhận diện intent rationale
+│                               của Health Connect (đi vòng qua cổng đăng nhập), setContent
+└── di/
+    ├── AppModule.kt            @Binds: nối 13 cặp interface → implementation
+    ├── DatabaseModule.kt       Room + SQLCipher: loadLibrary, passphrase, rekey DB cũ, addMigrations
+    ├── AiModule.kt             @Named: khoá Gemini, model chính, model dự phòng (từ BuildConfig)
+    └── FirebaseModule.kt       FirebaseAuth + FirebaseFirestore singleton</code></pre>
+
+      <h3>3.2. Domain — mô hình dữ liệu (<code>domain/model/</code>)</h3>
+<pre><code>├── Habit.kt                    Habit + enum HabitCategory / HabitTimeOfDay / HabitFrequency
+├── HabitLog.kt                 Nhật ký: value, targetValueAtTime, isDirty (offline-first)
+├── HealthData.kt               Bản chụp sức khỏe: steps · sleepHours · heartRate · activeCalories
+├── HeartRate.kt                HeartRateResult + enum HeartRateZone (LOW/NORMAL/HIGH)
+├── Suggestion.kt               Gợi ý AI + enum SuggestionPriority (LOW/MEDIUM/HIGH/CRITICAL)
+├── DailyConsistency.kt         Mức hoàn thành thói quen một ngày (nguồn biểu đồ tuần) + ratio
+├── VitalityScore.kt            score · delta · hasData  (ba trạng thái phân biệt rõ)
+├── SleepSchedule.kt            Khung giờ ngủ: bedding/wakeTime, wrapsMidnight, contains, durationMinutes
+├── SleepEnvironment.kt         Ba tín hiệu môi trường: screenInteractive · lightLux · maxMotionG
+├── SleepTrend.kt               SleepNight · SleepTrend · enum SleepQuality
+├── SleepStageBreakdown.kt      deep/light/rem/unstaged + hasStages + hasData
+├── DailyHealthSummary.kt       Một dòng "Lịch sử sức khỏe 7 ngày" + hasData
+├── CloudSyncSettings.kt        enabled + consentAtMillis (mốc chặn riêng tư)
+├── HealthConnectDataSettings.kt  enabled — nguồn thẻ "Tóm tắt sức khỏe" (true = Health Connect, false = dữ liệu trong app)
+├── FoodInsight.kt              isFood · dishName · emoji · benefits · cautions + hasDish
+├── HealthConnectStatus.kt      UNKNOWN / AVAILABLE / NOT_INSTALLED / UPDATE_REQUIRED
+├── HealthConnectPermissionStatus.kt  status + requiredPermissions + hasAllPermissions + needsPermission
+├── NotificationPermissionStatus.kt   notificationsEnabled + canRequestPermission + isBlocked
+│                                     + hàm THUẦN from(sdkInt, granted, appEnabled) — test được
+└── StepCounterStatus.kt        sensorAvailable + permissionGranted + isReady</code></pre>
+
+      <h3>3.3. Domain — hợp đồng repository (<code>domain/repository/</code>)</h3>
+<pre><code>├── HabitRepository.kt              CRUD thói quen, đọc/ghi nhật ký, đánh dấu đã sync
+├── HealthDataRepository.kt         "hôm nay" từ Health Connect, bản chụp đã lưu (getTodayStoredHealthData), sync vào Room, lịch sử, pha giấc ngủ
+├── AuthRepository.kt               uid · currentUserName · authState Flow · signIn/signUp/signOut
+├── SettingsRepository.kt           Khung giờ ngủ + đồng bộ đám mây + nguồn dữ liệu sức khỏe (bảng app_settings)
+├── StepCounterRepository.kt        Status + Flow "bước hôm nay" + readTodaySteps(timeout) cho worker
+├── SleepTrackerRepository.kt       sampleAndStore() + readLastNightSleepHours()
+└── NotificationPermissionRepository.kt   Trạng thái quyền thông báo</code></pre>
+<pre><code>domain/widget/HealthWidgetRefresher.kt   ⭐ Cổng để DOMAIN yêu cầu vẽ lại widget mà không biết Glance</code></pre>
+
+      <h3>3.4. Domain — use case &amp; thuật toán (<code>domain/usecase/</code>)</h3>
+      <p class="small">
+        Đây là thư mục quan trọng nhất của dự án. Mọi thuật toán nằm ở đây, không phụ thuộc Android.
+      </p>
+<pre><code>├── HabitRuleEngine.kt              ⭐ "AI" on-device: chọn danh mục có vấn đề + xoay mẹo theo ngày
+├── SuggestionCatalog.kt            ⭐ Kho 24 mẹo sức khỏe cho 5 danh mục (CONCERN / GENERAL)
+├── GetTodayHabitsUseCase.kt        Danh sách thói quen đang hoạt động
+├── LogHabitUseCase.kt              Ghi một lần thực hiện thói quen
+├── steps/StepCounterMath.kt        ⭐⭐ Quy đổi luỹ kế → "bước hôm nay" theo PHIÊN CHẠY của app
+├── sleep/SleepTrackerMath.kt       ⭐⭐ Suy luận giấc ngủ từ 3 tín hiệu + khung giờ người dùng đặt
+├── heartrate/HeartRateMath.kt      ⭐⭐ Hằng số + hàm thuần của phép đo PPG
+├── heartrate/PpgAnalyzer.kt        ⭐⭐ Pipeline PPG: bỏ DC → EMA → tìm đỉnh → tự tương quan
+├── food/FoodAnalysis.kt            ⭐ Prompt gửi Gemini + làm sạch kết quả AI trả về
+├── sync/CloudSyncPolicy.kt         ⭐ Cổng riêng tư: log nào được phép rời thiết bị
+├── habit/
+│   ├── AddHabitUseCase.kt
+│   ├── UpdateHabitUseCase.kt
+│   ├── DeleteHabitUseCase.kt       Xoá MỀM (isActive = 0)
+│   └── GetWeeklyConsistencyUseCase.kt  Mẫu số là snapshot theo Habit.createdAt
+├── health/
+│   ├── VitalityScoreMath.kt        ⭐ Chỉ số sinh lực 0–100: 0.4 thói quen + 0.3 ngủ + 0.3 bước
+│   ├── GetVitalityScoreUseCase.kt  Cửa sổ 14 ngày + delta so tuần trước
+│   ├── HealthSummaryHistory.kt     ⭐ Gom health_data_history thành 1 dòng/ngày, luôn đủ 7 dòng
+│   ├── SleepTrendMath.kt           SleepTrend + xếp loại chất lượng giấc ngủ
+│   ├── TodayHealthSummary.kt       ⭐⭐ Quy tắc ưu tiên nguồn DUY NHẤT cho widget (Trang chủ nay theo switch)
+│   ├── GetHealthInsightsUseCase.kt combine 3 Flow (thói quen + nhật ký + lịch sử sức khỏe)
+│   ├── GetHealthDataUseCase.kt     Bản chụp "hôm nay" từ Health Connect
+│   ├── GetRecentHealthSummaryUseCase.kt   Flow lịch sử 7 ngày
+│   ├── GetSleepStageBreakdownUseCase.kt   Chi tiết pha Sâu/Nông/REM
+│   ├── GetLatestRecordedHeartRateUseCase.kt  Nhịp tim ghi trong ngày
+│   ├── GetStoredHealthDataUseCase.kt         Bản chụp "hôm nay" đã lưu trong app (nguồn khi switch TẮT)
+│   ├── SaveMeasuredHeartRateUseCase.kt       Lưu nhịp tim vừa đo (từ chối ≤ 0)
+│   └── GetHealthConnectPermissionStatusUseCase.kt
+├── notification/GetNotificationPermissionStatusUseCase.kt
+└── steps/GetStepCounterStatusUseCase.kt</code></pre>
+
+      <h3>3.5. Data — CSDL cục bộ (<code>data/local/</code>)</h3>
+<pre><code>├── AppDatabase.kt              @Database version = 4, exportSchema = true, 4 DAO
+├── Converters.kt               Enum ↔ String cho HabitCategory / HabitTimeOfDay / HabitFrequency
+├── dao/
+│   ├── HabitDao.kt             getAllActiveHabits(Flow) · getHabitById · insertHabit · updateHabit · softDelete
+│   ├── HabitLogDao.kt          getLogsFromTimestamp(Flow) · getUnsyncedLogs · markAsSynced · getRecentLogsByCategory
+│   ├── health/HealthDataDao.kt getRecentHealthData · getLatestSince · getLatestHeartRateSince
+│   │                           · getHealthDataSince(Flow) · deleteOldData
+│   └── settings/SettingsDao.kt getAll · observeAll(Flow) · putAll
+├── entity/
+│   ├── HabitEntity.kt
+│   ├── HabitLogEntity.kt       ⚠ FK habitId → habits.id với onDelete = CASCADE
+│   ├── health/HealthDataEntity.kt
+│   └── settings/SettingEntity.kt   (settingKey PK, settingValue)
+├── migration/DatabaseMigrations.kt  ⭐ MIGRATION_1_2 (thêm cột + BACKFILL) · 2_3 · 3_4 · ALL · DATABASE_VERSION
+├── security/
+│   ├── DatabasePassphraseProvider.kt   ⭐ Sinh passphrase 32 byte MỘT LẦN; đọc lại từ vault
+│   ├── AndroidPassphraseStorage.kt     SharedPreferencesPassphraseVault (commit!) + interface vault/cipher
+│   │                                   + AndroidKeystorePassphraseCipher (AES-256/GCM, alias …_v1)
+│   └── LegacyDatabaseKeyMigration.kt   ⭐ Rekey DB bản cũ sang khoá Keystore (wal_checkpoint → rekey → WAL)
+├── steps/StepCounterStore.kt   ⭐ Phiên chạy app + baseline/offset; commit() khi đổi mốc, apply() cho mẫu
+└── sleep/SleepTrackerStore.kt  Đêm đang xét + đêm đã chốt; commit() mọi lần</code></pre>
+
+      <h3>3.6. Data — nguồn ngoài &amp; cảm biến</h3>
+<pre><code>├── healthconnect/
+│   ├── HealthConnectDataSource.kt      Interface: requiredPermissions · getToday* · getSleepStageBreakdown
+│   └── HealthConnectDataSourceImpl.kt  ⭐ 4 truy vấn aggregate; chi tiết pha ngủ; sdkStatusToHealthConnectStatus
+├── steps/
+│   ├── StepCounterSensor.kt            interface: isAvailable · observeCumulativeSteps(): Flow&lt;Long&gt;
+│   └── AndroidStepCounterSensor.kt     ⭐ TYPE_STEP_COUNTER; isAvailable kiểm thêm FEATURE_SENSOR_STEP_COUNTER
+├── sleep/
+│   ├── SleepSensor.kt                  interface: isAvailable · readEnvironment(sampleWindowMs)
+│   └── AndroidSleepSensor.kt           ⭐ TYPE_LIGHT + TYPE_ACCELEROMETER + PowerManager.isInteractive
+├── heartrate/CameraPpgAnalyzer.kt      ⭐ ImageAnalysis.Analyzer: đỏ trung bình vùng giữa (đọc Y + V)
+├── vision/
+│   ├── FoodInsightSource.kt            interface + FoodAnalysisResult + FoodAnalysisError
+│   ├── GeminiFoodInsightSource.kt      ⭐⭐ Gọi Gemini: body/schema, ánh xạ 8 loại lỗi, model dự phòng
+│   ├── GalleryImageLoader.kt           ⭐ inJustDecodeBounds + inSampleSize + xoay theo EXIF
+│   └── ImageJpegEncoder.kt             Thu nhỏ ≤ 1280 px + nén JPEG chất lượng 80 (Dispatchers.Default)
+├── network/
+│   ├── HttpPost.kt                     interface + HttpPostResponse(code, body)
+│   └── HttpUrlConnectionPost.kt        ⭐ HttpURLConnection, Dispatchers.IO, lỗi mạng ⇒ null
+└── firebase/FirestoreSyncDataSource.kt uploadHabitLog → users/{uid}/habit_logs/{id}</code></pre>
+
+      <h3>3.7. Data — repository implementation (<code>data/repository/</code>)</h3>
+<pre><code>├── HabitRepositoryImpl.kt          ⭐ startOfDayEpochMillis (mốc 00:00, KHÔNG phải now − daysBack);
+│                                   updateHabit dùng @Update để không kích CASCADE; mapper Entity ↔ Domain
+├── HealthDataRepositoryImpl.kt     ⭐⭐ Trộn Health Connect + cảm biến + bản chụp đã lưu (getTodayStoredHealthData);
+│                                   upsertToday (gộp theo ngày); saveMeasuredHeartRate; gọi HealthWidgetRefresher
+├── AuthRepositoryImpl.kt           currentUserName = displayName → phần trước '@'; authState qua AuthStateListener
+├── SettingsRepositoryImpl.kt       ⭐ Lưu khung giờ dạng PHÚT trong ngày; mọi dữ liệu hỏng ⇒ mặc định
+├── StepCounterRepositoryImpl.kt    observeTodaySteps() = channelFlow (hiện giá trị cũ ngay, rồi nghe cảm biến)
+├── SleepTrackerRepositoryImpl.kt   sampleAndStore() không bao giờ ném; đọc khung giờ từ SettingsRepository
+└── NotificationPermissionRepositoryImpl.kt</code></pre>
+
+      <h3>3.8. Presentation</h3>
+<pre><code>├── navigation/
+│   ├── AppNavigation.kt        ⭐ Cổng xác thực → MainNavigation; openHabitLogFor (mục 4 của trang Giao diện)
+│   ├── AuthGateViewModel.kt    SessionState 4 nhánh; cờ khách trong SavedStateHandle
+│   └── Screen.kt               Sealed class destination (@StringRes) + bottomNavItems
+├── screen/
+│   ├── auth/LoginScreen.kt + LoginViewModel.kt
+│   ├── home/
+│   │   ├── HomeScreen.kt                 Thẻ tóm tắt sức khỏe + lời chào + nút Đo ngay + đăng xuất
+│   │   ├── HomeViewModel.kt   (563 dòng) ⭐⭐ HomeUiState với các thuộc tính dẫn xuất quyết định hiển thị
+│   │   ├── HealthDataSourceCard.kt       Switch "Dùng dữ liệu Health Connect" (nguồn cho thẻ tóm tắt)
+│   │   ├── SleepScheduleCard.kt          Hộp thoại đặt khung giờ ngủ
+│   │   ├── CloudSyncCard.kt              Bật/tắt đồng bộ + lối vào Chính sách bảo mật
+│   │   ├── HealthConnectPermissionCard.kt
+│   │   ├── StepCounterPermissionCard.kt
+│   │   └── ReminderNotificationCard.kt
+│   ├── habits/
+│   │   ├── HabitsScreen.kt               Danh sách + tiến độ + bộ lọc + dialog ghi nhận + xoá mềm
+│   │   ├── HabitsViewModel.kt            HabitWithProgress · LogRequest · showLogSuccessFor
+│   │   ├── HabitFilter.kt                Enum bộ lọc (labelRes + timeOfDay)
+│   │   ├── HabitLogInput.kt              ⭐ parseLogValue — hàm thuần, test được
+│   │   └── addedit/
+│   │       ├── AddEditHabitScreen.kt     Form + nút đáy có trạng thái isSaving
+│   │       └── AddEditHabitViewModel.kt  Chống trùng tên + chống double-submit
+│   ├── camera/
+│   │   ├── CameraScreen.kt     (759 dòng) CameraX + PreviewView + photo picker + hộp thoại "Đang phân tích"
+│   │   └── CameraViewModel.kt            analyzeBitmap / retryLastAnalysis / messageFor(error)
+│   ├── heartrate/
+│   │   ├── HeartRateScreen.kt  (1053 dòng) Hướng dẫn đổi theo tình trạng + vòng tiến độ + dạng sóng
+│   │   └── HeartRateViewModel.kt         HeartRateUiState với guidance/progress dẫn xuất
+│   ├── insights/
+│   │   ├── InsightsScreen.kt   (1151 dòng) Vitality · AiTipBanner · biểu đồ tuần · lịch sử 7 ngày · pha ngủ
+│   │   └── InsightsViewModel.kt          combine 4 Flow + hai trường lỗi độc lập
+│   ├── privacy/PrivacyPolicyScreen.kt    Cũng là màn rationale cho Health Connect
+│   └── tracking/CoreTrackingViewModel.kt (không còn dùng trong app chính — API dự phòng)
+├── ui/
+│   ├── theme/Color.kt          Palette app + palette riêng cho widget (Widget*)
+│   ├── theme/Theme.kt          Material You + dynamic color
+│   ├── theme/Type.kt           Typography
+│   ├── component/ErrorStateCard.kt   Thẻ lỗi đỏ dùng chung (Home + Habits + Insights)
+│   ├── component/InfoActionCard.kt   Thẻ thông tin có nút hành động
+│   └── format/
+│       ├── NumberDisplay.kt    Số gọn: 2000 thay vì 2000.0
+│       ├── TimeDisplay.kt
+│       ├── HabitProgressText.kt
+│       └── (formatStepsExact / formatSleepDuration / formatHeartRate dùng cho widget)
+└── widget/
+    ├── HealthWidget.kt         ⭐ Glance: 3 cột chỉ số, SizeMode.Exact, màu ColorProvider(sáng, tối)
+    └── HealthWidgetRefresherImpl.kt  updateAll() bọc runCatchingCancellable (không bao giờ ném)</code></pre>
+
+      <h3>3.9. Worker &amp; tiện ích</h3>
+<pre><code>├── worker/
+│   ├── HealthSyncWorker.kt     6 giờ · gộp dữ liệu sức khỏe hôm nay · retry 3 lần
+│   ├── SyncWorker.kt           6 giờ · đẩy log lên Firestore qua CloudSyncPolicy
+│   ├── ReminderWorker.kt       24 giờ · thông báo nhắc nhở (bắt SecurityException)
+│   ├── SleepTrackingWorker.kt  15 phút · nghe cảm biến 3 giây → cộng dồn giấc ngủ
+│   └── ReminderNotifications.kt    Tạo kênh thông báo (idempotent)
+└── util/RunCatchingCancellable.kt  ⭐ runCatching không nuốt CancellationException</code></pre>
+
+      <h2>4. Tài nguyên Android — <code>app/src/main/</code></h2>
+<pre><code>├── AndroidManifest.xml                 ⭐ Quyền (4 đọc Health Connect, CAMERA, ACTIVITY_RECOGNITION,
+│                                       POST_NOTIFICATIONS) · uses-feature required="false" · queries
+│                                       Health Connect · allowBackup="false" · activity-alias rationale ·
+│                                       tắt WorkManager auto-init · khai widget receiver
+└── res/
+    ├── values/strings.xml              ⭐ 230 chuỗi hiển thị
+    ├── values/colors.xml               Màu nền cho theme
+    ├── values/themes.xml               Theme.HealthyAIApp
+    ├── xml/health_widget_info.xml      ⭐ minWidth 250dp · updatePeriodMillis 30 phút · sizeMode Exact
+    ├── drawable/ic_widget_{steps,sleep,heart}.xml        Icon vector cho widget (bản sáng)
+    ├── drawable-night/ic_widget_{steps,sleep,heart}.xml  Bản tối
+    ├── drawable/ic_launcher_foreground.xml
+    ├── layout/glance_default_loading_layout.xml
+    └── mipmap-anydpi-v26/ic_launcher{,_round}.xml</code></pre>
+
+      <h2>5. Test</h2>
+<pre><code>app/src/test/java/com/healthyai/app/        42 file · 455 @Test (chạy trên JVM)
+├── domain/usecase/…                        Bộ test lớn nhất &amp; quan trọng nhất
+│   ├── steps/StepCounterMathTest.kt           12 test
+│   ├── sleep/SleepTrackerMathTest.kt          26 test
+│   ├── heartrate/HeartRateMathTest.kt         20 test
+│   ├── heartrate/PpgAnalyzerTest.kt           15 test
+│   └── heartrate/PpgTestSignal.kt             ⚠ helper — bộ SINH TÍN HIỆU mạch đập giả lập (0 @Test)
+├── data/…                                  Repository + security + migration + Gemini mapping
+├── presentation/…                          ViewModel + hàm định dạng
+└── domain/usecase/HabitRuleEngine*Test.kt  Bốn file: cơ bản · Extended · Personalized · StepTrend
+
+app/src/androidTest/java/com/healthyai/app/data/local/dao/
+├── HabitDaoTest.kt          Cần emulator/máy thật
+└── HabitLogDaoTest.kt       Cần emulator/máy thật
+
+app/schemas/com.healthyai.app.data.local.AppDatabase/
+├── 1.json  2.json  3.json  4.json    ⭐ Schema Room xuất ra để đối chiếu DDL migration</code></pre>
+      <p class="small">
+        Danh sách test đầy đủ kèm số lượng và điều được chốt ở
+        <a href="testing.html#3-danh-sach-day-du-42-file-test">trang Kiểm thử · mục 3</a>.
+      </p>
+
+      <h2>6. Tra cứu: muốn hiểu X thì đọc file nào?</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Muốn hiểu…</th><th>Đọc file</th></tr></thead>
+        <tbody>
+          <tr><td>App khởi động ra sao</td><td><code>HiltApplication.kt</code> → <code>MainActivity.kt</code> → <code>navigation/AppNavigation.kt</code></td></tr>
+          <tr><td>Luật phụ thuộc giữa các tầng</td><td><code>di/AppModule.kt</code> (bảng interface → impl) và bất kỳ file nào trong <code>domain/</code> (xem phần <code>import</code>)</td></tr>
+          <tr><td>Vì sao <code>domain/</code> không biết Android</td><td><code>domain/usecase/steps/StepCounterMath.kt</code> — chỉ có <code>java.time</code> và toán</td></tr>
+          <tr><td>Cách thêm một thiết lập người dùng mới</td><td><code>data/repository/SettingsRepositoryImpl.kt</code> + <code>data/local/dao/settings/SettingsDao.kt</code> (bảng khoá–giá trị, <strong>không cần migration</strong>)</td></tr>
+          <tr><td>Cách nâng version schema DB</td><td><code>data/local/migration/DatabaseMigrations.kt</code> + <code>data/local/AppDatabase.kt</code> + <code>local/migration/DatabaseMigrationsTest</code></td></tr>
+          <tr><td>Khoá DB sinh &amp; lưu thế nào</td><td><code>data/local/security/DatabasePassphraseProvider.kt</code> + <code>AndroidPassphraseStorage.kt</code></td></tr>
+          <tr><td>DB bản cũ được cứu thế nào</td><td><code>data/local/security/LegacyDatabaseKeyMigration.kt</code></td></tr>
+          <tr><td>Thuật toán đếm bước</td><td><code>domain/usecase/steps/StepCounterMath.kt</code> + <code>data/local/steps/StepCounterStore.kt</code></td></tr>
+          <tr><td>Thuật toán ước lượng giấc ngủ</td><td><code>domain/usecase/sleep/SleepTrackerMath.kt</code> + <code>data/sleep/AndroidSleepSensor.kt</code></td></tr>
+          <tr><td>Thuật toán đo nhịp tim PPG</td><td><code>domain/usecase/heartrate/PpgAnalyzer.kt</code> + <code>HeartRateMath.kt</code> + <code>data/heartrate/CameraPpgAnalyzer.kt</code></td></tr>
+          <tr><td>Vì sao gợi ý AI nói điều đó</td><td><code>domain/usecase/HabitRuleEngine.kt</code> → <code>flaggedCategories()</code>, và <code>SuggestionCatalog.kt</code></td></tr>
+          <tr><td>Chỉ số sinh lực tính thế nào</td><td><code>domain/usecase/health/VitalityScoreMath.kt</code></td></tr>
+          <tr><td>Vì sao widget luôn chọn đúng nguồn số</td><td><code>domain/usecase/health/TodayHealthSummary.kt</code> — <strong>nguồn duy nhất</strong> của quy tắc ưu tiên nguồn cho widget; thẻ "Tóm tắt sức khỏe" ở Trang chủ nay theo <strong>switch "Dùng dữ liệu Health Connect"</strong> nên <strong>có thể khác</strong> widget khi switch TẮT</td></tr>
+          <tr><td>Vì sao lịch sử luôn đủ 7 ngày</td><td><code>domain/usecase/health/HealthSummaryHistory.kt</code></td></tr>
+          <tr><td>Cách app nói chuyện với Gemini</td><td><code>data/vision/GeminiFoodInsightSource.kt</code> + <code>domain/usecase/food/FoodAnalysis.kt</code></td></tr>
+          <tr><td>Log nào được phép lên đám mây</td><td><code>domain/usecase/sync/CloudSyncPolicy.kt</code> + <code>worker/SyncWorker.kt</code></td></tr>
+          <tr><td>Cách xin quyền</td><td><code>presentation/screen/home/HomeViewModel.kt</code> (<code>on*PermissionResult</code>) + các <code>*PermissionCard.kt</code> + <code>AndroidManifest.xml</code></td></tr>
+          <tr><td>Vì sao thẻ xin quyền đếm bước hiện/ẩn</td><td><code>data/steps/AndroidStepCounterSensor.kt</code> (<code>isAvailable</code>) + <code>HomeUiState.showStepCounterCard</code></td></tr>
+          <tr><td>Cách truyền yêu cầu giữa hai màn</td><td><code>navigation/AppNavigation.kt</code> (<code>openHabitLogFor</code>) + <code>screen/habits/HabitsViewModel.kt</code> (<code>LogRequest</code>)</td></tr>
+          <tr><td>Vì sao phải rethrow CancellationException</td><td><code>util/RunCatchingCancellable.kt</code> + <code>worker/</code> + <code>data/healthconnect/HealthConnectDataSourceImpl.kt</code></td></tr>
+          <tr><td>Chuỗi hiển thị ở đâu</td><td><code>res/values/strings.xml</code> + <code>navigation/Screen.kt</code> (<code>titleRes</code>) + <code>screen/habits/HabitFilter.kt</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>7. Tra cứu ngược: file nào làm gì (theo tầng)</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tầng / thư mục</th><th>Số file Kotlin</th><th>Đặc điểm nhận biết</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain/model/</code></td><td>18</td><td>Chỉ <code>data class</code>/<code>enum</code> + thuộc tính <code>get()</code> dẫn xuất. Không có annotation framework</td></tr>
+          <tr><td><code>domain/repository/</code></td><td>8</td><td>Chỉ <code>interface</code></td></tr>
+          <tr><td><code>domain/usecase/</code></td><td>28</td><td><code>object</code> (toán thuần) hoặc <code>class … @Inject constructor</code> (điều phối)</td></tr>
+          <tr><td><code>data/local/</code></td><td>16</td><td>Room (<code>@Entity</code>/<code>@Dao</code>) + <code>SharedPreferences</code> + Keystore</td></tr>
+          <tr><td><code>data/*</code> (nguồn ngoài)</td><td>14</td><td>Chạm API hệ thống: Health Connect, sensor, CameraX, HTTP, Firebase</td></tr>
+          <tr><td><code>data/repository/</code></td><td>7</td><td><code>…Impl</code> — ráp nguồn dữ liệu thành hợp đồng của domain</td></tr>
+          <tr><td><code>presentation/screen/</code></td><td>24</td><td>Cặp <code>*Screen.kt</code> (Compose) + <code>*ViewModel.kt</code> (StateFlow)</td></tr>
+          <tr><td><code>presentation/</code> (còn lại)</td><td>13</td><td><code>navigation/</code>, <code>ui/theme|component|format</code>, <code>widget/</code></td></tr>
+          <tr><td><code>worker/</code></td><td>5</td><td><code>@HiltWorker</code> + <code>CoroutineWorker</code>, mỗi file có <code>schedule()</code></td></tr>
+          <tr><td><code>di/</code></td><td>4</td><td><code>@Module @InstallIn(SingletonComponent::class)</code></td></tr>
+          <tr><td>Entry point</td><td>2</td><td><code>@HiltAndroidApp</code> và <code>@AndroidEntryPoint</code></td></tr>
+          <tr><td><code>util/</code></td><td>1</td><td><code>runCatchingCancellable</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>8. Cấu hình build</h2>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Nội dung đáng chú ý</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>app/build.gradle.kts</code></td>
+            <td>
+              <code>namespace/applicationId = com.healthyai.app</code> · <code>minSdk 26</code> ·
+              <code>compileSdk/targetSdk 35</code> · Java/Kotlin 21 ·
+              <code>buildConfigField</code> cho 3 giá trị Gemini từ <code>local.properties</code> ·
+              <code>isReturnDefaultValues = true</code> cho unit test ·
+              <code>resolutionStrategy.force</code> Guava cho CameraX · KSP xuất Room schema
+            </td>
+          </tr>
+          <tr>
+            <td><code>gradle/libs.versions.toml</code></td>
+            <td>Version catalog: AGP 8.13.2 · Kotlin 2.0.21 · Compose BOM 2024.12.01 · Room 2.6.1 · SQLCipher 4.6.1 · Health Connect 1.1.0-alpha10 · CameraX 1.4.1 · Hilt 2.52 · WorkManager 2.10.0 · Glance 1.1.1 · Firebase BOM 33.8.0</td>
+          </tr>
+          <tr>
+            <td><code>settings.gradle.kts</code></td>
+            <td><code>rootProject.name = "HealthyAIApp"</code> · <code>RepositoriesMode.FAIL_ON_PROJECT_REPOS</code></td>
+          </tr>
+          <tr>
+            <td><code>gradle.properties</code></td>
+            <td>Cờ JVM/Gradle (không chứa khoá)</td>
+          </tr>
+          <tr>
+            <td><code>local.properties</code></td>
+            <td><span class="badge red">Không commit</span> <code>sdk.dir</code> · <code>gemini.api.key</code> · <code>gemini.model</code> · <code>gemini.fallback.model</code></td>
+          </tr>
+          <tr>
+            <td><code>firestore.rules</code> · <code>firebase.json</code></td>
+            <td>Luật bảo mật Firestore (chỉ chủ tài khoản đọc/ghi <code>users/{uid}</code>)</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h2>9. Mười file quan trọng nhất, nếu chỉ đọc được mười</h2>
+      <p class="small">Thứ tự dưới đây là thứ tự "đọc để hiểu hệ thống", không phải thứ tự quan trọng.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>File</th><th>Vì sao</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><code>domain/usecase/steps/StepCounterMath.kt</code></td><td>Ví dụ hoàn hảo về "thuật toán thuần + trạng thái + ca biên"; đọc xong sẽ đoán được cách tiếp cận của cả dự án</td></tr>
+          <tr><td>2</td><td><code>domain/usecase/sleep/SleepTrackerMath.kt</code></td><td>Bài toán suy luận từ tín hiệu yếu: khung giờ người dùng, ba tín hiệu, mốc "đêm" tinh tế</td></tr>
+          <tr><td>3</td><td><code>domain/usecase/heartrate/PpgAnalyzer.kt</code></td><td>Xử lý tín hiệu thật: lọc, tìm đỉnh, tự tương quan, chất lượng</td></tr>
+          <tr><td>4</td><td><code>domain/usecase/HabitRuleEngine.kt</code></td><td>Toàn bộ "AI on-device" của app trong một file</td></tr>
+          <tr><td>5</td><td><code>domain/usecase/health/TodayHealthSummary.kt</code></td><td>Quy tắc ưu tiên nguồn duy nhất cho widget — hiểu nó là hiểu vì sao widget luôn chọn đúng nguồn (thẻ Trang chủ nay có switch riêng)</td></tr>
+          <tr><td>6</td><td><code>data/repository/HealthDataRepositoryImpl.kt</code></td><td>Nơi ba nguồn dữ liệu được trộn; luật gộp theo ngày</td></tr>
+          <tr><td>7</td><td><code>data/local/migration/DatabaseMigrations.kt</code></td><td>Nâng version không mất dữ liệu, kèm backfill</td></tr>
+          <tr><td>8</td><td><code>data/local/security/DatabasePassphraseProvider.kt</code></td><td>Cơ chế khoá DB: sinh một lần, bọc bằng Keystore, ghi bằng <code>commit()</code></td></tr>
+          <tr><td>9</td><td><code>presentation/screen/home/HomeViewModel.kt</code></td><td>Khuôn mẫu ViewModel + quy tắc hiển thị dẫn xuất + vòng đời nạp dữ liệu</td></tr>
+          <tr><td>10</td><td><code>data/vision/GeminiFoodInsightSource.kt</code></td><td>Cách gọi một API cloud một cách phòng thủ: schema, ánh xạ lỗi, model dự phòng</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout tip">
+        <span class="callout__title">Đọc tiếp</span>
+        <p>
+          Kiến trúc và luật phụ thuộc → <a href="architecture.html">Chương 2</a>.
+          Cơ sở dữ liệu và bảo mật → <a href="data.html">Chương 3</a>.
+          Thuật toán → <a href="logic-sensors.html">Chương 4</a> và <a href="logic-ai.html">Chương 5</a>.
+          Giao diện → <a href="ui.html">Chương 6</a>. Chạy nền &amp; quyền → <a href="background.html">Chương 7</a>.
+          Kiểm thử → <a href="testing.html">Chương 8</a>.
+        </p>
+      </div>
+
+      <div class="pager" id="pager"></div>
+    </article>
+  </main>
+
+  <aside id="toc" class="toc"></aside>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

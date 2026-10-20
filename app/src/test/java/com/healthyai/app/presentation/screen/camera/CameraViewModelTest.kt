@@ -21,20 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/**
- * Unit test cho [CameraViewModel] — máy trạng thái của một lượt "Phân tích món ăn" (mục 3 #42, #43).
- *
- * Nguồn AI ([FoodInsightSource]) được thay bằng giả lập nên test chạy hoàn toàn trên JVM: **không** cần
- * camera, **không** cần mạng, **không** cần khoá API. Ảnh được đưa vào qua `runAnalysis` (nhận **hàm
- * lấy JPEG**) nên không cần `Bitmap` của Android.
- *
- * Những hành vi được chốt ở đây:
- * - AI trả tên món tiếng Việt + lợi ích/điều nên lưu ý → hiển thị trên thẻ kết quả;
- * - bấm phân tích là gọi AI **ngay** (mục 3 #43: không còn công tắc opt-in để chặn);
- * - ảnh không có đồ ăn (hoặc AI không gọi được tên món) → [CameraUiState.noFoodDetected], không hiện thẻ giả;
- * - mỗi loại lỗi ra một câu tiếng Việt khác nhau, và lỗi **thử lại được** thì có nút "Thử lại";
- * - lượt phân tích mới xoá kết quả/lỗi của lượt trước; lỗi không làm chết màn hình.
- */
+/** Unit test cho [CameraViewModel]: máy trạng thái của lượt "Phân tích món ăn". */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CameraViewModelTest {
 
@@ -80,7 +67,7 @@ class CameraViewModelTest {
 
     private fun jpeg() = byteArrayOf(1, 2, 3)
 
-    // ── Đường thành công ───────────────────────────────────────
+    // Đường thành công
 
     @Test
     fun `phan tich anh mon an hien ten mon tieng Viet kem loi ich va dieu nen luu y`() = runTest(dispatcher) {
@@ -104,7 +91,7 @@ class CameraViewModelTest {
 
         viewModel.runAnalysis { jpeg() }
 
-        // Trạng thái được đặt **trước** khi coroutine chạy để nút đổi sang "Đang phân tích…" tức thì.
+        // Trạng thái được đặt trước khi coroutine chạy để nút đổi sang "Đang phân tích…" tức thì.
         assertTrue(viewModel.uiState.value.isAnalyzing)
         assertNull(viewModel.uiState.value.insight)
 
@@ -114,7 +101,7 @@ class CameraViewModelTest {
         assertEquals("Cơm tấm sườn", viewModel.uiState.value.insight?.dishName)
     }
 
-    // ── Không còn cổng đồng ý (mục 3 #43) ───────────────────────
+    // Không còn cổng đồng ý
 
     @Test
     fun `bam phan tich la goi AI luon khong con cong tac nao chan`() = runTest(dispatcher) {
@@ -132,7 +119,7 @@ class CameraViewModelTest {
         assertEquals("Cơm tấm sườn", viewModel.uiState.value.insight?.dishName)
     }
 
-    // ── Ảnh không có đồ ăn ─────────────────────────────────────
+    // Ảnh không có đồ ăn
 
     @Test
     fun `anh khong phai do an thi bao chua nhan dien duoc chu khong hien ket qua gia`() = runTest(dispatcher) {
@@ -159,7 +146,7 @@ class CameraViewModelTest {
         assertTrue(viewModel.uiState.value.noFoodDetected)
     }
 
-    // ── Lỗi: mỗi loại một câu, loại thử lại được thì có nút ─────
+    // Lỗi: mỗi loại một câu, loại thử lại được thì có nút
 
     @Test
     fun `mat mang thi bao ro va cho thu lai`() = runTest(dispatcher) {

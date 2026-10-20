@@ -12,14 +12,7 @@ import com.healthyai.app.data.local.entity.HabitLogEntity
 import com.healthyai.app.data.local.entity.health.HealthDataEntity
 import com.healthyai.app.data.local.entity.settings.SettingEntity
 
-/**
- * Room Database — được mã hóa bởi SQLCipher (xem DatabaseModule.kt).
- * exportSchema = true để version control schema, phục vụ Migration sau này.
- *
- * Khi cần nâng version: tăng `version` ở đây và thêm `Migration` tương ứng vào
- * `data/local/migration/DatabaseMigrations.kt` (`ALL` + `DATABASE_VERSION`) — **không** dùng
- * `fallbackToDestructiveMigration()` vì sẽ mất dữ liệu của người dùng (phụ lục C #14).
- */
+/** Room Database mã hóa bằng SQLCipher; khi tăng version phải thêm Migration tương ứng, tránh fallbackToDestructiveMigration vì mất dữ liệu người dùng. */
 @Database(
     entities = [
         HabitEntity::class,

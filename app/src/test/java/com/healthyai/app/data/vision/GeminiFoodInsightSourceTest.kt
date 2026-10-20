@@ -10,13 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit test cho [GeminiFoodInsightSource] — phần **không** cần mạng: dựng request, ánh xạ mã HTTP,
- * đọc phản hồi, và luật thử lại.
- *
- * Cách kiểm thử: thay [HttpPost] bằng giả lập nên chạy được trên JVM; `runTest` cũng bỏ qua `delay`
- * giữa hai lần thử lại nên test chạy tức thì.
- */
+/** Test [GeminiFoodInsightSource] phần không cần mạng: dựng request, ánh xạ mã HTTP, đọc phản hồi, luật thử lại. */
 class GeminiFoodInsightSourceTest {
 
     private val gson = Gson()
@@ -32,7 +26,7 @@ class GeminiFoodInsightSourceTest {
         var lastBody: String? = null
             private set
 
-        /** Mọi URL đã gọi, theo thứ tự — để kiểm tra việc **đổi model**. */
+        /** Mọi URL đã gọi theo thứ tự — để kiểm tra việc đổi model. */
         val urls = mutableListOf<String>()
 
         override suspend fun post(url: String, headers: Map<String, String>, body: String): HttpPostResponse? {
@@ -81,7 +75,7 @@ class GeminiFoodInsightSourceTest {
         )
     )
 
-    // ── Đọc phản hồi ───────────────────────────────────────────
+    // Đọc phản hồi
 
     @Test
     fun `a valid answer is parsed into the dish with benefits and cautions`() {
@@ -123,7 +117,7 @@ class GeminiFoodInsightSourceTest {
         assertEquals(FoodAnalysisResult.Failure(FoodAnalysisError.BAD_RESPONSE), source().parseResponse("{{{not json"))
     }
 
-    // ── Ánh xạ mã HTTP ─────────────────────────────────────────
+    // Ánh xạ mã HTTP
 
     @Test
     fun `http 200 with a valid body succeeds`() {
@@ -182,7 +176,7 @@ class GeminiFoodInsightSourceTest {
         )
     }
 
-    // ── Dựng request ───────────────────────────────────────────
+    // Dựng request
 
     @Test
     fun `the request body carries the image, the prompt and a json schema`() {
@@ -198,10 +192,7 @@ class GeminiFoodInsightSourceTest {
         assertFalse("KHÔNG dùng tiền tố data URI cho ảnh", body.contains("data:image"))
     }
 
-    /**
-     * Mục 3 #43: độ trễ đến từ việc model Gemini 3 **mặc định suy luận ở mức `high`** — request phải
-     * yêu cầu mức thấp nhất mà model này chấp nhận (`low`; `minimal` bị trả 400).
-     */
+    /** Model Gemini 3 mặc định suy luận mức `high`; phải yêu cầu `low` (mức thấp nhất được chấp nhận). */
     @Test
     fun `the request asks for the low thinking level to keep the answer fast`() {
         val body = source().buildRequestBody("BASE64JPEG")
@@ -242,7 +233,7 @@ class GeminiFoodInsightSourceTest {
         assertEquals("k", http.lastHeaders["x-goog-api-key"])
     }
 
-    // ── Model dự phòng (503/429) ───────────────────────────────
+    // Model dự phòng (503/429)
 
     @Test
     fun `a missing api key fails fast without calling the network`() = runTest {
@@ -341,7 +332,7 @@ class GeminiFoodInsightSourceTest {
         assertEquals("Mất mạng thì vẫn thử cả model dự phòng", 2, http.calls)
     }
 
-    // ── Model từ chối thinkingConfig ───────────────────────────
+    // Model từ chối thinkingConfig
 
     @Test
     fun `a model rejecting the thinking config is sent again without it`() = runTest {
@@ -388,8 +379,7 @@ class GeminiFoodInsightSourceTest {
 
     @Test
     fun `the prompt and the schema stay in sync with the analysis rules`() {
-        // Chốt lại ràng buộc giữa hai tầng: prompt nói tối đa bao nhiêu gạch đầu dòng thì schema cũng
-        // phải giới hạn đúng như vậy, nếu không model sẽ trả dài rồi bị cắt âm thầm.
+        // Prompt nói tối đa bao nhiêu gạch đầu dòng thì schema phải khớp, nếu không model trả dài rồi bị cắt.
         val body = source().buildRequestBody("x")
 
         assertTrue(
