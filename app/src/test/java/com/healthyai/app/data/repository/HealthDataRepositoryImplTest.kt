@@ -153,6 +153,42 @@ class HealthDataRepositoryImplTest {
         assertEquals(7.5, saved.captured.sleepHours, 0.01)
     }
 
+    @Test
+    fun `sync and stored snapshot ignore health connect steps when the source switch is off`() = runTest {
+        val settingsRepository = mockk<com.healthyai.app.domain.repository.SettingsRepository>()
+        coEvery { settingsRepository.getHealthConnectData() } returns
+            com.healthyai.app.domain.model.HealthConnectDataSettings(enabled = false)
+        every { stepCounterRepository.getStatus() } returns
+            StepCounterStatus(sensorAvailable = true, permissionGranted = true)
+        coEvery { stepCounterRepository.readTodaySteps(any()) } returns 27L
+        fakeDataSource.steps = 1_200L
+        coEvery { healthDataDao.getLatestSince(any()) } returns HealthDataEntity(
+            id = 1L,
+            steps = 1_200L,
+            sleepHours = 0.0,
+            heartRate = 0.0,
+            activeCalories = 0.0,
+            recordedAt = startOfToday() + 1_000L
+        )
+        val updated = slot<HealthDataEntity>()
+        coJustRun { healthDataDao.updateHealthData(capture(updated)) }
+
+        val repoWithSettings = HealthDataRepositoryImpl(
+            fakeDataSource,
+            healthDataDao,
+            stepCounterRepository,
+            sleepTrackerRepository,
+            widgetRefresher,
+            settingsRepository
+        )
+
+        repoWithSettings.syncHealthData()
+        val stored = repoWithSettings.getTodayStoredHealthData()
+
+        assertEquals(27L, updated.captured.steps)
+        assertEquals(27L, stored.steps)
+    }
+
     // Giờ ngủ cũng có nguồn "tự lực" từ cảm biến của máy
 
     @Test

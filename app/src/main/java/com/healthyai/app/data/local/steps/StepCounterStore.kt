@@ -35,9 +35,19 @@ class StepCounterStore @Inject constructor(
         )
     }
 
-    /** Số bước hôm nay theo dữ liệu đã lưu (0 nếu đã sang ngày mới). */
+    /**
+     * Trạng thái sau mẫu cảm biến **gần nhất** của tiến trình này (chỉ trong bộ nhớ).
+     *
+     * Prefs chỉ được ghi tối đa [SAMPLE_WRITE_INTERVAL_MS] một lần, nên nếu đọc số bước từ prefs thì
+     * có thể chậm tới 15 giây so với số app đang hiện (widget từng hiện 31 trong khi app đã 54).
+     * Giá trị này luôn mới nhất; `null` khi tiến trình chưa nhận mẫu nào ⇒ rơi về prefs.
+     */
+    @Volatile
+    private var latestState: StepCounterMath.State? = null
+
+    /** Số bước hôm nay: ưu tiên mẫu mới nhất trong bộ nhớ, chưa có thì theo dữ liệu đã lưu (0 nếu đã sang ngày mới). */
     fun readStoredTodaySteps(todayIso: String = LocalDate.now().toString()): Long =
-        StepCounterMath.storedTodaySteps(readState(), todayIso)
+        StepCounterMath.storedTodaySteps(latestState ?: readState(), todayIso)
 
     /** Xử lý một mẫu cảm biến, lưu trạng thái mới; trả về số bước hôm nay sau mẫu này. */
     fun onSample(
@@ -45,22 +55,24 @@ class StepCounterStore @Inject constructor(
         nowMs: Long = System.currentTimeMillis(),
         zone: ZoneId = ZoneId.systemDefault()
     ): Long {
-        val previous = readState()
+        val previous = latestState ?: readState()
         val result = StepCounterMath.sample(previous, cumulative, nowMs, sessionId, zone)
+        latestState = result.state
         writeState(previous, result.state)
         return result.todaySteps
     }
 
-    /** Ghi trạng thái có tiết chế: đổi ngày/phiên/baseline/offset thì commit() ngay; chỉ mẫu mới thì apply() theo nhịp. */
+    /** Ghi trạng thái: đổi ngày/phiên/baseline/offset thì commit() ngay; khi số bước đổi hoặc đủ nhịp thì apply(). */
     private fun writeState(previous: StepCounterMath.State?, state: StepCounterMath.State) {
         val milestoneChanged = previous == null ||
             previous.dateIso != state.dateIso ||
             previous.sessionId != state.sessionId ||
             previous.baseline != state.baseline ||
             previous.offset != state.offset
+        val stepsChanged = previous?.todaySteps != state.todaySteps
         val sampleIsFreshEnough = previous == null ||
             state.lastSampleMs - previous.lastSampleMs >= SAMPLE_WRITE_INTERVAL_MS
-        if (!milestoneChanged && !sampleIsFreshEnough) return
+        if (!milestoneChanged && !stepsChanged && !sampleIsFreshEnough) return
 
         val editor = prefs.edit()
             .putString(KEY_DATE, state.dateIso)

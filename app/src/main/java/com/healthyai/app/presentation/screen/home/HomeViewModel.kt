@@ -270,11 +270,14 @@ class HomeViewModel @Inject constructor(
         val status = getStepCounterStatusUseCase()
         _uiState.update { it.copy(stepCounter = status) }
 
-        stepCounterJob?.cancel()
         if (!status.isReady) {
+            stepCounterJob?.cancel()
+            stepCounterJob = null
             _uiState.update { it.copy(sensorSteps = 0L) }
             return
         }
+
+        if (stepCounterJob?.isActive == true) return
 
         stepCounterJob = viewModelScope.launch {
             stepCounterRepository.observeTodaySteps().collect { steps ->

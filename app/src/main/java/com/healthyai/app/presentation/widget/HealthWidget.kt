@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.Preferences
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
@@ -18,6 +19,7 @@ import androidx.glance.appwidget.background
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.color.ColorProvider
+import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -34,13 +36,6 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.healthyai.app.MainActivity
 import com.healthyai.app.R
-import com.healthyai.app.domain.model.HealthData
-import com.healthyai.app.domain.repository.SettingsRepository
-import com.healthyai.app.domain.repository.StepCounterRepository
-import com.healthyai.app.domain.repository.SleepTrackerRepository
-import com.healthyai.app.domain.usecase.health.GetHealthDataUseCase
-import com.healthyai.app.domain.usecase.health.GetLatestRecordedHeartRateUseCase
-import com.healthyai.app.domain.usecase.health.GetStoredHealthDataUseCase
 import com.healthyai.app.domain.usecase.health.TodayHealthSummary
 import com.healthyai.app.presentation.ui.format.formatHeartRate
 import com.healthyai.app.presentation.ui.format.formatSleepDuration
@@ -59,7 +54,6 @@ import com.healthyai.app.presentation.ui.theme.WidgetStepsDark
 import com.healthyai.app.presentation.ui.theme.WidgetStepsLight
 import com.healthyai.app.presentation.ui.theme.WidgetSurfaceDark
 import com.healthyai.app.presentation.ui.theme.WidgetSurfaceLight
-import com.healthyai.app.util.runCatchingCancellable
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -84,12 +78,7 @@ class HealthWidget : GlanceAppWidget() {
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface HealthWidgetEntryPoint {
-        fun stepCounterRepository(): StepCounterRepository
-        fun sleepTrackerRepository(): SleepTrackerRepository
-        fun settingsRepository(): SettingsRepository
-        fun getHealthDataUseCase(): GetHealthDataUseCase
-        fun getStoredHealthDataUseCase(): GetStoredHealthDataUseCase
-        fun getLatestRecordedHeartRateUseCase(): GetLatestRecordedHeartRateUseCase
+        fun summaryReader(): HealthWidgetSummaryReader
     }
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -98,58 +87,28 @@ class HealthWidget : GlanceAppWidget() {
             HealthWidgetEntryPoint::class.java
         )
 
-        // Đọc dữ liệu một lần lúc vẽ: Glance không quan sát Flow nên số liệu là bản chụp tại thời điểm vẽ.
-        val summary = readSummary(entryPoint)
+        // Đọc số liệu một lần rồi **ghi vào state của widget**: Glance không chạy lại `provideGlance`
+        // khi session đang sống, nên dữ liệu phải nằm trong state để mỗi lần `refresh` ghi số mới là
+        // composition tự vẽ lại (xem `HealthWidgetState.kt`).
+        val initial = entryPoint.summaryReader().read()
+        writeHealthWidgetSummary(context, id, initial)
 
         provideContent {
-            WidgetContent(summary)
+            WidgetContent(currentSummary(initial))
         }
     }
 
     /**
-     * Ghép ba chỉ số bằng đúng luật của thẻ "Tóm tắt sức khỏe" ([TodayHealthSummary.build]): đọc
-     * **cùng nguồn** mà thẻ đang chọn — switch "Dùng dữ liệu Health Connect" BẬT thì đọc thẳng Health
-     * Connect, TẮT (mặc định) thì đọc bản chụp đã lưu trong app — rồi mới rơi về số app tự đo.
+     * Số liệu đang hiển thị: đọc **state của widget** trong composition để mỗi lần
+     * [HealthWidgetRefresherImpl.refresh] ghi số mới thì widget tự vẽ lại. [fallback] chỉ dùng khi
+     * state chưa có (lần vẽ đầu tiên, trước khi `provideGlance` kịp ghi).
      */
-    private suspend fun readSummary(entryPoint: HealthWidgetEntryPoint): TodayHealthSummary {
-        val stepCounter = entryPoint.stepCounterRepository()
-        val stepCounterStatus = stepCounter.getStatus()
-        val sleepTracker = entryPoint.sleepTrackerRepository()
-        val latestRecordedHeartRate = entryPoint.getLatestRecordedHeartRateUseCase()
-
-        val sensorSteps = if (stepCounterStatus.isReady) {
-            stepCounter.readTodaySteps(StepCounterRepository.NO_WAIT_MS)
-        } else {
-            0L
-        }
-        val sensorSleepHours = runCatchingCancellable {
-            sleepTracker.readLastNightSleepHours()
-        }.getOrDefault(0.0)
-
-        return TodayHealthSummary.build(
-            primary = readPrimaryHealthData(entryPoint),
-            sensorSteps = sensorSteps,
-            sensorSleepHours = sensorSleepHours,
-            recordedHeartRate = latestRecordedHeartRate()
-        )
+    @Composable
+    private fun currentSummary(fallback: TodayHealthSummary): TodayHealthSummary {
+        val prefs: Preferences = currentState()
+        return prefs.toTodayHealthSummaryOrNull() ?: fallback
     }
 
-    /**
-     * Nguồn số liệu đang chọn trên Trang chủ. Đọc lỗi coi như rỗng để widget vẫn hiện được phần số
-     * app tự đo (bước chân từ cảm biến, giờ ngủ ước lượng, nhịp tim đã ghi) thay vì trắng cả widget.
-     */
-    private suspend fun readPrimaryHealthData(entryPoint: HealthWidgetEntryPoint): HealthData {
-        val useHealthConnect = runCatchingCancellable {
-            entryPoint.settingsRepository().getHealthConnectData().enabled
-        }.getOrDefault(false)
-
-        return if (useHealthConnect) {
-            runCatchingCancellable { entryPoint.getHealthDataUseCase()() }.getOrNull()
-                ?.getOrNull() ?: HealthData()
-        } else {
-            runCatchingCancellable { entryPoint.getStoredHealthDataUseCase()() }.getOrDefault(HealthData())
-        }
-    }
 
     @Composable
     private fun WidgetContent(summary: TodayHealthSummary) {

@@ -426,7 +426,7 @@ class HomeViewModelTest {
         givenTodayLogs()
         givenHealthConnectData(enabled = false)
         givenStoredHealthData(HealthData(steps = 3_000L))
-        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 4_230L)
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 1_200L)
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -448,7 +448,7 @@ class HomeViewModelTest {
         givenHealthConnectData(enabled = true)
         coEvery { getHealthDataUseCase() } returns Result.success(HealthData(steps = 3_000L))
         givenStoredHealthData(HealthData(steps = 1_000L))
-        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 4_230L)
+        givenStepCounter(sensorAvailable = true, permissionGranted = true, steps = 1_200L)
 
         val viewModel = createViewModel()
         advanceUntilIdle()

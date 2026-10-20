@@ -427,7 +427,7 @@ private fun HealthSummaryCard(uiState: HomeUiState, onMeasureHeartRate: () -> Un
                     icon = Icons.Default.DirectionsWalk,
                     label = stringResource(R.string.home_label_steps),
                     // Ưu tiên Health Connect; nếu Health Connect không có số thì dùng cảm biến của máy
-                    value = formatStepCount(uiState.displaySteps),
+                    value = com.healthyai.app.presentation.ui.format.formatStepsExact(uiState.displaySteps),
                     color = Color(0xFF4CAF50)
                 )
                 HealthCircleStat(

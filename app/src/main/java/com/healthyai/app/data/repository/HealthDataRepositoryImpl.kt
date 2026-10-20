@@ -7,6 +7,7 @@ import com.healthyai.app.domain.model.HealthConnectStatus
 import com.healthyai.app.domain.model.HealthData
 import com.healthyai.app.domain.model.SleepStageBreakdown
 import com.healthyai.app.domain.repository.HealthDataRepository
+import com.healthyai.app.domain.repository.SettingsRepository
 import com.healthyai.app.domain.repository.SleepTrackerRepository
 import com.healthyai.app.domain.repository.StepCounterRepository
 import com.healthyai.app.domain.widget.HealthWidgetRefresher
@@ -19,15 +20,31 @@ import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Triển khai [HealthDataRepository]: ưu tiên Health Connect, thiếu số thì dùng cảm biến của máy; mọi lần ghi hôm nay đều vẽ lại widget. */
+/** Triển khai [HealthDataRepository]: ưu tiên Health Connect khi nguồn này đang bật, còn lại dùng cảm biến của máy; mọi lần ghi hôm nay đều vẽ lại widget. */
 @Singleton
 class HealthDataRepositoryImpl @Inject constructor(
     private val dataSource: HealthConnectDataSource,
     private val healthDataDao: HealthDataDao,
     private val stepCounterRepository: StepCounterRepository,
     private val sleepTrackerRepository: SleepTrackerRepository,
-    private val healthWidgetRefresher: HealthWidgetRefresher
+    private val healthWidgetRefresher: HealthWidgetRefresher,
+    private val settingsRepository: SettingsRepository?
 ) : HealthDataRepository {
+
+    constructor(
+        dataSource: HealthConnectDataSource,
+        healthDataDao: HealthDataDao,
+        stepCounterRepository: StepCounterRepository,
+        sleepTrackerRepository: SleepTrackerRepository,
+        healthWidgetRefresher: HealthWidgetRefresher
+    ) : this(
+        dataSource = dataSource,
+        healthDataDao = healthDataDao,
+        stepCounterRepository = stepCounterRepository,
+        sleepTrackerRepository = sleepTrackerRepository,
+        healthWidgetRefresher = healthWidgetRefresher,
+        settingsRepository = null
+    )
 
     override suspend fun isAvailable(): Boolean = dataSource.isAvailable()
     override suspend fun getStatus(): HealthConnectStatus = dataSource.getStatus()
@@ -49,7 +66,7 @@ class HealthDataRepositoryImpl @Inject constructor(
         val sensorSteps = stepCounterRepository.readTodaySteps()
         val sensorSleepHours = sleepTrackerRepository.readLastNightSleepHours()
 
-        // Bước chân và giấc ngủ đều ưu tiên Health Connect; không có số mới dùng cảm biến của máy (SleepTrackerRepository).
+        // Bước chân và giấc ngủ đều ưu tiên Health Connect (nếu đang bật); không có số mới dùng cảm biến của máy.
         val snapshot = HealthData(
             steps = (healthConnect?.steps ?: 0L).takeIf { it > 0L } ?: sensorSteps,
             sleepHours = (healthConnect?.sleepHours ?: 0.0).takeIf { it > 0.0 } ?: sensorSleepHours,
@@ -81,8 +98,9 @@ class HealthDataRepositoryImpl @Inject constructor(
         )
     }
 
-    /** Đọc bản chụp từ Health Connect; trả null khi không khả dụng hoặc chưa đủ quyền (khi đó bước chân lấy từ cảm biến). */
+    /** Đọc bản chụp từ Health Connect; trả null khi tắt switch Health Connect, không khả dụng hoặc chưa đủ quyền. */
     private suspend fun readHealthConnectSnapshot(): HealthData? {
+        if (!isHealthConnectSourceEnabled()) return null
         if (!dataSource.isAvailable()) return null
         if (!dataSource.hasAllPermissions()) return null
 
@@ -94,7 +112,13 @@ class HealthDataRepositoryImpl @Inject constructor(
         )
     }
 
-    /** Ghi bản chụp vào hàng hôm nay (gộp): bước chân lấy số lớn hơn, chỉ số khác lấy giá trị mới hơn nếu có số. */
+    /** Switch "Dùng dữ liệu Health Connect" trên Trang chủ có đang bật hay không (mặc định true trong unit test không truyền SettingsRepository). */
+    private suspend fun isHealthConnectSourceEnabled(): Boolean =
+        settingsRepository?.let {
+            runCatchingCancellable { it.getHealthConnectData().enabled }.getOrDefault(false)
+        } ?: true
+
+    /** Ghi bản chụp vào hàng hôm nay (gộp): bước chân lấy số lớn hơn (hoặc số cảm biến khi tắt Health Connect), chỉ số khác lấy giá trị mới hơn nếu có số. */
     private suspend fun upsertToday(snapshot: HealthData) {
         val existing = healthDataDao.getLatestSince(startOfToday())
 
@@ -103,9 +127,12 @@ class HealthDataRepositoryImpl @Inject constructor(
             return
         }
 
+        val sensorAuthoritative = !isHealthConnectSourceEnabled() &&
+            runCatchingCancellable { stepCounterRepository.getStatus().isReady }.getOrDefault(false)
+
         healthDataDao.updateHealthData(
             existing.copy(
-                steps = maxOf(existing.steps, snapshot.steps),
+                steps = if (sensorAuthoritative) snapshot.steps else maxOf(existing.steps, snapshot.steps),
                 sleepHours = if (snapshot.sleepHours > 0.0) snapshot.sleepHours else existing.sleepHours,
                 heartRate = if (snapshot.heartRate > 0.0) snapshot.heartRate else existing.heartRate,
                 activeCalories = if (snapshot.activeCalories > 0.0) snapshot.activeCalories else existing.activeCalories,
@@ -151,8 +178,18 @@ class HealthDataRepositoryImpl @Inject constructor(
     }
 
     /** Bản chụp hôm nay đã ghi trong health_data_history (rỗng nếu chưa có); nguồn cho thẻ Tóm tắt sức khỏe khi tắt switch Health Connect. */
-    override suspend fun getTodayStoredHealthData(): HealthData =
-        healthDataDao.getLatestSince(startOfToday())?.toDomain() ?: HealthData()
+    override suspend fun getTodayStoredHealthData(): HealthData {
+        val stored = healthDataDao.getLatestSince(startOfToday())?.toDomain() ?: HealthData()
+        val sensorAuthoritative = !isHealthConnectSourceEnabled() &&
+            runCatchingCancellable { stepCounterRepository.getStatus().isReady }.getOrDefault(false)
+        if (sensorAuthoritative) {
+            val sensorSteps = runCatchingCancellable {
+                stepCounterRepository.readTodaySteps(StepCounterRepository.NO_WAIT_MS)
+            }.getOrDefault(0L)
+            return stored.copy(steps = sensorSteps)
+        }
+        return stored
+    }
 
     override fun getHealthHistorySince(fromTs: Long): Flow<List<HealthData>> =
         healthDataDao.getHealthDataSince(fromTs).map { list -> list.map { it.toDomain() } }

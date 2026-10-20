@@ -28,7 +28,7 @@ data class TodayHealthSummary(
             sensorSleepHours: Double,
             recordedHeartRate: Double
         ): TodayHealthSummary = TodayHealthSummary(
-            steps = primary.steps.takeIf { it > 0L } ?: sensorSteps,
+            steps = maxOf(primary.steps, sensorSteps),
             sleepHours = primary.sleepHours.takeIf { it > 0.0 } ?: sensorSleepHours,
             heartRateBpm = primary.heartRate.takeIf { it > 0.0 } ?: recordedHeartRate
         )
